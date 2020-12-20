@@ -149,7 +149,7 @@ func (chain *Blockchain) Load_BL_FROM_ID(hash [32]byte) (*block.Block, error) {
 	if block_data, err := chain.Store.Block_tx_store.ReadBlock(hash); err == nil {
 
 		if err = bl.Deserialize(block_data); err != nil { // we should deserialize the block here
-			logger.Warnf("fError deserialiing block, block id %s len(data) %d data %x", hash[:], len(block_data), block_data)
+			logger.Warnf("fError deserialiing block, block id %x len(data) %d data %x err %s", hash[:], len(block_data), block_data,err)
 			return nil, err
 		}
 

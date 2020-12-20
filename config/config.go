@@ -26,7 +26,7 @@ import "github.com/deroproject/derohe/crypto"
 // later hardforks can make it lower by 1 sec, say every 6 months or so, until the system reaches 3 secs
 // by that time, networking,space requirements  and  processing requiremtn will probably outgrow homeusers
 // since most mining nodes will be running in datacenter, 3 secs  blocks c
-const BLOCK_TIME = uint64(60)
+const BLOCK_TIME = uint64(30)
 
 // we are ignoring leap seconds from calculations
 
@@ -113,7 +113,7 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x21, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x22, 0x00, 0x00, 0x00}),
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
 	Wallet_RPC_Default_Port: 40403,
