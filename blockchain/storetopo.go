@@ -38,6 +38,10 @@ type storetopofs struct {
 	topomapping *os.File
 }
 
+func  (s TopoRecord)String() string {
+    return fmt.Sprintf("blid %x state version %d height %d",s.BLOCK_ID[:],s.State_Version, s.Height)
+}
+
 func (s *storetopofs) Open(basedir string) (err error) {
 	s.topomapping, err = os.OpenFile(filepath.Join(basedir, "topo.map"), os.O_RDWR|os.O_CREATE, 0700)
 	return err

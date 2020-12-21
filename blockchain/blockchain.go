@@ -347,6 +347,13 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		return errormsg.ErrAlreadyExists, false
 	}
 
+	for k := range chain.Tips {
+		if block_hash == k {
+			block_logger.Debugf("block already in chain skipping it ")
+		   return errormsg.ErrAlreadyExists, false
+		}
+	}
+
 	// only 3 tips allowed in block
 	if len(bl.Tips) >= 4 {
 		rlog.Warnf("More than 3 tips present in block %s rejecting", block_hash)
@@ -677,11 +684,12 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 
 		// any blocks which have not changed their topo will be skipped using graviton trick
+		skip := true
 		for i := int64(0); i < int64(len(full_order)); i++ {
 
 			// check whether the new block is at the same position at the last position
 			current_topo_block := i + base_topo_index
-			if current_topo_block < chain.Store.Topo_store.Count() {
+			if skip && current_topo_block < chain.Store.Topo_store.Count() {
 				toporecord, err := chain.Store.Topo_store.Read(current_topo_block)
 				if err != nil {
 					panic(err)
@@ -689,6 +697,8 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				if full_order[i] == toporecord.BLOCK_ID { // skip reprocessing if not required
 					continue
 				}
+
+				skip = false // if one block processed, process every higher block
 
 			}
 
@@ -806,7 +816,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			// their transactions are ignored
 
 			//chain.Store.Topo_store.Write(i+base_topo_index, full_order[i],0, int64(bl_current.Height)) // write entry so as sideblock could work
-			if !chain.isblock_SideBlock_internal(full_order[i], i+base_topo_index, int64(bl_current.Height)) {
+			if  !chain.isblock_SideBlock_internal(full_order[i], i+base_topo_index, int64(bl_current.Height)) {
 
 				for _, txhash := range bl_current.Tx_hashes { // execute all the transactions
 
@@ -825,7 +835,9 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 				}
 
+            
 				chain.process_miner_transaction(bl_current.Miner_TX, bl_current.Height == 0, balance_tree, fees_collected)
+            
 
 			} else {
 				rlog.Debugf("this block is a side block   block height %d blid %s ", chain.Load_Block_Height(full_order[i]), full_order[i])
@@ -1270,12 +1282,13 @@ func (chain *Blockchain) isblock_SideBlock(blid crypto.Hash) bool {
 	return chain.isblock_SideBlock_internal(blid, block_topoheight, block_height)
 }
 
+// todo optimize/ run more checks
 func (chain *Blockchain) isblock_SideBlock_internal(blid crypto.Hash, block_topoheight int64, block_height int64) (result bool) {
 	if block_topoheight == 0 {
 		return false
 	}
 	counter := int64(0)
-	for i := block_topoheight - 1; i >= 0 && counter < 3*config.STABLE_LIMIT; i-- {
+	for i := block_topoheight - 1; i >= 0 && counter < 16*config.STABLE_LIMIT; i-- {
 		counter++
 		toporecord, err := chain.Store.Topo_store.Read(i)
 		if err != nil {
@@ -1552,20 +1565,25 @@ func (chain *Blockchain) buildReachability(blid crypto.Hash) map[crypto.Hash]boo
 
 // this is part of consensus rule, 2 tips cannot refer to their common parent
 func (chain *Blockchain) VerifyNonReachability(bl *block.Block) bool {
+	return chain.verifyNonReachabilitytips(bl.Tips)
+}
 
-	reachmaps := make([]map[crypto.Hash]bool, len(bl.Tips), len(bl.Tips))
-	for i := range bl.Tips {
-		reachmaps[i] = chain.buildReachability(bl.Tips[i])
+// this is part of consensus rule, 2 tips cannot refer to their common parent
+func (chain *Blockchain) verifyNonReachabilitytips(tips []crypto.Hash) bool {
+
+	reachmaps := make([]map[crypto.Hash]bool, len(tips), len(tips))
+	for i := range tips {
+		reachmaps[i] = chain.buildReachability(tips[i])
 	}
 
 	// bruteforce all reachability combinations, max possible 3x3 = 9 combinations
-	for i := range bl.Tips {
-		for j := range bl.Tips {
+	for i := range tips {
+		for j := range tips {
 			if i == j { // avoid self test
 				continue
 			}
 
-			if _, ok := reachmaps[j][bl.Tips[i]]; ok { // if a tip can be referenced as another's past, this is not a tip , probably malicious, discard block
+			if _, ok := reachmaps[j][tips[i]]; ok { // if a tip can be referenced as another's past, this is not a tip , probably malicious, discard block
 				return false
 			}
 

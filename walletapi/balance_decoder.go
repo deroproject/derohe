@@ -69,7 +69,7 @@ func Initialize_LookupTable(count int, table_size int) *LookupTable {
 	for i := range t {
 		t[i] = make([]uint64, table_size, table_size)
 
-		bar := pb.New(TABLE_SIZE)
+		bar := pb.New(table_size)
 		if terminal {
 			bar.Start()
 		}

@@ -463,7 +463,7 @@ var txpool_template string = `{{define "txpool"}}
     
       <table class="center" style="width:80%">
             <tr>
-                <td>age [h:m:s]</td>
+                <td>height built</td>
                 <td>transaction hash</td>
                 <td>fee</td>
                 <td>ring size</td>
@@ -473,7 +473,7 @@ var txpool_template string = `{{define "txpool"}}
            
             {{range .mempool}}
             <tr>
-                    <td></td>
+                    <td>{{.HeightBuilt}}</td>
                     <td><a href="/tx/{{.Hash}}">{{.Hash}}</a></td>
                     <td>{{.Fee}}</td>
                     <td>{{.Ring_size}}</td>

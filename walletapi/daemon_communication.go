@@ -483,8 +483,9 @@ func (w *Wallet) GetEncryptedBalanceAtTopoHeight(topoheight int64, accountaddr s
 	var result structures.GetEncryptedBalance_Result
 
 	// Issue a call with a response.
-	if err := rpc_client.Call("DERO.GetEncryptedBalance", structures.GetEncryptedBalance_Params{Address: accountaddr, TopoHeight: topoheight}, &result); err != nil {
-		fmt.Printf("Call failed: %v", err)
+	if err = rpc_client.Call("DERO.GetEncryptedBalance", structures.GetEncryptedBalance_Params{Address: accountaddr, TopoHeight: topoheight}, &result); err != nil {
+		rlog.Errorf("Call failed: %v", err)
+		return
 	}
 
 	//	fmt.Printf("encrypted_balance %+v\n", result)
@@ -568,7 +569,7 @@ func (w *Wallet) random_ring_members() {
 
 	// Issue a call with a response.
 	if err := rpc_client.Call("DERO.GetRandomAddress", nil, &result); err != nil {
-		fmt.Printf("Call failed: %v", err)
+		rlog.Errorf("GetRandomAddress Call failed: %v", err)
 		return
 	}
 	//fmt.Printf("ring members %+v\n", result)
@@ -613,7 +614,7 @@ func (w *Wallet) SyncHistory() (balance uint64) {
 
 			// Issue a call with a response.
 			if err := rpc_client.Call("DERO.GetBlockHeaderByTopoHeight", structures.GetBlockHeaderByTopoHeight_Params{TopoHeight: uint64(w.account.Entries[i].TopoHeight)}, &result); err != nil {
-				fmt.Printf("Call failed: %v", err)
+				rlog.Errorf("GetBlockHeaderByTopoHeight Call failed: %v", err)
 				return 0
 			}
 

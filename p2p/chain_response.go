@@ -101,7 +101,7 @@ func (connection *Connection) Handle_ChainResponse(buf []byte) {
 				rlog.Tracef(2, "Queuing block %x height %d  %s", response.Block_list[i], response.Start_height+int64(i), connection.logid)
 			}
 		} else {
-			logger.Warnf("We must have queued %x, but we skipped it at height %d", response.Block_list[i], response.Start_height+int64(i))
+			rlog.Tracef(3, "We must have queued %x, but we skipped it at height %d", response.Block_list[i], response.Start_height+int64(i))
 		}
 	}
 

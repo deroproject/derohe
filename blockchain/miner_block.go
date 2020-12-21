@@ -100,7 +100,12 @@ func (chain *Blockchain) Create_new_miner_block(miner_address address.Address, t
 		if len(bl.Tips) >= 3 {
 			break
 		}
-		bl.Tips = append(bl.Tips, tips[i])
+        if !chain.verifyNonReachabilitytips(append([]crypto.Hash{tips[i]}, bl.Tips...) ) {  // avoid any tips which fail reachability test
+		    continue
+        }
+        if len(bl.Tips) == 0 ||  (len(bl.Tips)>=1 &&  chain.Load_Height_for_BL_ID(bl.Tips[0]) >= chain.Load_Height_for_BL_ID(tips[i]) &&  chain.Load_Height_for_BL_ID(bl.Tips[0]) - chain.Load_Height_for_BL_ID(tips[i]) <= config.STABLE_LIMIT/2) {
+            bl.Tips = append(bl.Tips, tips[i])
+        }
 	}
 
 	//fmt.Printf("miner block placing tips %+v\n", bl.Tips)

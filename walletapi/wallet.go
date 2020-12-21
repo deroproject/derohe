@@ -232,7 +232,7 @@ func (w *Wallet) Show_Transfers(available bool, in bool, out bool, pool bool, fa
 				}
 				continue
 			}
-			if out && !e.Incoming {
+			if out && !(e.Incoming || e.Coinbase) {
 				if payment_id && len(e.PaymentID) >= 8 {
 					entries = append(entries, e)
 				} else {
