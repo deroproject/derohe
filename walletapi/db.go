@@ -39,7 +39,7 @@ type Wallet_Disk struct {
 // when smart contracts are implemented, each will have it's own universe to track and maintain transactions
 
 // this file implements the encrypted data store at rest
-func Create_Encrypted_Wallet(filename string, password string, seed *crypto.BNRed) (w *Wallet_Disk, err error) {
+func Create_Encrypted_Wallet(filename string, password string, seed *crypto.BNRed) (wd *Wallet_Disk, err error) {
 
 	if _, err = os.Stat(filename); err == nil {
 		err = fmt.Errorf("File '%s' already exists", filename)
@@ -51,7 +51,7 @@ func Create_Encrypted_Wallet(filename string, password string, seed *crypto.BNRe
 
 	}
 
-	wd := &Wallet_Disk{filename: filename}
+	wd = &Wallet_Disk{filename: filename}
 
 	// generate account keys
 	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, seed); err != nil {

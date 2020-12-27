@@ -754,7 +754,8 @@ func display_seed(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 
 	keys := wallet.Get_Keys()
-	fmt.Fprintf(os.Stderr, "secret key: "+color_red+"%s"+color_white+"\n", keys.Secret.Text(16))
+    h := "0000000000000000000000000000000000000000000000"+keys.Secret.Text(16)
+	fmt.Fprintf(os.Stderr, "secret key: "+color_red+"%s"+color_white+"\n", h[len(h)-64:])
 
 	fmt.Fprintf(os.Stderr, "public key: %s\n", keys.Public.StringHex())
 }
