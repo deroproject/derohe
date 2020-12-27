@@ -1,9 +1,10 @@
+// +build !wasm
+
 package rwc
 
 import (
-	"io"
-
 	"github.com/gorilla/websocket"
+	"io"
 )
 
 type ReadWriteCloser struct {

@@ -38,10 +38,10 @@ import "github.com/vmihailenco/msgpack"
 
 import "github.com/deroproject/derohe/config"
 
-//import "github.com/deroproject/derosuite/crypto"
+import "github.com/deroproject/derohe/crypto"
 import "github.com/deroproject/derohe/globals"
 
-//import "github.com/deroproject/derosuite/blockchain"
+import "github.com/deroproject/derohe/blockchain"
 
 // This file defines  what all needs to be responded to become a server ( handling incoming requests)
 
@@ -58,24 +58,40 @@ func fill_common(common *Common_Struct) {
 	} else {
 		common.Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(high_block).String()
 	}
+
+	if toporecord, err := chain.Store.Topo_store.Read(common.TopoHeight); err == nil {
+		if ss, err := chain.Store.Balance_store.LoadSnapshot(uint64(toporecord.State_Version)); err == nil {
+			if balance_tree, err := ss.GetTree(blockchain.BALANCE_TREE); err == nil {
+				if bhash, err := balance_tree.Hash(); err == nil {
+					common.StateHash = bhash
+				}
+			}
+		}
+	}
+
 	common.Top_Version = uint64(chain.Get_Current_Version_at_Height(int64(common.Height))) // this must be taken from the hardfork
 
 }
 
 // used while sendint TX ASAP
+// this also skips statehash
 func fill_common_skip_topoheight(common *Common_Struct) {
-	common.Height = chain.Get_Height()
-	//common.StableHeight = chain.Get_Stable_Height()
-	common.TopoHeight = chain.Load_TOPO_HEIGHT()
-	//common.Top_ID, _ = chain.Load_BL_ID_at_Height(common.Height - 1)
+	fill_common(common)
+	return
+	/*
+		common.Height = chain.Get_Height()
+		//common.StableHeight = chain.Get_Stable_Height()
+		common.TopoHeight = chain.Load_TOPO_HEIGHT()
+		//common.Top_ID, _ = chain.Load_BL_ID_at_Height(common.Height - 1)
 
-	high_block, err := chain.Load_Block_Topological_order_at_index(common.TopoHeight)
-	if err != nil {
-		common.Cumulative_Difficulty = "0"
-	} else {
-		common.Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(high_block).String()
-	}
-	common.Top_Version = uint64(chain.Get_Current_Version_at_Height(int64(common.Height))) // this must be taken from the hardfork
+		high_block, err := chain.Load_Block_Topological_order_at_index(common.TopoHeight)
+		if err != nil {
+			common.Cumulative_Difficulty = "0"
+		} else {
+			common.Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(high_block).String()
+		}
+		common.Top_Version = uint64(chain.Get_Current_Version_at_Height(int64(common.Height))) // this must be taken from the hardfork
+	*/
 
 }
 
@@ -83,6 +99,7 @@ func fill_common_skip_topoheight(common *Common_Struct) {
 func (connection *Connection) Update(common *Common_Struct) {
 	//connection.Lock()
 	//defer connection.Unlock()
+	var hash crypto.Hash
 	atomic.StoreInt64(&connection.Height, common.Height) // satify race detector GOD
 	if common.StableHeight != 0 {
 		atomic.StoreInt64(&connection.StableHeight, common.StableHeight) // satify race detector GOD
@@ -105,6 +122,10 @@ func (connection *Connection) Update(common *Common_Struct) {
 	if connection.Top_Version != common.Top_Version {
 		atomic.StoreUint64(&connection.Top_Version, common.Top_Version) // satify race detector GOD
 	}
+	if common.StateHash != hash {
+		connection.StateHash = common.StateHash
+	}
+
 }
 
 // sets  timeout based on connection state, so as stale connections are cleared quickly
@@ -397,7 +418,6 @@ func Handle_Connection(conn net.Conn, remote_addr *net.TCPAddr, incoming bool, s
 		case V2_COMMAND_HANDSHAKE:
 			connection.Update(&command.Common)
 			connection.Handle_Handshake(data_read)
-
 		case V2_COMMAND_SYNC:
 			connection.Update(&command.Common)
 			connection.Handle_TimedSync(data_read)
@@ -405,7 +425,6 @@ func Handle_Connection(conn net.Conn, remote_addr *net.TCPAddr, incoming bool, s
 			connection.Update(&command.Common)
 			connection.Handle_ChainRequest(data_read)
 		case V2_COMMAND_CHAIN_RESPONSE:
-
 			connection.Update(&command.Common)
 			connection.Handle_ChainResponse(data_read)
 		case V2_COMMAND_OBJECTS_REQUEST:
@@ -417,10 +436,12 @@ func Handle_Connection(conn net.Conn, remote_addr *net.TCPAddr, incoming bool, s
 		case V2_NOTIFY_NEW_BLOCK: // for notification,  instead of syncing, we will process notificaton first
 			connection.Handle_Notification_Block(data_read)
 			connection.Update(&command.Common) // we do it a bit later so we donot staart syncing
-
 		case V2_NOTIFY_NEW_TX:
 			connection.Update(&command.Common)
 			connection.Handle_Notification_Transaction(data_read)
+		case V2_NOTIFY_INVENTORY:
+			connection.Update(&command.Common)
+			connection.Handle_Incoming_Inventory(data_read)
 
 		default:
 			connection.logger.Debugf("Unhandled v2 command %d", command.Command)

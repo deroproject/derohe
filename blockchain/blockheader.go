@@ -20,7 +20,7 @@ package blockchain
 import "github.com/deroproject/derohe/crypto"
 import "github.com/deroproject/derohe/structures"
 
-// this function is only used by the RPC and is not used by the core
+// this function is only used by the RPC and is not used by the core and should be moved to RPC interface
 
 /* fill up the above structure from the blockchain */
 func (chain *Blockchain) GetBlockHeader(hash crypto.Hash) (result structures.BlockHeader_Print, err error) {
@@ -44,7 +44,7 @@ func (chain *Blockchain) GetBlockHeader(hash crypto.Hash) (result structures.Blo
 	if result.TopoHeight >= chain.LocatePruneTopo()+10 { // this result may/may not be valid at just above prune heights
 		result.SyncBlock = chain.IsBlockSyncBlockHeight(hash)
 	}
-	result.SideBlock = chain.isblock_SideBlock(hash)
+	result.SideBlock = chain.Isblock_SideBlock(hash)
 	//result.Reward = chain.Load_Block_Total_Reward(dbtx, hash)
 	result.TXCount = int64(len(bl.Tx_hashes))
 

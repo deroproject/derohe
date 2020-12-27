@@ -53,6 +53,7 @@ func (connection *Connection) Send_Handshake(request bool) {
 	handshake.UTC_Time = int64(time.Now().UTC().Unix()) // send our UTC time
 	handshake.Local_Port = uint32(P2P_Port)             // export requested or default port
 	handshake.Peer_ID = GetPeerID()                     // give our randomly generated peer id
+	handshake.Pruned = chain.LocatePruneTopo()
 	if globals.Arguments["--lowcpuram"].(bool) == false {
 		handshake.Flags = append(handshake.Flags, FLAG_LOWCPURAM) // add low cpu ram flag
 	}
@@ -126,6 +127,9 @@ func (connection *Connection) Handle_Handshake(buf []byte) {
 		if len(handshake.Tag) < 128 {
 			connection.Tag = handshake.Tag
 		}
+		if handshake.Pruned >= 0 {
+			connection.Pruned = handshake.Pruned
+		}
 
 		// TODO we must also add the peer to our list
 		// which can be distributed to other peers
@@ -181,7 +185,7 @@ func (connection *Connection) Handle_Handshake(buf []byte) {
 	rlog.Debugf("Peer provides %d peers", len(handshake.PeerList))
 	for i := range handshake.PeerList {
 		if i < 13 {
-			Peer_Add(&Peer{Address: handshake.PeerList[i].Addr , LastConnected :  uint64(time.Now().UTC().Unix())})
+			Peer_Add(&Peer{Address: handshake.PeerList[i].Addr, LastConnected: uint64(time.Now().UTC().Unix())})
 		}
 	}
 

@@ -135,7 +135,7 @@ func (in *inner) insert(store *Store, n *leaf) error {
 					return err
 				}
 			}
-            if (tmp.keyhash[0] == n.keyhash[0] && tmp.keyhash == n.keyhash) || in.bit == lastBit { // if its last node, we are overwriting data, so do it, old versions will be accessible using old roots
+			if (tmp.keyhash[0] == n.keyhash[0] && tmp.keyhash == n.keyhash) || in.bit == lastBit { // if its last node, we are overwriting data, so do it, old versions will be accessible using old roots
 				return tmp.Put(store, n.keyhash, n.value)
 			}
 
@@ -154,7 +154,7 @@ func (in *inner) insert(store *Store, n *leaf) error {
 				return err
 			}
 		}
-        if (tmp.keyhash[0] == n.keyhash[0] && tmp.keyhash == n.keyhash) || in.bit == lastBit { // if its last node, we are overwriting data, so do it, old versions will be accessible using old roots
+		if (tmp.keyhash[0] == n.keyhash[0] && tmp.keyhash == n.keyhash) || in.bit == lastBit { // if its last node, we are overwriting data, so do it, old versions will be accessible using old roots
 			return tmp.Put(store, n.keyhash, n.value)
 		}
 		in.left = newInner(in.bit + 1) //  otherwise we have enough slack, insert the node

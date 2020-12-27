@@ -103,13 +103,13 @@ func Test_mempool_Full_block_72_2c4738d3856e8e3e8f9fc4818a9197d4911af3010e067ec5
 	}
 
 	// pool must have  1 key_image
-	
+
 	key_image_count := 0
 	pool.key_images.Range(func(k, value interface{}) bool {
 		key_image_count++
 		return true
 	})
-        
+
 	if key_image_count != 1 {
 		t.Errorf("Pool doesnot have necessary key image")
 	}

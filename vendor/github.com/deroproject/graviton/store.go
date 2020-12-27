@@ -38,11 +38,7 @@ type Store struct {
 	files  map[uint32]*file
 	findex uint32
 
-	versionrootfile *file // only maintains recent version records
-
-	version_index       int       // version index to rotate inside version data
-	version_data        [512]byte // stores version data pointers, 20 * 24 , each record is 24 bytes
-	version_data_loaded bool      // whether the version data loaded
+	versionrootfile *file // only maintains recent version records, each version is 8 bytes and stores the file index and fpos
 
 	//internal_value_root *inner // internal append only value root
 	commitsync sync.RWMutex // used to sync altroots value root, versioned root
@@ -270,72 +266,84 @@ func (s *Store) read(findex, fpos uint32, buf []byte) (int, error) {
 
 }
 
+// versions are 1 based
+
 func (s *Store) writeVersionData(version uint64, findex, fpos uint32) error {
 	var buf [512]byte
 
 	s.discsync.Lock()
 	defer s.discsync.Unlock()
 
-	copy(buf[:], s.version_data[:])
-	index := (s.version_index + 1) % internal_MAX_VERSIONS_TO_KEEP
-	binary.LittleEndian.PutUint64(buf[index*internal_VERSION_RECORD_SIZE+0:], version)
-	binary.LittleEndian.PutUint64(buf[index*internal_VERSION_RECORD_SIZE+8:], uint64(findex))
-	binary.LittleEndian.PutUint64(buf[index*internal_VERSION_RECORD_SIZE+16:], uint64(fpos))
+	binary.LittleEndian.PutUint32(buf[0:], findex)
+	binary.LittleEndian.PutUint32(buf[4:], fpos)
 
+	version--
 	if s.storage_layer == disk {
-		if _, err := s.versionrootfile.diskfile.WriteAt(buf[:], 0); err != nil {
+		if _, err := s.versionrootfile.diskfile.WriteAt(buf[:8], int64(version*8)); err != nil {
 			return err
 		}
 	} else if s.storage_layer == memory {
-		s.versionrootfile.memoryfile = append(s.versionrootfile.memoryfile[:0], buf[:]...)
+		if uint64(len(s.versionrootfile.memoryfile)) <= (version+1)*8 {
+			s.versionrootfile.memoryfile = append(s.versionrootfile.memoryfile, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
+		}
+		copy(s.versionrootfile.memoryfile[version*8:], buf[:8])
 	} else {
 		return fmt.Errorf("unknown storage layer")
 	}
 
-	copy(s.version_data[:], buf[:])
-	s.version_index = index
 	return nil
-
 }
 
-// load recent snapshot list to ram
-func (s *Store) loadsnapshottablestoram() (err error) {
+// versions are 1 based
+func (s *Store) ReadVersionData(version uint64) (findex uint32, fpos uint32, err error) {
 	var buf [512]byte
 
+	s.discsync.Lock()
+	defer s.discsync.Unlock()
+
+	version--
 	if s.storage_layer == disk {
-		if finfo, err := s.versionrootfile.diskfile.Stat(); err == nil { // if newly created file, it return 0
-			if finfo.Size() == 0 {
-				copy(s.version_data[:], buf[:])
-				s.version_data_loaded = true
-				return nil
-			}
+		if _, err := s.versionrootfile.diskfile.ReadAt(buf[:8], int64(version*8)); err != nil {
+			return 0, 0, err
 		} else {
-			return err
+			findex = binary.LittleEndian.Uint32(buf[0:])
+			fpos = binary.LittleEndian.Uint32(buf[4:])
 		}
+
 	} else if s.storage_layer == memory {
-		if len(s.versionrootfile.memoryfile) == 0 {
-			copy(s.version_data[:], buf[:])
-			s.version_data_loaded = true
-			return nil
+		if uint64(len(s.versionrootfile.memoryfile)) <= (version)*8 {
+			return 0, 0, fmt.Errorf("invalid version %d %d", version, len(s.versionrootfile.memoryfile))
+		} else {
+			findex = binary.LittleEndian.Uint32(s.versionrootfile.memoryfile[version*8+0:])
+			fpos = binary.LittleEndian.Uint32(s.versionrootfile.memoryfile[version*8+4:])
 		}
 	} else {
-		return fmt.Errorf("unknown storage layer")
+		return 0, 0, fmt.Errorf("unknown storage layer")
 	}
+	return
+}
 
-	var bytes_count int
-
+func (s *Store) findhighestsnapshotinram() (index int, version uint64, findex, fpos uint32, err error) {
 	if s.storage_layer == disk {
-		bytes_count, err = s.versionrootfile.diskfile.ReadAt(buf[:], 0)
+		var fstat os.FileInfo
+		if fstat, err = s.versionrootfile.diskfile.Stat(); err != nil {
+			return
+		}
+		if version = uint64(fstat.Size() / 8); version == 0 {
+			return
+		}
+		findex, fpos, err = s.ReadVersionData(version)
+
 	} else if s.storage_layer == memory {
-		bytes_count = copy(buf[:], s.versionrootfile.memoryfile)
+		version = uint64(len(s.versionrootfile.memoryfile) / 8)
+		if version == 0 {
+			return
+		}
+
+		findex, fpos, err = s.ReadVersionData(version)
+	} else {
+		err = fmt.Errorf("unknown storage layer")
 	}
 
-	if bytes_count == 512 {
-		copy(s.version_data[:], buf[:])
-		s.version_data_loaded = true
-		s.version_index, _, _, _ = s.findhighestsnapshotinram() // setup index properly
-		return nil
-	}
-
-	return err
+	return
 }

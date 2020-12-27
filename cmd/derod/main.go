@@ -22,7 +22,7 @@ import "time"
 import "fmt"
 import "bytes"
 
-//import "bufio"
+import "bufio"
 import "strings"
 import "strconv"
 import "runtime"
@@ -531,7 +531,6 @@ func main() {
 			if start > stop || stop > int64(chain.Load_TOPO_HEIGHT()) {
 				log.Warnf("Stop value should be > start and current height\n")
 				continue
-
 			}
 
 			log.Infof("Printing block chain from %d to %d\n", start, stop)
@@ -797,60 +796,59 @@ func main() {
 		// can be used to debug/deserialize blocks
 		// it can be used for blocks not in chain
 		case command == "parse_block":
-			/*
-				if len(line_parts) != 2 {
-					globals.Logger.Warnf("parse_block needs a block in hex format")
-					continue
-				}
 
-				block_raw, err := hex.DecodeString(strings.ToLower(line_parts[1]))
+			if len(line_parts) != 2 {
+				globals.Logger.Warnf("parse_block needs a block in hex format")
+				continue
+			}
+
+			block_raw, err := hex.DecodeString(strings.ToLower(line_parts[1]))
+			if err != nil {
+				fmt.Printf("err while hex decoding block err %s\n", err)
+				continue
+			}
+
+			var bl block.Block
+			err = bl.Deserialize(block_raw)
+			if err != nil {
+				globals.Logger.Warnf("Error deserializing block err %s", err)
+				continue
+			}
+
+			// decode and print block as much as possible
+			fmt.Printf("Block ID : %s\n", bl.GetHash())
+			fmt.Printf("PoW: %s\n", bl.GetPoWHash()) // block height
+			fmt.Printf("Height: %d\n", bl.Height)
+			tips_found := true
+			for i := range bl.Tips {
+				_, err := chain.Load_BL_FROM_ID(bl.Tips[i])
 				if err != nil {
-					fmt.Printf("err while hex decoding block err %s\n", err)
-					continue
+					fmt.Printf("Tips %s not in our DB", bl.Tips[i])
+					tips_found = false
+					break
 				}
+			}
+			fmt.Printf("Tips: %d %+v\n", len(bl.Tips), bl.Tips)          // block height
+			fmt.Printf("Txs: %d %+v\n", len(bl.Tx_hashes), bl.Tx_hashes) // block height
+			expected_difficulty := new(big.Int).SetUint64(0)
+			if tips_found { // we can solve diffculty
+				expected_difficulty = chain.Get_Difficulty_At_Tips(bl.Tips)
+				fmt.Printf("Difficulty:  %s\n", expected_difficulty.String())
 
-				var bl block.Block
-				err = bl.Deserialize(block_raw)
-				if err != nil {
-					globals.Logger.Warnf("Error deserializing block err %s", err)
-					continue
-				}
+				powsuccess := chain.VerifyPoW(&bl)
+				fmt.Printf("PoW verification %+v\n", powsuccess)
 
-				// decode and print block as much as possible
-				fmt.Printf("Block ID : %s\n", bl.GetHash())
-				fmt.Printf("PoW: %s\n", bl.GetPoWHash()) // block height
-				fmt.Printf("Height: %d\n", bl.Miner_TX.Vin[0].(transaction.Txin_gen).Height)
-				tips_found := true
-				for i := range bl.Tips {
-					_, err := chain.Load_BL_FROM_ID(nil, bl.Tips[i])
-					if err != nil {
-						fmt.Printf("Tips %s not in our DB", bl.Tips[i])
-						tips_found = false
+				PoW := bl.GetPoWHash()
+				for i := expected_difficulty.Uint64(); i >= 1; i-- {
+					if blockchain.CheckPowHashBig(PoW, new(big.Int).SetUint64(i)) == true {
+						fmt.Printf("Block actually has max Difficulty:  %d\n", i)
 						break
 					}
 				}
-				fmt.Printf("Tips: %d %+v\n", len(bl.Tips), bl.Tips)          // block height
-				fmt.Printf("Txs: %d %+v\n", len(bl.Tx_hashes), bl.Tx_hashes) // block height
-				expected_difficulty := new(big.Int).SetUint64(0)
-				if tips_found { // we can solve diffculty
-					expected_difficulty = chain.Get_Difficulty_At_Tips(nil, bl.Tips)
-					fmt.Printf("Difficulty:  %s\n", expected_difficulty.String())
 
-					powsuccess := chain.VerifyPoW(nil, &bl)
-					fmt.Printf("PoW verification %+v\n", powsuccess)
+			} else { // difficulty cann not solved
 
-					PoW := bl.GetPoWHash()
-					for i := expected_difficulty.Uint64(); i >= 1; i-- {
-						if blockchain.CheckPowHashBig(PoW, new(big.Int).SetUint64(i)) == true {
-							fmt.Printf("Block actually has max Difficulty:  %d\n", i)
-							break
-						}
-					}
-
-				} else { // difficulty cann not solved
-
-				}
-			*/
+			}
 
 		case command == "print_tx":
 			/*
@@ -904,11 +902,10 @@ func main() {
 
 			// fmt.Printf("chain diff %d\n",chain.Get_Difficulty_At_Block(chain.Top_ID))
 			//fmt.Printf("chain nw rate %d\n", chain.Get_Network_HashRate())
-			//inc, out := p2p.Peer_Direction_Count()
+			inc, out := p2p.Peer_Direction_Count()
 
-			inc, out := 0, 0
-
-			mempool_tx_count := 0 // len(chain.Mempool.Mempool_List_TX())
+			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
+			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
 
 			//supply := chain.Load_Already_Generated_Coins_for_Topo_Index(nil, chain.Load_TOPO_HEIGHT(nil))
 
@@ -917,7 +914,7 @@ func main() {
 			if supply > (1000000 * 1000000000000) {
 				supply -= (1000000 * 1000000000000) // remove  premine
 			}
-			fmt.Printf("Network %s Height %d  NW Hashrate %0.03f MH/sec  TH %s Peers %d inc, %d out  MEMPOOL size %d  Total Supply %s DERO \n", globals.Config.Name, chain.Get_Height(), float64(chain.Get_Network_HashRate())/1000000.0, chain.Get_Top_ID(), inc, out, mempool_tx_count, globals.FormatMoney(supply))
+			fmt.Printf("Network %s Height %d  NW Hashrate %0.03f MH/sec  TH %s Peers %d inc, %d out  MEMPOOL size %d REGPOOL %d  Total Supply %s DERO \n", globals.Config.Name, chain.Get_Height(), float64(chain.Get_Network_HashRate())/1000000.0, chain.Get_Top_ID(), inc, out, mempool_tx_count, regpool_tx_count, globals.FormatMoney(supply))
 
 			// print hardfork status on second line
 			hf_state, _, _, threshold, version, votes, window := chain.Get_HF_info()
@@ -952,8 +949,39 @@ func main() {
 		case strings.ToLower(line) == "quit":
 			close(Exit_In_Progress)
 			goto exit
-		case strings.ToLower(line) == "graph":
-			//blockchain.WriteBlockChainTree(chain, "/tmp/graph.dot")
+		case command == "graph":
+			start := int64(0)
+			stop := int64(0)
+
+			if len(line_parts) != 3 {
+				log.Warnf("This function requires 2 parameters, start height and end height\n")
+				continue
+			}
+			if s, err := strconv.ParseInt(line_parts[1], 10, 64); err == nil {
+				start = s
+			} else {
+				log.Warnf("Invalid start value err %s", err)
+				continue
+			}
+
+			if s, err := strconv.ParseInt(line_parts[2], 10, 64); err == nil {
+				stop = s
+			} else {
+				log.Warnf("Invalid stop value err %s", err)
+				continue
+			}
+
+			if start < 0 || start > int64(chain.Load_TOPO_HEIGHT()) {
+				log.Warnf("Start value should be be between 0 and current height\n")
+				continue
+			}
+			if start > stop || stop > int64(chain.Load_TOPO_HEIGHT()) {
+				log.Warnf("Stop value should be > start and current height\n")
+				continue
+			}
+
+			log.Infof("Writing block chain graph dot format from %d to %d to /tmp/graph.dot\n", start, stop)
+			WriteBlockChainTree(chain, "/tmp/graph.dot", start, stop)
 
 		case command == "pop":
 
@@ -1106,6 +1134,82 @@ exit:
 	}
 }
 
+func writenode(chain *blockchain.Blockchain, w *bufio.Writer, blid crypto.Hash, start_height int64) { // process a node, recursively
+
+	w.WriteString(fmt.Sprintf("node [ fontsize=12 style=filled ]\n{\n"))
+
+	color := "white"
+
+	if chain.Isblock_SideBlock(blid) {
+		color = "yellow"
+	}
+	if chain.IsBlockSyncBlockHeight(blid) {
+		color = "green"
+	}
+
+	// now dump the interconnections
+	bl, err := chain.Load_BL_FROM_ID(blid)
+
+	var acckey crypto.Point
+	if err := acckey.DecodeCompressed(bl.Miner_TX.MinerAddress[:]); err != nil {
+		panic(err)
+	}
+
+	addr := address.NewAddressFromKeys(&acckey)
+	addr.Mainnet = globals.IsMainnet()
+
+	w.WriteString(fmt.Sprintf("L%s  [ fillcolor=%s label = \"%s %d height %d score %d stored %d order %d\nminer %s\"  ];\n", blid.String(), color, blid.String(), 0, chain.Load_Height_for_BL_ID(blid), 0, chain.Load_Block_Cumulative_Difficulty(blid), chain.Load_Block_Topological_order(blid), addr.String()))
+	w.WriteString(fmt.Sprintf("}\n"))
+
+	if err != nil {
+		fmt.Printf("err loading block %s err %s\n", blid, err)
+		return
+	}
+	if int64(bl.Height) > start_height {
+		for i := range bl.Tips {
+			w.WriteString(fmt.Sprintf("L%s -> L%s ;\n", bl.Tips[i].String(), blid.String()))
+		}
+	}
+
+}
+
+func WriteBlockChainTree(chain *blockchain.Blockchain, filename string, start_height, stop_height int64) (err error) {
+
+	var node_map = map[crypto.Hash]bool{}
+
+	for i := start_height; i < stop_height; i++ {
+		blids := chain.Get_Blocks_At_Height(i)
+
+		for _, blid := range blids {
+			if _, ok := node_map[blid]; ok {
+				panic("duplicate block should not be there")
+			} else {
+				node_map[blid] = true
+			}
+		}
+	}
+
+	f, err := os.Create(filename)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	defer w.Flush()
+	w.WriteString("digraph dero_blockchain_graph { \n")
+
+	for blid := range node_map {
+		writenode(chain, w, blid, start_height)
+	}
+	//g := Generate_Genesis_Block()
+	//writenode(chain, dbtx, w, g.GetHash())
+
+	w.WriteString("}\n")
+
+	return
+}
+
 func prettyprint_json(b []byte) []byte {
 	var out bytes.Buffer
 	err := json.Indent(&out, b, "", "  ")
@@ -1170,7 +1274,7 @@ var completer = readline.NewPrefixCompleter(
 		readline.PcItem("sleep"),
 	*/
 	readline.PcItem("diff"),
-	readline.PcItem("dev_verify_pool"),
+	//readline.PcItem("dev_verify_pool"),
 	//readline.PcItem("dev_verify_chain_doublespend"),
 	readline.PcItem("mempool_flush"),
 	readline.PcItem("mempool_delete_tx"),

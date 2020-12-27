@@ -38,8 +38,8 @@ type storetopofs struct {
 	topomapping *os.File
 }
 
-func  (s TopoRecord)String() string {
-    return fmt.Sprintf("blid %x state version %d height %d",s.BLOCK_ID[:],s.State_Version, s.Height)
+func (s TopoRecord) String() string {
+	return fmt.Sprintf("blid %x state version %d height %d", s.BLOCK_ID[:], s.State_Version, s.Height)
 }
 
 func (s *storetopofs) Open(basedir string) (err error) {
@@ -52,7 +52,15 @@ func (s *storetopofs) Count() int64 {
 	if err != nil {
 		panic(fmt.Sprintf("cannot stat topofile. err %s", err))
 	}
-	return int64(fstat.Size() / int64(TOPORECORD_SIZE))
+	count := int64(fstat.Size() / int64(TOPORECORD_SIZE))
+	for ; count >= 1; count-- {
+		if record, err := s.Read(count - 1); err == nil && !record.IsClean() {
+			break
+		} else if err != nil {
+			panic(fmt.Sprintf("cannot read topofile. err %s", err))
+		}
+	}
+	return count
 }
 
 // it basically represents Load_Block_Topological_order_at_index
@@ -167,7 +175,7 @@ func (s *storetopofs) binarySearchHeight(targetheight int64) (blids []crypto.Has
 
 	startIndex := int64(0)
 
-	total_records := int64(s.Count() - 1)
+	total_records := int64(s.Count())
 	endIndex := total_records
 	midIndex := total_records / 2
 
@@ -175,40 +183,7 @@ func (s *storetopofs) binarySearchHeight(targetheight int64) (blids []crypto.Has
 		return
 	}
 
-	if endIndex < 100 { // basic search all
-		for i := int64(0); i <= endIndex; i++ {
-			record, _ := s.Read(i)
-			if record.Height == targetheight {
-				blids = append(blids, record.BLOCK_ID)
-				topos = append(topos, i)
-			}
-		}
-		blids, topos = SliceUniqTopoRecord(blids, topos) // unique the record
-		return
-	}
-
-	//	fmt.Printf("endindex1 %d targetheight %d\n", endIndex, targetheight)
-	/*
-	   	// check if we can avoid binary, if it can be done using last records
-	   	record, _ := s.Read(endIndex) // reading last record
-	   	if targetheight + 100 > record.Height {
-	           	fmt.Printf("avoided binary search endindex1 %d targetheight %d  last record %+v\n", endIndex, targetheight, record)
-	   		for i, count := midIndex, 0; i <= total_records && count < 100; i, count = i+1, count+1 {
-	   			record, _ := s.Read(i)
-	   			if record.Height == targetheight {
-	   				blids = append(blids, record.BLOCK_ID)
-	   				topos = append(topos, i)
-	   			}
-	   		}
-	   		return
-	   	}
-	*/
-
-	//fmt.Printf("entering loop startIndex %d endindex %d midIndex %d targetheight %d\n", startIndex, endIndex, midIndex, targetheight)
 	for startIndex <= endIndex {
-
-		//fmt.Printf("startIndex %d endindex %d midIndex %d targetheight %d\n", startIndex, endIndex, midIndex, targetheight)
-
 		record, _ := s.Read(midIndex)
 
 		if record.Height >= targetheight-((config.STABLE_LIMIT*4)/2) && record.Height <= targetheight+((config.STABLE_LIMIT*4)/2) {

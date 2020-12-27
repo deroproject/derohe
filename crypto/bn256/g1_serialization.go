@@ -52,13 +52,14 @@ func (e *G1) IsHigherY() bool {
 		e.p = &curvePoint{}
 	}
 
-	yCoord := &gfP{}
-	yCoord.Set(&e.p.y)
+	var yCoord gfP
+	//yCoord.Set(&e.p.y)
+	yCoord = e.p.y
 
-	yCoordNeg := &gfP{}
-	gfpNeg(yCoordNeg, yCoord)
+	var yCoordNeg gfP
+	gfpNeg(&yCoordNeg, &yCoord)
 
-	res := gfpCmp(yCoord, yCoordNeg)
+	res := gfpCmp(&yCoord, &yCoordNeg)
 	if res == 1 { // yCoord > yCoordNeg
 		return true
 	} else if res == -1 {
@@ -102,6 +103,39 @@ func (e *G1) EncodeCompressed() []byte {
 	temp.Marshal(ret[1:])
 
 	return ret
+}
+
+// returns to buffer rather than allocation from GC
+func (e *G1) EncodeCompressedToBuf(ret []byte) {
+	// Check nil pointers
+	if e.p == nil {
+		e.p = &curvePoint{}
+	}
+
+	e.p.MakeAffine()
+	//ret := make([]byte, G1CompressedSize)
+
+	// Flag the encoding with the compressed flag
+	ret[0] |= serializationCompressed
+
+	if e.p.IsInfinity() {
+		// Flag the encoding with the infinity flag
+		ret[0] |= serializationInfinity
+		return
+	}
+
+	if e.IsHigherY() {
+		// Flag the encoding with the bigY flag
+		ret[0] |= serializationBigY
+	}
+
+	// We start the serializagtion of the coordinates at the index 1
+	// Since the index 0 in the `ret` corresponds to the masking
+	temp := &gfP{}
+	montDecode(temp, &e.p.x)
+	temp.Marshal(ret[1:])
+
+	return
 }
 
 // EncodeUncompressed converts the compressed point e into bytes
@@ -220,8 +254,8 @@ func (e *G1) DecodeCompressed(encoding []byte) error {
 	// Unmarshal the points and check their caps
 	if e.p == nil {
 		e.p = &curvePoint{}
-	} 
-    {
+	}
+	{
 		e.p.x, e.p.y = gfP{0}, gfP{0}
 		e.p.z, e.p.t = *newGFp(1), *newGFp(1)
 	}
@@ -231,8 +265,6 @@ func (e *G1) DecodeCompressed(encoding []byte) error {
 	bin := make([]byte, G1CompressedSize)
 	copy(bin, encoding)
 	bin[0] &= serializationMask
-
-    
 
 	// Decode the point at infinity in the compressed form
 	if encoding[0]&serializationInfinity != 0 {
@@ -248,11 +280,10 @@ func (e *G1) DecodeCompressed(encoding []byte) error {
 			}
 		}
 		e.p.SetInfinity()
-        //panic("point is infinity")
+		//panic("point is infinity")
 		return nil
 	}
 
-   
 	// Decompress the point P (P =/= ∞)
 	var err error
 	if err = e.p.x.Unmarshal(bin[1:]); err != nil {
@@ -267,7 +298,6 @@ func (e *G1) DecodeCompressed(encoding []byte) error {
 		return err
 	}
 	e.p.y = *y
-     
 
 	// The flag serializationBigY is set (so the point pt with the higher Y is encoded)
 	// but the point e retrieved from the `getYFromX` is NOT the higher, then we inverse
@@ -280,7 +310,6 @@ func (e *G1) DecodeCompressed(encoding []byte) error {
 			e.Neg(e)
 		}
 	}
-
 
 	// No need to check that the point e.p is on the curve
 	// since we retrieved y from x by using the curve equation.

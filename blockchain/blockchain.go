@@ -105,6 +105,9 @@ type Blockchain struct {
 
 	P2P_Block_Relayer func(*block.Complete_Block, uint64) // tell p2p to broadcast any block this daemon hash found
 
+	RPC_NotifyNewBlock      *sync.Cond // used to notify rpc that a new block has been found
+	RPC_NotifyHeightChanged *sync.Cond // used to notify rpc that  chain height has changed due to addition of block
+
 	sync.RWMutex
 }
 
@@ -151,6 +154,9 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 	// init mempool before chain starts
 	chain.Mempool, err = mempool.Init_Mempool(params)
 	chain.Regpool, err = regpool.Init_Regpool(params)
+
+	chain.RPC_NotifyNewBlock = sync.NewCond(&sync.Mutex{})      // used by dero daemon to notify all websockets that new block has arrived
+	chain.RPC_NotifyHeightChanged = sync.NewCond(&sync.Mutex{}) // used by dero daemon to notify all websockets that chain height has changed
 
 	if !chain.Store.IsBalancesIntialized() {
 		logger.Debugf("Genesis block not in store, add it now")
@@ -273,6 +279,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	chain.Lock()
 	defer chain.Unlock()
 	result = false
+	height_changed := false
 
 	chain.MINING_BLOCK = true
 
@@ -320,6 +327,17 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				}
 			}()
 
+			// notify everyone who needs to know that a new block is in the chain
+			chain.RPC_NotifyNewBlock.L.Lock()
+			chain.RPC_NotifyNewBlock.Broadcast()
+			chain.RPC_NotifyNewBlock.L.Unlock()
+
+			if height_changed {
+				chain.RPC_NotifyHeightChanged.L.Lock()
+				chain.RPC_NotifyHeightChanged.Broadcast()
+				chain.RPC_NotifyHeightChanged.L.Unlock()
+			}
+
 			//dbtx.Sync() // sync the DB to disk after every execution of this function
 
 			//if old_top != chain.Load_TOP_ID() { // if top has changed, discard mining templates and start afresh
@@ -350,7 +368,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	for k := range chain.Tips {
 		if block_hash == k {
 			block_logger.Debugf("block already in chain skipping it ")
-		   return errormsg.ErrAlreadyExists, false
+			return errormsg.ErrAlreadyExists, false
 		}
 	}
 
@@ -407,7 +425,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	// the block timestamp cannot be less than any of the parents
 	for i := range bl.Tips {
 		if chain.Load_Block_Timestamp(bl.Tips[i]) > bl.Timestamp {
-			block_logger.Warnf("Block timestamp is  less than its parent, rejecting block %x ",bl.Serialize() )
+			block_logger.Warnf("Block timestamp is  less than its parent, rejecting block %x ", bl.Serialize())
 			return errormsg.ErrInvalidTimestamp, false
 		}
 	}
@@ -415,7 +433,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	//logger.Infof("current version %d  height %d", chain.Get_Current_Version_at_Height( 2500), chain.Calculate_Height_At_Tips(dbtx, bl.Tips))
 	// check whether the major version ( hard fork) is valid
 	if !chain.Check_Block_Version(bl) {
-		block_logger.Warnf("Rejecting !! Block has invalid fork version actual %d expected %d", bl.Major_Version, chain.Get_Current_Version_at_Height(chain.Calculate_Height_At_Tips( bl.Tips)))
+		block_logger.Warnf("Rejecting !! Block has invalid fork version actual %d expected %d", bl.Major_Version, chain.Get_Current_Version_at_Height(chain.Calculate_Height_At_Tips(bl.Tips)))
 		return errormsg.ErrInvalidBlock, false
 	}
 
@@ -631,6 +649,8 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	if height > chain.Get_Height() || height == 0 { // exception for genesis block
 		atomic.StoreInt64(&chain.Height, height)
 		//chain.Store_TOP_HEIGHT(dbtx, height)
+
+		height_changed = true
 		rlog.Infof("Chain extended new height %d blid %s", chain.Height, block_hash)
 
 	} else {
@@ -677,7 +697,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		base_topo_index := chain.Load_Block_Topological_order(base)
 
 		// we will directly use graviton to mov in to history
-		rlog.Infof("Full order %+v base %s base topo pos %d", full_order, base, base_topo_index)
+		rlog.Debugf("Full order %+v base %s base topo pos %d", full_order, base, base_topo_index)
 
 		if len(bl.Tips) == 0 {
 			base_topo_index = 0
@@ -689,18 +709,22 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 			// check whether the new block is at the same position at the last position
 			current_topo_block := i + base_topo_index
-			if skip && current_topo_block < chain.Store.Topo_store.Count() {
-				toporecord, err := chain.Store.Topo_store.Read(current_topo_block)
-				if err != nil {
-					panic(err)
-				}
-				if full_order[i] == toporecord.BLOCK_ID { // skip reprocessing if not required
-					continue
+			previous_topo_block := current_topo_block - 1
+			if skip {
+				if current_topo_block < chain.Store.Topo_store.Count() {
+					toporecord, err := chain.Store.Topo_store.Read(current_topo_block)
+					if err != nil {
+						panic(err)
+					}
+					if full_order[i] == toporecord.BLOCK_ID { // skip reprocessing if not required
+						continue
+					}
 				}
 
 				skip = false // if one block processed, process every higher block
-
 			}
+
+			rlog.Debugf("will execute order from %d %s", i, full_order[i])
 
 			// TODO we must run smart contracts and TXs in this order
 			// basically client protocol must run here
@@ -726,71 +750,22 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			// generate miner TX rewards as per client protocol
 			if hard_fork_version_current == 1 {
 
-				//CommitElGamal
-				/*
-
-								//  hf 2 or later generate miner TX rewards as per client protocol
-
-								past_coins_generated := chain.Load_Already_Generated_Coins_for_Topo_Index(dbtx, highest_topo-1)
-
-								base_reward := emission.GetBlockReward_Atlantis(hard_fork_version_current, past_coins_generated)
-
-								// base reward is only 90%, rest 10 % is pushed back
-								if globals.IsMainnet(){
-									base_reward = (base_reward * 9) / 10
-								}
-
-								// lower reward for byzantine behaviour
-								// for as many block as added
-								if chain.isblock_SideBlock(dbtx, bl_current_hash, highest_topo) { // lost race (or byzantine behaviour)
-				                                    if  hard_fork_version_current == 2 {
-									base_reward = (base_reward * 67) / 100 // give only 67 % reward
-				                                    }else{
-				                                        base_reward = (base_reward * 8) / 100 // give only 8 % reward
-				                                    }
-								}
-
-								// logger.Infof("past coins generated %d base reward %d", past_coins_generated, base_reward)
-
-								// the total reward must be given to the miner TX, since it contains 0, we patch only the output
-								// and leave the original TX untouched
-								total_reward := base_reward + total_fees
-
-								// store total  reward
-								dbtx.StoreUint64(BLOCKCHAIN_UNIVERSE, GALAXY_BLOCK, bl_current_hash[:], PLANET_MINERTX_REWARD, total_reward)
-
-								// store base reward
-								dbtx.StoreUint64(BLOCKCHAIN_UNIVERSE, GALAXY_BLOCK, bl_current_hash[:], PLANET_BASEREWARD, base_reward)
-
-								// store total generated coins
-								dbtx.StoreUint64(BLOCKCHAIN_UNIVERSE, GALAXY_BLOCK, bl_current_hash[:], PLANET_ALREADY_GENERATED_COINS, past_coins_generated+base_reward)
-
-								//logger.Infof("base reward %s  total generated %s",globals.FormatMoney12(base_reward), globals.FormatMoney12(past_coins_generated+base_reward))
-				*/
-
 			}
 
 			var balance_tree *graviton.Tree
 			//
 			if bl_current.Height == 0 { // if it's genesis block
-				ss, err := chain.Store.Balance_store.LoadSnapshot(0)
-				if err != nil {
+				if ss, err := chain.Store.Balance_store.LoadSnapshot(0); err != nil {
 					panic(err)
-				}
-
-				balance_tree, err = ss.GetTree(BALANCE_TREE)
-				if err != nil {
+				} else if balance_tree, err = ss.GetTree(BALANCE_TREE); err != nil {
 					panic(err)
 				}
 			} else { // we already have a block before us, use it
-				previous_topo_block := i + base_topo_index - 1
 
 				record_version := uint64(0)
-
 				if previous_topo_block >= 0 {
 					toporecord, err := chain.Store.Topo_store.Read(previous_topo_block)
 
-					//fmt.Printf("current block %d previous topo %d record %+v  err %s\n", i+base_topo_index, i+base_topo_index-1, toporecord,err)
 					if err != nil {
 						panic(err)
 					}
@@ -806,7 +781,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				if err != nil {
 					panic(err)
 				}
-
 			}
 
 			fees_collected := uint64(0)
@@ -816,29 +790,21 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			// their transactions are ignored
 
 			//chain.Store.Topo_store.Write(i+base_topo_index, full_order[i],0, int64(bl_current.Height)) // write entry so as sideblock could work
-			if  !chain.isblock_SideBlock_internal(full_order[i], i+base_topo_index, int64(bl_current.Height)) {
-
+			if !chain.isblock_SideBlock_internal(full_order[i], current_topo_block, int64(bl_current.Height)) {
 				for _, txhash := range bl_current.Tx_hashes { // execute all the transactions
-
 					if tx_bytes, err := chain.Store.Block_tx_store.ReadTX(txhash); err != nil {
 						panic(err)
 					} else {
-
 						var tx transaction.Transaction
 						if err = tx.DeserializeHeader(tx_bytes); err != nil {
 							panic(err)
 						}
-
 						// we have loaded a tx successfully, now lets execute it
 						fees_collected += chain.process_transaction(tx, balance_tree)
 					}
-
 				}
 
-            
 				chain.process_miner_transaction(bl_current.Miner_TX, bl_current.Height == 0, balance_tree, fees_collected)
-            
-
 			} else {
 				rlog.Debugf("this block is a side block   block height %d blid %s ", chain.Load_Block_Height(full_order[i]), full_order[i])
 
@@ -850,9 +816,8 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				panic(err)
 			}
 
-			chain.Store.Topo_store.Write(i+base_topo_index, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
-
-			rlog.Debugf("%d %s   topo_index %d  base topo %d", i, full_order[i], i+base_topo_index, base_topo_index)
+			chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
+			rlog.Debugf("%d %s   topo_index %d  base topo %d", i, full_order[i], current_topo_block, base_topo_index)
 
 			// this tx must be stored, linked with this block
 
@@ -896,7 +861,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				}
 			}
 
-			rlog.Infof("New tips(after adding %s) %+v", bl.GetHash(), new_tips)
+			rlog.Debugf("New tips(after adding %s) %+v", bl.GetHash(), new_tips)
 
 			chain.Tips = new_tips
 		}
@@ -1129,6 +1094,7 @@ var block_processing_time = prometheus.NewHistogram(prometheus.HistogramOpts{
 // verifying everything  means everything possible
 // this only change mempool, no DB changes
 func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) (result bool) {
+	var err error
 	if tx.IsRegistration() { // registration tx will not go any forward
 		// ggive regpool a chance to register
 		if ss, err := chain.Store.Balance_store.LoadSnapshot(0); err == nil {
@@ -1153,13 +1119,25 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) (result boo
 		return false
 	}
 
+	chain_height := uint64(chain.Get_Height())
+	if chain_height > tx.Height {
+		rlog.Tracef(2, "TX %s rejected since chain has already progressed", txhash)
+		return false
+	}
+
 	// quick check without calculating everything whether tx is in pool, if yes we do nothing
 	if chain.Mempool.Mempool_TX_Exist(txhash) {
 		rlog.Tracef(2, "TX %s rejected Already in MEMPOOL", txhash)
-		return true
+		return false
 	}
 
-	hf_version := chain.Get_Current_Version_at_Height(chain.Get_Height())
+	// check whether tx is already mined
+	if _, err = chain.Store.Block_tx_store.ReadTX(txhash); err == nil {
+		rlog.Tracef(2, "TX %s rejected Already mined in some block", txhash)
+		return false
+	}
+
+	hf_version := chain.Get_Current_Version_at_Height(int64(chain_height))
 
 	// if TX is too big, then it cannot be mined due to fixed block size, reject such TXs here
 	// currently, limits are  as per consensus
@@ -1270,7 +1248,7 @@ func (chain *Blockchain) SortTips(tips []crypto.Hash) (sorted []crypto.Hash) {
 // if  block height   is less than or equal to height of past 3*config.STABLE_LIMIT topographical blocks
 // this is part of consensus rule
 // this is the topoheight of this block itself
-func (chain *Blockchain) isblock_SideBlock(blid crypto.Hash) bool {
+func (chain *Blockchain) Isblock_SideBlock(blid crypto.Hash) bool {
 	block_topoheight := chain.Load_Block_Topological_order(blid)
 	if block_topoheight == 0 {
 		return false
@@ -1339,7 +1317,7 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 	}
 
 	for _, blid := range exist_list {
-		if chain.isblock_SideBlock(blid) {
+		if chain.Isblock_SideBlock(blid) {
 			invalid_blid = append(invalid_blid, blid)
 		} else {
 			valid_blid = blid
@@ -1502,6 +1480,10 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 
 	// TODO we must fix safeness using the stable calculation
 
+	if rewind_count == 0 {
+		return
+	}
+
 	top_block_topo_index := chain.Load_TOPO_HEIGHT()
 	rewinded := int64(0)
 
@@ -1511,8 +1493,6 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 		}
 
 		rewinded++
-
-		fmt.Printf("rewing 1 block top loop")
 	}
 
 	for { // rewinf till we reach a safe point
@@ -1525,7 +1505,6 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 			break
 		}
 
-		fmt.Printf("rewing 1 block bottom loop %v %+v  rewinded %d\n", chain.IsBlockSyncBlockHeight(r.BLOCK_ID), r, rewinded)
 		rewinded++
 	}
 
@@ -2135,103 +2114,3 @@ func sliceExists(slice []crypto.Hash, hash crypto.Hash) bool {
 	}
 	return false
 }
-
-/*
-
-
-var node_map = map[crypto.Hash]bool{}
-
-func collect_nodes(chain *Blockchain, dbtx storage.DBTX, blid crypto.Hash) {
-	future := chain.Get_Block_Future(dbtx, blid)
-	for i := range future {
-		//node_map[future[i]]=true
-
-		if _, ok := node_map[future[i]]; !ok {
-			collect_nodes(chain, dbtx, future[i]) // recursive add node
-		}
-	}
-
-	node_map[blid] = true
-
-}
-*/
-
-/*
-func writenode(chain *Blockchain, dbtx storage.DBTX, w *bufio.Writer, blid crypto.Hash) { // process a node, recursively
-
-	collect_nodes(chain, dbtx, blid)
-
-	sync_blocks := map[crypto.Hash]uint64{}
-
-	for k, _ := range node_map {
-		if chain.IsBlockSyncBlockHeight(dbtx, k) {
-			// sync_blocks = append(sync_blocks,
-			sync_blocks[k] = uint64(chain.Load_Height_for_BL_ID(dbtx, k))
-		}
-	}
-
-	w.WriteString(fmt.Sprintf("node [ fontsize=12 style=filled ]\n{\n"))
-	for k := range node_map {
-
-		//anticone := chain.Get_AntiCone_Unsettled(k)
-
-		color := "white"
-
-		if chain.IsBlockSyncBlockHeight(dbtx, k) {
-			color = "green"
-		}
-
-
-
-
-		//w.WriteString(fmt.Sprintf("L%s  [ fillcolor=%s label = \"%s %d height %d score %d stored %d order %d\"  ];\n", k.String(), color, k.String(), 0, chain.Load_Height_for_BL_ID(dbtx, k), cumulative_difficulty, chain.Load_Block_Cumulative_Difficulty(dbtx, k), chain.Load_Block_Topological_order(dbtx, k)))
-		w.WriteString(fmt.Sprintf("L%s  [ fillcolor=%s label = \"%s %d height %d score %d stored %d order %d\"  ];\n", k.String(), color, k.String(), 0, chain.Load_Height_for_BL_ID(dbtx, k), 0, chain.Load_Block_Cumulative_Difficulty(dbtx, k), chain.Load_Block_Topological_order(dbtx, k)))
-	}
-	w.WriteString(fmt.Sprintf("}\n"))
-
-	// now dump the interconnections
-	for k := range node_map {
-		future := chain.Get_Block_Future(dbtx, k)
-		for i := range future {
-			w.WriteString(fmt.Sprintf("L%s -> L%s ;\n", k.String(), future[i].String()))
-		}
-
-	}
-}
-
-func WriteBlockChainTree(chain *Blockchain, filename string) (err error) {
-
-	dbtx, err := chain.store.BeginTX(false)
-	if err != nil {
-		logger.Warnf("Could NOT add block to chain. Error opening writable TX, err %s", err)
-		return
-	}
-
-	defer dbtx.Rollback()
-
-	f, err := os.Create(filename)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	w := bufio.NewWriter(f)
-	defer w.Flush()
-	w.WriteString("digraph dero_blockchain_graph { \n")
-
-	blid, err := chain.Load_Block_Topological_order_at_index(nil, 158800)
-	if err != nil {
-		logger.Warnf("Cannot get block  at topoheight %d err: %s", 158800, err)
-		return
-	}
-
-	writenode(chain, dbtx, w, blid)
-	//g := Generate_Genesis_Block()
-	//writenode(chain, dbtx, w, g.GetHash())
-
-	w.WriteString("}\n")
-
-	return
-}
-
-*/

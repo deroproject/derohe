@@ -41,13 +41,16 @@ const V2_COMMAND_OBJECTS_RESPONSE = 46
 
 const V2_NOTIFY_NEW_BLOCK = 0xff // Notifications are asyncronous all notifications come here, such as new block, new txs
 const V2_NOTIFY_NEW_TX = 0xfe    // notify tx using this
+const V2_NOTIFY_INVENTORY = 0xfd // notify inventory that we have a new tx, or block
+// this has the same structure V2_COMMAND_OBJECTS_REQUEST
 
 // used to parse incoming packet for for command , so as a repective command command could be triggered
 type Common_Struct struct {
-	Height                int64  `msgpack:"HEIGHT"`
-	TopoHeight            int64  `msgpack:"THEIGHT"`
-	StableHeight          int64  `msgpack:"SHEIGHT"`
-	Cumulative_Difficulty string `msgpack:"CDIFF"`
+	Height                int64    `msgpack:"HEIGHT"`
+	TopoHeight            int64    `msgpack:"THEIGHT"`
+	StableHeight          int64    `msgpack:"SHEIGHT"`
+	Cumulative_Difficulty string   `msgpack:"CDIFF"`
+	StateHash             [32]byte `msgpack:"STATE"`
 	//	Top_ID                [32]byte `msgpack:"TOP"` // 32 bytes of Top block
 	Top_Version uint64 `msgpack:"HF"` // this basically represents the hard fork version
 }
@@ -64,6 +67,7 @@ type Handshake_Struct struct {
 	UTC_Time        int64         `msgpack:"UTC"`
 	Local_Port      uint32        `msgpack:"LP"`
 	Peer_ID         uint64        `msgpack:"PID"`
+	Pruned          int64         `msgpack:"PRUNED"`
 	Network_ID      [16]byte      `msgpack:"NID"` // 16 bytes
 	Flags           []string      `msgpack:"FLAGS"`
 	PeerList        []Peer_Info   `msgpack:"PLIST"`
@@ -103,6 +107,7 @@ type Chain_Response_Struct struct { // peers gives us point where to get the cha
 
 }
 
+// also used by V2_NOTIFY_INVENTORY
 type Object_Request_Struct struct {
 	Command    uint64        `msgpack:"COMMAND"`
 	Common     Common_Struct `msgpack:"COMMON"` // add all fields of Common

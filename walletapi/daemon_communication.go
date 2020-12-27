@@ -25,14 +25,10 @@ package walletapi
 //import "io"
 //import "os"
 import "fmt"
-import "net"
 import "time"
 import "sync"
 import "bytes"
 import "math/big"
-
-//import "net/url"
-import "net/http"
 
 //import "bufio"
 import "strings"
@@ -47,52 +43,77 @@ import "runtime/debug"
 
 import "github.com/romana/rlog"
 
-//import "github.com/pierrec/lz4"
-import "github.com/ybbus/jsonrpc"
-
 //import "github.com/vmihailenco/msgpack"
 
 //import "github.com/gorilla/websocket"
 //import "github.com/mafredri/cdp/rpcc"
 
-import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/address"
 import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/structures"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/crypto/bn256"
-import "github.com/deroproject/derohe/glue/rwc"
 
 import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "github.com/gorilla/websocket"
 
 // this global variable should be within wallet structure
 var Connected bool = false
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
-var rpcClient *jsonrpc.RPCClient
-var netClient *http.Client
+
 var endpoint string
 
 var output_lock sync.Mutex
 
-type Client struct {
-	WS  *websocket.Conn
-	RPC *jrpc2.Client
+var NotifyNewBlock *sync.Cond = sync.NewCond(&sync.Mutex{})
+var NotifyHeightChange *sync.Cond = sync.NewCond(&sync.Mutex{})
+
+// this function will wait n goroutines to wait for new block
+func WaitNewBlock() {
+	NotifyNewBlock.L.Lock()
+	NotifyNewBlock.Wait()
+	NotifyNewBlock.L.Unlock()
 }
 
-var rpc_client = &Client{}
+// this function will wait n goroutines to wait  till height changes
+func WaitNewHeightBlock() {
+	NotifyHeightChange.L.Lock()
+	NotifyHeightChange.Wait()
+	NotifyHeightChange.L.Unlock()
+}
+
+func Notify_broadcaster(req *jrpc2.Request) {
+
+	timer.Reset(timeout) // connection is alive
+	switch req.Method() {
+
+	case "Repoll":
+		NotifyNewBlock.L.Lock()
+		NotifyNewBlock.Broadcast()
+		NotifyNewBlock.L.Unlock()
+	case "HRepoll":
+		NotifyHeightChange.L.Lock()
+		NotifyHeightChange.Broadcast()
+		NotifyHeightChange.L.Unlock()
+	default:
+		rlog.Debugf("Notification received %s\n", req.Method())
+	}
+
+}
+
+// triggers syncing with wallet every 5 seconds
+func (w *Wallet_Memory) sync_loop() {
+	w.Sync_Wallet_Memory_With_Daemon() // sync with the daemon
+}
 
 func (cli *Client) Call(method string, params interface{}, result interface{}) error {
 	return cli.RPC.CallResult(context.Background(), method, params, result)
 }
 
 // returns whether wallet was online some time ago
-func (w *Wallet) IsDaemonOnlineCached() bool {
+func (w *Wallet_Memory) IsDaemonOnlineCached() bool {
 	return Connected
 }
 
@@ -108,236 +129,56 @@ func buildurl(endpoint string) string {
 // this is as simple as it gets
 // single threaded communication to get the daemon status and height
 // this will tell whether the wallet can connection successfully to  daemon or not
-func (w *Wallet) IsDaemonOnline() bool {
+func IsDaemonOnline() bool {
 	if rpc_client.WS == nil || rpc_client.RPC == nil {
 		return false
 	}
 	return true
 }
 
-// this is as simple as it gets
-// single threaded communication to get the daemon status and height
-// this will tell whether the wallet can connection successfully to  daemon or not
-func (w *Wallet) Connect() (err error) {
-
-	if globals.Arguments["--remote"] == true && globals.IsMainnet() {
-		w.Daemon_Endpoint = config.REMOTE_DAEMON
-	}
-
-	// if user provided endpoint has error, use default
-	if w.Daemon_Endpoint == "" {
-		w.Daemon_Endpoint = "127.0.0.1:" + fmt.Sprintf("%d", config.Mainnet.RPC_Default_Port)
-		if !globals.IsMainnet() {
-			w.Daemon_Endpoint = "127.0.0.1:" + fmt.Sprintf("%d", config.Testnet.RPC_Default_Port)
-		}
-	}
-
-	if globals.Arguments["--daemon-address"] != nil {
-		w.Daemon_Endpoint = globals.Arguments["--daemon-address"].(string)
-	}
-
-	rlog.Infof("Daemon endpoint %s", w.Daemon_Endpoint)
-
-	// TODO enable socks support here
-	var netTransport = &http.Transport{
-		Dial: (&net.Dialer{
-			Timeout: 5 * time.Second, // 5 second timeout
-		}).Dial,
-		TLSHandshakeTimeout: 5 * time.Second,
-	}
-
-	netClient = &http.Client{
-		Timeout:   time.Second * 10,
-		Transport: netTransport,
-	}
-
-	//rpc_conn, err = rpcc.Dial("ws://"+ w.Daemon_Endpoint + "/ws")
-
-	rpc_client.WS, _, err = websocket.DefaultDialer.Dial("ws://"+w.Daemon_Endpoint+"/ws", nil)
-
-	// notify user of any state change
-	// if daemon connection breaks or comes live again
-	if err == nil {
-		if !Connected {
-			rlog.Infof("Connection to RPC server successful %s", "ws://"+w.Daemon_Endpoint+"/ws")
-			Connected = true
-		}
-	} else {
-		rlog.Errorf("Error executing getinfo_rpc err %s", err)
-
-		if Connected {
-			rlog.Warnf("Connection to RPC server Failed err %s endpoint %s ", err, "ws://"+w.Daemon_Endpoint+"/ws")
-		}
-		Connected = false
-
-		return
-	}
-
-	input_output := rwc.New(rpc_client.WS)
-	rpc_client.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), nil)
-
-	var result string
-
-	// Issue a call with a response.
-	if err = rpc_client.Call("DERO.Echo", []string{"hello", "world"}, &result); err != nil {
-		rlog.Warnf("DERO.Echo Call failed: %v", err)
-		Connected = false
-		return
-	}
-	//fmt.Println(result)
-
-	var info structures.GetInfo_Result
-	// Issue a call with a response.
-	if err = rpc_client.Call("DERO.GetInfo", nil, &info); err != nil {
-		rlog.Warnf("DERO.GetInfo Call failed: %v", err)
-		Connected = false
-		return
-	}
-
-	// detect whether both are in different modes
-	//  daemon is in testnet and wallet in mainnet or
-	// daemon
-	if info.Testnet != !globals.IsMainnet() {
-		err = fmt.Errorf("Mainnet/TestNet  is different between wallet/daemon.Please run daemon/wallet without --testnet")
-		rlog.Criticalf("%s", err)
-		return
-	}
-
-	w.random_ring_members()
-
-	w.Lock()
-	defer w.Unlock()
-
-	if info.Height >= 0 {
-		w.Daemon_Height = uint64(info.Height)
-		w.Daemon_TopoHeight = info.TopoHeight
-		w.Merkle_Balance_TreeHash = info.Merkle_Balance_TreeHash
-	}
-	w.dynamic_fees_per_kb = info.Dynamic_fee_per_kb // set fee rate, it can work for quite some time,
-
-	//  fmt.Printf("merkle tree %+v\n", info);
-
-	return nil
-}
-
-/*
-func (cli *Client)onlinecheck_and_get_online(){
-    for {
-        if cli.IsDaemonOnline() {
-            var result string
-	        if err := cli.Call( "DERO.Ping", nil, &result); err != nil {
-		       // fmt.Printf("Ping failed: %v", err)
-                cli.RPC.Close()
-                cli.WS = nil
-                cli.RPC = nil
-                Connect() // try to connect again
-	        }else{
-		        //fmt.Printf("Ping Received %s\n", result)
-	        }
-        }
-        time.Sleep(time.Second)
-    }
-}
-*/
-
-// get the outputs from the daemon, requesting specfic outputs
-// the range can be anything
-// if stop is zero,
-// the daemon will flush out everything it has ASAP
-// the stream can be saved and used later on
-
-func (w *Wallet) Sync_Wallet_With_Daemon() {
-
-	//fmt.Printf("syncing with wallet started\n")
-
-	if !w.IsDaemonOnline() {
-		return
-	}
-	output_lock.Lock()
-	defer output_lock.Unlock()
-
-	//	fmt.Printf("account %+v\n", w.account)
-
-	// only sync if both height are different
-	//if w.Daemon_TopoHeight == w.account.TopoHeight && w.account.TopoHeight != 0 { // wallet is already synced
-	//	return
-	//}
-
-	//w.Daemon_State_Version = ""
-
-	w.random_ring_members()
-
-	rlog.Infof("wallet topo height %d daemon online topo height %d\n", w.account.TopoHeight, w.Daemon_TopoHeight)
-
-	previous := w.account.Balance_Result.Data
-
-	if _, err := w.GetEncryptedBalance("", w.GetAddress().String()); err != nil {
-		return
-	}
-
-	if w.account.Balance_Result.Data != previous || (len(w.account.Entries) >= 1 && strings.ToLower(w.account.Balance_Result.Data) != strings.ToLower(w.account.Entries[len(w.account.Entries)-1].EWData)) {
-		w.DecodeEncryptedBalance() // try to decode balance
-		w.SyncHistory()            // also update statement
-	}
-
-	return
-}
-
-// triggers syncing with wallet every 5 seconds
-func (w *Wallet) sync_loop() {
-
+// sync the wallet with daemon, this is instantaneous and can be done with a single call
+// we have now the apis to avoid polling
+func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon() {
+	first_time := true
 	for {
+		select {
+		case <-w.quit:
+			break
+		default:
 
-		if !Connected {
-			w.Connect()
-		} else {
-			if w.IsDaemonOnline() {
-				var result string
-				if err := rpc_client.Call("DERO.Ping", nil, &result); err != nil {
-					// fmt.Printf("Ping failed: %v", err)
-					rpc_client.RPC.Close()
-					rpc_client.WS = nil
-					rpc_client.RPC = nil
-					w.Connect() // try to connect again
+		}
 
-				} else {
-					//fmt.Printf("Ping Received %s\n", result)
+		if (first_time && IsDaemonOnline()) || (!first_time && IsDaemonOnline()) {
+			first_time = false
+			w.random_ring_members()
+			rlog.Debugf("wallet topo height %d daemon online topo height %d\n", w.account.TopoHeight, w.Daemon_TopoHeight)
+			previous := w.account.Balance_Result.Data
+			if _, err := w.GetEncryptedBalance("", w.GetAddress().String()); err == nil {
+				if w.account.Balance_Result.Data != previous || (len(w.account.Entries) >= 1 && strings.ToLower(w.account.Balance_Result.Data) != strings.ToLower(w.account.Entries[len(w.account.Entries)-1].EWData)) {
+					w.DecodeEncryptedBalance() // try to decode balance
+					w.SyncHistory()            // also update statement
 				}
+			} else {
+				rlog.Infof("getbalance err %s", err)
 			}
 		}
+		time.Sleep(timeout) // wait 5 seconds
 
-		if w.IsDaemonOnline() { // could not connect try again after 5 secs
-			w.Sync_Wallet_With_Daemon() // sync with the daemon
-		}
-
-		select { // quit midway if required
-		case <-w.quit:
-			return
-		case <-time.After(5 * time.Second):
-		}
-
-		if !w.wallet_online_mode { // wallet requested to be in offline mode
-			return
-		}
 	}
-}
-
-func (w *Wallet) Rescan_From_Height(startheight uint64) {
-	panic("not implemented")
-
+	return
 }
 
 // this is as simple as it gets
 // single threaded communication to relay TX to daemon
 // if this is successful, then daemon is in control
 
-func (w *Wallet) SendTransaction(tx *transaction.Transaction) (err error) {
+func (w *Wallet_Memory) SendTransaction(tx *transaction.Transaction) (err error) {
 
 	if tx == nil {
 		return fmt.Errorf("Can not send nil transaction")
 	}
 
-	if !w.IsDaemonOnline() {
+	if !IsDaemonOnline() {
 		return fmt.Errorf("offline or not connected. cannot send transaction.")
 	}
 
@@ -368,7 +209,7 @@ func (w *Wallet) SendTransaction(tx *transaction.Transaction) (err error) {
 // TODO in order to stop privacy leaks we must guess this information somehow on client side itself
 // maybe the server can broadcast a bloomfilter or something else from the mempool keyimages
 //
-func (w *Wallet) GetEncryptedBalance(treehash string, accountaddr string) (e *crypto.ElGamal, err error) {
+func (w *Wallet_Memory) GetEncryptedBalance(treehash string, accountaddr string) (e *crypto.ElGamal, err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -382,7 +223,7 @@ func (w *Wallet) GetEncryptedBalance(treehash string, accountaddr string) (e *cr
 		return
 	}
 
-	if !w.IsDaemonOnline() {
+	if !IsDaemonOnline() {
 		err = fmt.Errorf("offline or not connected")
 		return
 	}
@@ -431,7 +272,7 @@ func (w *Wallet) GetEncryptedBalance(treehash string, accountaddr string) (e *cr
 	return el, nil
 }
 
-func (w *Wallet) DecodeEncryptedBalance() (err error) {
+func (w *Wallet_Memory) DecodeEncryptedBalance() (err error) {
 
 	var el crypto.ElGamal
 	var balance_point bn256.G1
@@ -460,7 +301,7 @@ func (w *Wallet) DecodeEncryptedBalance() (err error) {
 // TODO in order to stop privacy leaks we must guess this information somehow on client side itself
 // maybe the server can broadcast a bloomfilter or something else from the mempool keyimages
 //
-func (w *Wallet) GetEncryptedBalanceAtTopoHeight(topoheight int64, accountaddr string) (e *crypto.ElGamal, err error) {
+func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(topoheight int64, accountaddr string) (e *crypto.ElGamal, err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -474,7 +315,7 @@ func (w *Wallet) GetEncryptedBalanceAtTopoHeight(topoheight int64, accountaddr s
 		return
 	}
 
-	if !w.IsDaemonOnline() {
+	if !IsDaemonOnline() {
 		err = fmt.Errorf("offline or not connected")
 		return
 	}
@@ -538,7 +379,7 @@ func (w *Wallet) GetEncryptedBalanceAtTopoHeight(topoheight int64, accountaddr s
 	return el, nil
 }
 
-func (w *Wallet) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) (balance uint64) {
+func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) (balance uint64) {
 
 	var balance_point bn256.G1
 
@@ -547,7 +388,7 @@ func (w *Wallet) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) 
 	return Balance_lookup_table.Lookup(&balance_point, hint)
 }
 
-func (w *Wallet) GetDecryptedBalanceAtTopoHeight(topoheight int64, accountaddr string) (balance uint64, err error) {
+func (w *Wallet_Memory) GetDecryptedBalanceAtTopoHeight(topoheight int64, accountaddr string) (balance uint64, err error) {
 	encrypted_balance, err := w.GetEncryptedBalanceAtTopoHeight(topoheight, accountaddr)
 	if err != nil {
 		return 0, err
@@ -557,7 +398,7 @@ func (w *Wallet) GetDecryptedBalanceAtTopoHeight(topoheight int64, accountaddr s
 }
 
 // sync history of wallet from blockchain
-func (w *Wallet) random_ring_members() {
+func (w *Wallet_Memory) random_ring_members() {
 
 	//fmt.Printf("getting random_ring_members\n")
 
@@ -588,7 +429,7 @@ func (w *Wallet) random_ring_members() {
 }
 
 // sync history of wallet from blockchain
-func (w *Wallet) SyncHistory() (balance uint64) {
+func (w *Wallet_Memory) SyncHistory() (balance uint64) {
 	if w.account.Balance_Result.Registration < 0 { // unregistered so skip
 		return
 	}
@@ -658,7 +499,7 @@ func (w *Wallet) SyncHistory() (balance uint64) {
 }
 
 // sync history
-func (w *Wallet) synchistory_internal(start_topo, end_topo int64) error {
+func (w *Wallet_Memory) synchistory_internal(start_topo, end_topo int64) error {
 
 	var err error
 	var start_balance_e *crypto.ElGamal
@@ -680,7 +521,7 @@ func (w *Wallet) synchistory_internal(start_topo, end_topo int64) error {
 
 }
 
-func (w *Wallet) synchistory_internal_binary_search(start_topo int64, start_balance_e *crypto.ElGamal, end_topo int64, end_balance_e *crypto.ElGamal) error {
+func (w *Wallet_Memory) synchistory_internal_binary_search(start_topo int64, start_balance_e *crypto.ElGamal, end_topo int64, end_balance_e *crypto.ElGamal) error {
 
 	//fmt.Printf("end %d start %d\n", end_topo, start_topo)
 
@@ -786,7 +627,7 @@ func (w *Wallet) synchistory_internal_binary_search(start_topo int64, start_bala
 // Todo we should expose an API to get all txs which have the specific address as ring member
 // for a particular block
 // for the entire chain
-func (w *Wallet) synchistory_block(topo int64) (err error) {
+func (w *Wallet_Memory) synchistory_block(topo int64) (err error) {
 
 	var local_entries []Entry
 

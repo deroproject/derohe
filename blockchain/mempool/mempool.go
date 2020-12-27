@@ -281,14 +281,12 @@ func (pool *Mempool) Mempool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	defer pool.Unlock()
 
 	var object mempool_object
-    tx_hash := crypto.Hash(tx.GetHash())
+	tx_hash := crypto.Hash(tx.GetHash())
 
 	if pool.Mempool_Keyimage_Spent(tx.Proof.Nonce()) {
 		rlog.Debugf("Rejecting TX, since nonce already seen %x", tx_hash)
 		return false
 	}
-
-	
 
 	// check if tx already exists, skip it
 	if _, ok := pool.txs.Load(tx_hash); ok {

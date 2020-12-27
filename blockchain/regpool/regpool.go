@@ -49,15 +49,15 @@ type TX_Sorting_struct struct {
 // we can always come back and rewrite it
 // NOTE: the pool is now persistant
 type Regpool struct {
-	txs           sync.Map //map[crypto.Hash]*regpool_object
-    address_map    sync.Map //map[crypto.Hash]bool // contains key images of all txs
-	sorted_by_fee []crypto.Hash        // contains txids sorted by fees
-	sorted        []TX_Sorting_struct  // contains TX sorting information, so as new block can be forged easily
-	modified      bool                 // used to monitor whethel mem pool contents have changed,
-	height        uint64               // track blockchain height
-    
-    relayer chan crypto.Hash // used for immediate relay
-	P2P_TX_Relayer p2p_TX_Relayer // actual pointer, setup by the dero daemon during runtime
+	txs           sync.Map            //map[crypto.Hash]*regpool_object
+	address_map   sync.Map            //map[crypto.Hash]bool // contains key images of all txs
+	sorted_by_fee []crypto.Hash       // contains txids sorted by fees
+	sorted        []TX_Sorting_struct // contains TX sorting information, so as new block can be forged easily
+	modified      bool                // used to monitor whethel mem pool contents have changed,
+	height        uint64              // track blockchain height
+
+	relayer        chan crypto.Hash // used for immediate relay
+	P2P_TX_Relayer p2p_TX_Relayer   // actual pointer, setup by the dero daemon during runtime
 
 	// global variable , but don't see it utilisation here except fot tx verification
 	//chain *Blockchain
@@ -138,7 +138,7 @@ func Init_Regpool(params map[string]interface{}) (*Regpool, error) {
 	loggerpool.Infof("Regpool started")
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
 
-    regpool.relayer = make(chan crypto.Hash, 1024*10)
+	regpool.relayer = make(chan crypto.Hash, 1024*10)
 	regpool.Exit_Mutex = make(chan bool)
 
 	// initialize maps
@@ -166,7 +166,7 @@ func Init_Regpool(params map[string]interface{}) (*Regpool, error) {
 				result := regpool.Regpool_Add_TX(objects[i].Tx, 0)
 				if result { // setup time
 					//regpool.txs[objects[i].Tx.GetHash()] = &objects[i] // setup time and other artifacts
-					regpool.txs.Store(objects[i].Tx.GetHash(),&objects[i] )
+					regpool.txs.Store(objects[i].Tx.GetHash(), &objects[i])
 				}
 			}
 		}
@@ -191,15 +191,14 @@ func (pool *Regpool) HouseKeeping(height uint64, Verifier func(*transaction.Tran
 	var delete_list []crypto.Hash
 
 	pool.txs.Range(func(k, value interface{}) bool {
-		txhash :=  k.(crypto.Hash)
+		txhash := k.(crypto.Hash)
 		v := value.(*regpool_object)
 
-			if !Verifier(v.Tx) { // this tx  user has already registered
-				delete_list = append(delete_list, txhash)
-			}
+		if !Verifier(v.Tx) { // this tx  user has already registered
+			delete_list = append(delete_list, txhash)
+		}
 		return true
 	})
-
 
 	for i := range delete_list {
 		pool.Regpool_Delete_TX(delete_list[i])
@@ -218,7 +217,6 @@ func (pool *Regpool) Shutdown() {
 
 	// collect all txs in pool and serialize them and store them
 	var objects []regpool_object
-
 
 	pool.txs.Range(func(k, value interface{}) bool {
 		v := value.(*regpool_object)
@@ -274,17 +272,16 @@ func (pool *Regpool) Regpool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	pool.Lock()
 	defer pool.Unlock()
 
-	if !tx.IsRegistration(){
+	if !tx.IsRegistration() {
 		return false
 	}
 
 	var object regpool_object
 
-
-    if pool.Regpool_Address_Present(tx.MinerAddress) {
-     //   loggerpool.Infof("Rejecting TX, since address already has registration information")
-    return false
-    }
+	if pool.Regpool_Address_Present(tx.MinerAddress) {
+		//   loggerpool.Infof("Rejecting TX, since address already has registration information")
+		return false
+	}
 
 	tx_hash := crypto.Hash(tx.GetHash())
 
@@ -294,21 +291,17 @@ func (pool *Regpool) Regpool_Add_TX(tx *transaction.Transaction, Height uint64) 
 		return false
 	}
 
-	if !tx.IsRegistrationValid(){
+	if !tx.IsRegistrationValid() {
 		return false
 	}
 
-
-    
-
-
 	// add all the key images to check double spend attack within the pool
-//TODO
-//	for i := 0; i < len(tx.Vin); i++ {
-//		pool.address_map.Store(tx.Vin[i].(transaction.Txin_to_key).K_image,true) // add element to map for next check
-//	}
+	//TODO
+	//	for i := 0; i < len(tx.Vin); i++ {
+	//		pool.address_map.Store(tx.Vin[i].(transaction.Txin_to_key).K_image,true) // add element to map for next check
+	//	}
 
-    pool.address_map.Store(tx.MinerAddress,true)
+	pool.address_map.Store(tx.MinerAddress, true)
 
 	// we are here means we can add it to pool
 	object.Tx = tx
@@ -316,9 +309,9 @@ func (pool *Regpool) Regpool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	object.Added = uint64(time.Now().UTC().Unix())
 
 	object.Size = uint64(len(tx.Serialize()))
-	
-	pool.txs.Store(tx_hash,&object)
-    pool.relayer <- tx_hash
+
+	pool.txs.Store(tx_hash, &object)
+	pool.relayer <- tx_hash
 	pool.modified = true // pool has been modified
 
 	//pool.sort_list() // sort and update pool list
@@ -363,19 +356,17 @@ func (pool *Regpool) Regpool_Delete_TX(txid crypto.Hash) (tx *transaction.Transa
 		return nil
 	}
 
-
-
 	// we reached here means, we have the tx remove it from our list, do maintainance cleapup and discard it
 	object := objecti.(*regpool_object)
-    tx = object.Tx
+	tx = object.Tx
 	pool.txs.Delete(txid)
 
 	// remove all the key images
-//TODO
-//	for i := 0; i < len(object.Tx.Vin); i++ {
-//		pool.address_map.Delete(object.Tx.Vin[i].(transaction.Txin_to_key).K_image)
-//	}
-    pool.address_map.Delete(tx.MinerAddress)
+	//TODO
+	//	for i := 0; i < len(object.Tx.Vin); i++ {
+	//		pool.address_map.Delete(object.Tx.Vin[i].(transaction.Txin_to_key).K_image)
+	//	}
+	pool.address_map.Delete(tx.MinerAddress)
 
 	//pool.sort_list()     // sort and update pool list
 	pool.modified = true // pool has been modified
@@ -384,8 +375,8 @@ func (pool *Regpool) Regpool_Delete_TX(txid crypto.Hash) (tx *transaction.Transa
 
 // get specific tx from mem pool without removing it
 func (pool *Regpool) Regpool_Get_TX(txid crypto.Hash) (tx *transaction.Transaction) {
-//	pool.Lock()
-//	defer pool.Unlock()
+	//	pool.Lock()
+	//	defer pool.Unlock()
 
 	var ok bool
 	var objecti interface{}
@@ -404,16 +395,16 @@ func (pool *Regpool) Regpool_Get_TX(txid crypto.Hash) (tx *transaction.Transacti
 
 // return list of all txs in pool
 func (pool *Regpool) Regpool_List_TX() []crypto.Hash {
-//	pool.Lock()
-//	defer pool.Unlock()
+	//	pool.Lock()
+	//	defer pool.Unlock()
 
 	var list []crypto.Hash
 
 	pool.txs.Range(func(k, value interface{}) bool {
-		 txhash  := k.(crypto.Hash)
+		txhash := k.(crypto.Hash)
 		//v := value.(*regpool_object)
 		//objects = append(objects, *v)
-		 list = append(list,txhash)
+		list = append(list, txhash)
 		return true
 	})
 
@@ -426,8 +417,6 @@ func (pool *Regpool) Regpool_List_TX() []crypto.Hash {
 	return list
 }
 
-
-
 // print current regpool txs
 // TODO add sorting
 func (pool *Regpool) Regpool_Print() {
@@ -438,15 +427,14 @@ func (pool *Regpool) Regpool_Print() {
 	var vlist []*regpool_object
 
 	pool.txs.Range(func(k, value interface{}) bool {
-		 txhash  := k.(crypto.Hash)
+		txhash := k.(crypto.Hash)
 		v := value.(*regpool_object)
 		//objects = append(objects, *v)
-		 klist = append(klist,txhash)
-		 vlist = append(vlist,v)
+		klist = append(klist, txhash)
+		vlist = append(vlist, v)
 
 		return true
 	})
-
 
 	fmt.Printf("Total TX in regpool = %d\n", len(klist))
 	fmt.Printf("%20s  %14s %7s %7s %6s %32s\n", "Added", "Last Relayed", "Relayed", "Size", "Height", "TXID")
@@ -464,23 +452,20 @@ func (pool *Regpool) Regpool_flush() {
 	var list []crypto.Hash
 
 	pool.txs.Range(func(k, value interface{}) bool {
-		 txhash  := k.(crypto.Hash)
+		txhash := k.(crypto.Hash)
 		//v := value.(*regpool_object)
 		//objects = append(objects, *v)
-		 list = append(list,txhash)
+		list = append(list, txhash)
 		return true
 	})
 
 	fmt.Printf("Total TX in regpool = %d \n", len(list))
 	fmt.Printf("Flushing regpool \n")
 
-
 	for i := range list {
 		pool.Regpool_Delete_TX(list[i])
 	}
 }
-
-
 
 type p2p_TX_Relayer func(*transaction.Transaction, uint64) int // function type, exported in p2p but cannot use due to cyclic dependency
 
@@ -493,7 +478,7 @@ func (pool *Regpool) Relayer_and_Cleaner() {
 	for {
 
 		select {
-        case txid := <-pool.relayer:
+		case txid := <-pool.relayer:
 			if objecti, ok := pool.txs.Load(txid); !ok {
 				break
 			} else {
@@ -516,38 +501,35 @@ func (pool *Regpool) Relayer_and_Cleaner() {
 		}
 
 		pool.txs.Range(func(ktmp, value interface{}) bool {
-		 k  := ktmp.(crypto.Hash)
-		 v := value.(*regpool_object)
-	
+			k := ktmp.(crypto.Hash)
+			v := value.(*regpool_object)
+
 			select { // exit fast of possible
 			case <-pool.Exit_Mutex:
 				return false
 			default:
 			}
-		
 
-				if v.Relayed < 10 || // relay it now
-					(v.Relayed >= 4 && v.Relayed <= 20 && (time.Now().Unix()-v.RelayedAt) > 5) || // relay it now
-					(time.Now().Unix()-v.RelayedAt) > 4 {
-					if pool.P2P_TX_Relayer != nil {
+			if v.Relayed < 10 || // relay it now
+				(v.Relayed >= 4 && v.Relayed <= 20 && (time.Now().Unix()-v.RelayedAt) > 5) || // relay it now
+				(time.Now().Unix()-v.RelayedAt) > 4 {
+				if pool.P2P_TX_Relayer != nil {
 
-						relayed_count := pool.P2P_TX_Relayer(v.Tx, 0)
-						//relayed_count := 0
-						if relayed_count > 0 {
-							v.Relayed += relayed_count
+					relayed_count := pool.P2P_TX_Relayer(v.Tx, 0)
+					//relayed_count := 0
+					if relayed_count > 0 {
+						v.Relayed += relayed_count
 
-							//loggerpool.Debugf("%d  %d\n",time.Now().Unix(), v.RelayedAt)
-							rlog.Tracef(1,"Relayed %s to %d peers (%d %d)", k, relayed_count, v.Relayed, (time.Now().Unix() - v.RelayedAt))
-							v.RelayedAt = time.Now().Unix()
-							//loggerpool.Debugf("%d  %d",time.Now().Unix(), v.RelayedAt)
-						}
+						//loggerpool.Debugf("%d  %d\n",time.Now().Unix(), v.RelayedAt)
+						rlog.Tracef(1, "Relayed %s to %d peers (%d %d)", k, relayed_count, v.Relayed, (time.Now().Unix() - v.RelayedAt))
+						v.RelayedAt = time.Now().Unix()
+						//loggerpool.Debugf("%d  %d",time.Now().Unix(), v.RelayedAt)
 					}
 				}
-			
-			 
-		return true
-	})
+			}
 
+			return true
+		})
 
 		// loggerpool.Warnf("send Pool lock released")
 		//pool.Unlock()

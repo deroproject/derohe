@@ -544,7 +544,7 @@ func ConfirmYesNoDefaultNo(l *readline.Instance, prompt_temporary string) bool {
 
 // confirms whether user knows the current password for the wallet
 // this is triggerred while transferring  amount, changing settings and so on
-func ValidateCurrentPassword(l *readline.Instance, wallet *walletapi.Wallet) bool {
+func ValidateCurrentPassword(l *readline.Instance, wallet *walletapi.Wallet_Disk) bool {
 	prompt_mutex.Lock()
 	defer prompt_mutex.Unlock()
 
@@ -636,7 +636,7 @@ func ReadConfirmedPassword(l *readline.Instance, first_prompt string, second_pro
 
 // confirms  user to press a key
 // this is triggerred while transferring  amount, changing settings and so on
-func PressAnyKey(l *readline.Instance, wallet *walletapi.Wallet) {
+func PressAnyKey(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 
 	prompt_mutex.Lock()
 	defer prompt_mutex.Unlock()
@@ -741,7 +741,7 @@ func usage(w io.Writer) {
 }
 
 // display seed to the user in his preferred language
-func display_seed(l *readline.Instance, wallet *walletapi.Wallet) {
+func display_seed(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 	seed := wallet.GetSeed()
 	fmt.Fprintf(l.Stderr(), color_green+"PLEASE NOTE: the following 25 words can be used to recover access to your wallet. Please write them down and store them somewhere safe and secure. Please do not store them in your email or on file storage services outside of your immediate control."+color_white+"\n")
 	fmt.Fprintf(os.Stderr, color_red+"%s"+color_white+"\n", seed)
@@ -751,7 +751,7 @@ func display_seed(l *readline.Instance, wallet *walletapi.Wallet) {
 // display spend key
 // viewable wallet do not have spend secret key
 // TODO wee need to give user a warning if we are printing secret
-func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet) {
+func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 
 	keys := wallet.Get_Keys()
 	fmt.Fprintf(os.Stderr, "secret key: "+color_red+"%s"+color_white+"\n", keys.Secret.Text(16))
@@ -760,7 +760,7 @@ func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet) {
 }
 
 // start a rescan from block 0
-func rescan_bc(wallet *walletapi.Wallet) {
+func rescan_bc(wallet *walletapi.Wallet_Disk) {
 	if wallet.GetMode() { // trigger rescan we the wallet is online
 		wallet.Clean() // clean existing data from wallet
 		//wallet.Rescan_From_Height(0)
@@ -768,14 +768,14 @@ func rescan_bc(wallet *walletapi.Wallet) {
 
 }
 
-func is_registered(wallet *walletapi.Wallet) bool {
+func is_registered(wallet *walletapi.Wallet_Disk) bool {
 	if wallet.Get_Registration_TopoHeight() == -1 {
 		return false
 	}
 	return true
 }
 
-func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi.Wallet) bool {
+func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi.Wallet_Disk) bool {
 	if !is_registered(wallet) {
 		globals.Logger.Warnf("Your account is not registered.Please register.")
 	}
@@ -783,7 +783,7 @@ func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi
 }
 
 // show the transfers to the user originating from this account
-func show_transfers(l *readline.Instance, wallet *walletapi.Wallet, limit uint64) {
+func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, limit uint64) {
 
 	available := true
 	in := true

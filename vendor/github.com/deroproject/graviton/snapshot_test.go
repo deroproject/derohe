@@ -1,8 +1,9 @@
 package graviton
 
 import (
-	"io/ioutil"
-	"os"
+	"fmt"
+	//	"io/ioutil"
+	//	"os"
 	"testing"
 	"time"
 
@@ -10,6 +11,82 @@ import (
 )
 
 var dddd_ = time.Now()
+
+// this tests the version tree dag
+// this loading of versions and whether they can be accessed and then moved forward
+func TestSnapshotDAG(t *testing.T) {
+
+	store, err := NewMemStore()
+	require.NoError(t, err)
+
+	loop_count := uint64(5)
+	// now lets commit the tree 5 times
+	for i := uint64(0); i < loop_count; i++ {
+
+		gv, err := store.LoadSnapshot(0)
+		require.NoError(t, err)
+
+		tree, err := gv.GetTree("root")
+		require.NoError(t, err)
+		require.Equal(t, i, tree.snapshot_version)
+
+		key := []byte(fmt.Sprintf("%d", i+1))
+		value := []byte(fmt.Sprintf("%d", i+1))
+		require.NoError(t, tree.Put(key, value))
+
+		commit_version, err := Commit(tree)
+		require.NoError(t, err)
+		require.Equal(t, i+1, commit_version)
+		require.Equal(t, i+1, tree.snapshot_version)
+		require.Equal(t, i+1, tree.GetVersion())
+
+	}
+
+	for i := uint64(0); i < loop_count; i++ {
+
+		gv, err := store.LoadSnapshot(i + 1)
+		require.NoError(t, err)
+
+		tree, err := gv.GetTree("root")
+		require.NoError(t, err)
+
+		for j := uint64(0); j < i; j++ {
+			key := []byte(fmt.Sprintf("%d", j+1))
+			value := []byte(fmt.Sprintf("%d", j+1))
+
+			value_actual, err := tree.Get(key)
+			if err != nil {
+				fmt.Printf("value result failed j %d\n", j)
+			}
+			require.NoError(t, err)
+			require.Equal(t, value, value_actual)
+		}
+	}
+
+	gv, err := store.LoadSnapshot(5)
+	require.NoError(t, err)
+
+	highest_version, err := gv.GetTreeHighestVersion("root")
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), highest_version)
+
+	// now lets test we can move past in history
+	gv, err = store.LoadSnapshot(3)
+	require.NoError(t, err)
+
+	tree, err := gv.GetTree("root")
+	require.NoError(t, err)
+
+	key := []byte(fmt.Sprintf("%d", 4))
+	value := []byte(fmt.Sprintf("%d", 4))
+	require.NoError(t, tree.Put(key, value))
+	commit_version, err := Commit(tree)
+	require.NoError(t, err)
+	require.Equal(t, uint64(6), commit_version) // 5 version committed earlier
+	require.Equal(t, uint64(6), tree.snapshot_version)
+	require.Equal(t, uint64(4), tree.GetVersion()) // tree version should be 4
+
+}
 
 // this tests various treename entry points
 func TestTreeNameLimit(t *testing.T) {
@@ -85,21 +162,43 @@ func TestLoadSnapshot(t *testing.T) {
 	_, err = store.LoadSnapshot(99) // trigger version is higher than  available error
 	require.Error(t, err)
 
+	// now lets commit the tree 5 times
+	loop_count := uint64(5)
+	for i := uint64(0); i < loop_count; i++ {
+		gv, err := store.LoadSnapshot(0)
+		require.NoError(t, err)
+
+		tree, err := gv.GetTree("root")
+		require.NoError(t, err)
+		require.Equal(t, i, tree.snapshot_version)
+
+		key := []byte(fmt.Sprintf("%d", i+1))
+		value := []byte(fmt.Sprintf("%d", i+1))
+		require.NoError(t, tree.Put(key, value))
+
+		_, err = Commit(tree)
+		require.NoError(t, err)
+	}
+
 	//fmt.Printf("error %s\n", store.loadsnapshottablestoram())
 
-	store.version_data[0] = 1
-	store.version_data[16] = 1
+	store.versionrootfile.memoryfile[(loop_count-1)*8+7] = 1 // corrupt last entry
+	store.versionrootfile.memoryfile[(loop_count-2)*8+7] = 1 // corrupt second last entry
 
-	_, err = store.LoadSnapshot(1) // trigger recent version corruption
+	_, err = store.LoadSnapshot(0) // trigger recent version corruption
 	require.Error(t, err)
-	store.version_data[24] = 2
-	store.version_data[24+16] = 1
-	_, err = store.LoadSnapshot(1) // trigger recent version corruption
+	_, err = store.LoadSnapshot(4) // trigger second last version corruption
 	require.Error(t, err)
+	/*
+		store.version_data[24] = 2
+		store.version_data[24+16] = 1
+		_, err = store.LoadSnapshot(1) // trigger recent version corruption
+		require.Error(t, err)
 
-	_, _, err = store.write([]byte{3, 0, 0, 0}) // write empty inner record
-	_, err = store.LoadSnapshot(1)              // trigger recent version corruption
-	require.Error(t, err)
+		_, _, err = store.write([]byte{3, 0, 0, 0}) // write empty inner record
+		_, err = store.LoadSnapshot(1)              // trigger recent version corruption
+		require.Error(t, err)
+	*/
 
 	// create a complex error, where deep error is created using internal structures
 	store, err = NewMemStore()
@@ -117,55 +216,5 @@ func TestLoadSnapshot(t *testing.T) {
 
 	gv, err = store.LoadSnapshot(0)
 	require.NoError(t, err)
-
-	eposition, err := gv.vroot.Get(store, sum([]byte{':', ':', 1}))
-	require.NoError(t, err)
-
-	_, fpos := decode(eposition)
-
-	// lets overwrite the file with with corrupt inner node
-	file := store.files[0]
-	//file.fileh.WriteAt([]byte{3, 5, 99, 0}, int64(fpos))
-	copy(file.memoryfile[fpos:], []byte{3, 5, 99, 0})
-	_, err = store.LoadSnapshot(1) // trigger recent version corruption
-	require.Error(t, err)
-}
-
-func TestIloadSnapshottablestoram(t *testing.T) {
-	//store, err := NewMemStore()
-
-	dir, err := ioutil.TempDir("", "example")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir) // clean up
-
-	store, err := NewDiskStore(dir) // make file handles unlimited
-	require.NoError(t, err)
-	gv, err := store.LoadSnapshot(0)
-	require.NoError(t, err)
-	store.Close()
-	store.version_data_loaded = false
-
-	gv, err = store.LoadSnapshot(1)
-	require.Error(t, err) //  this root does not exist
-
-	// second error
-	dir2, err := ioutil.TempDir("", "example")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir2)        // clean up
-	store, err = NewDiskStore(dir2) // make file handles unlimited
-	require.NoError(t, err)
-	gv, err = store.LoadSnapshot(0)
-	require.NoError(t, err)
-	tree, err := gv.GetTree("root")
-	require.NoError(t, err)
-
-	tree.Put([]byte{byte(0)}, []byte{byte(0)})
-	require.NoError(t, tree.Commit())
-	tree.Put([]byte{byte(1)}, []byte{byte(1)})
-	require.NoError(t, tree.Commit())
-	store.versionrootfile.diskfile.Truncate(510)
-	store.version_data_loaded = false
-	gv, err = store.LoadSnapshot(1)
-	require.Error(t, err) //  this root does not exist
 
 }

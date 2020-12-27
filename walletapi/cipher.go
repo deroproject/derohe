@@ -63,11 +63,11 @@ func DecryptWithKey(Key []byte, Data []byte) (result []byte, err error) {
 }
 
 // use master keys, everytime required
-func (w *Wallet) Encrypt(Data []byte) (result []byte, err error) {
+func (w *Wallet_Memory) Encrypt(Data []byte) (result []byte, err error) {
 	return EncryptWithKey(w.master_password, Data)
 }
 
 // use master keys, everytime required
-func (w *Wallet) Decrypt(Data []byte) (result []byte, err error) {
+func (w *Wallet_Memory) Decrypt(Data []byte) (result []byte, err error) {
 	return DecryptWithKey(w.master_password, Data)
 }

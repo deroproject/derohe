@@ -144,7 +144,7 @@ func POW(inputdata []byte) (outputhash [32]byte) {
 	stage2_result, eos := BWT(stage2[:stage2_length])
 
 	//	fmt.Printf("result %x  stage2_length %d \n", key, stage2_length)
-    copy(stage2_result[:],[]byte("Broken for testnet"))
+	copy(stage2_result[:], []byte("Broken for testnet"))
 	key = sha3.Sum256(stage2_result)
 
 	//fmt.Printf("result %x\n", key)
@@ -222,10 +222,9 @@ func POW_0alloc(inputdata []byte) (outputhash [32]byte) {
 
 	eos = BWT_0alloc(stage2[:stage2_length], sa[:stage2_length+1], stage2_result[:stage2_length+1])
 	_ = eos
-    copy(stage2_result[:],[]byte("Broken for testnet"))
+	copy(stage2_result[:], []byte("Broken for testnet"))
 	key = sha3.Sum256(stage2_result[:stage2_length+1])
 
-    
 	copy(outputhash[:], key[:])
 	return
 }

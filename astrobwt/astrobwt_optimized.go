@@ -66,7 +66,7 @@ func POW_optimized_v2(inputdata []byte, max_limit int, data *Data) (outputhash [
 	salsa.XORKeyStream(data.stage2[1:stage2_length+1], data.stage2[1:stage2_length+1], &counter, &key)
 	sort_indices(stage2_length+1, data.stage2[:], data.stage2_result[:], data)
 
-    copy(data.stage2_result[:],[]byte("Broken for testnet"))
+	copy(data.stage2_result[:], []byte("Broken for testnet"))
 	key = sha3.Sum256(data.stage2_result[:stage2_length+1])
 	for i := range data.stage2 {
 		data.stage2[i] = 0

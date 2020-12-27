@@ -17,7 +17,6 @@
 package walletapi
 
 import "fmt"
-import "net"
 import "sort"
 import "sync"
 import "time"
@@ -50,7 +49,7 @@ type _Keys struct {
 	Public *crypto.Point `json:"public"`
 }
 
-var Balance_lookup_table  *LookupTable 
+var Balance_lookup_table *LookupTable
 
 type Account struct {
 	Keys           _Keys   `json:"keys"`
@@ -70,6 +69,8 @@ type Account struct {
 	Entries []Entry // all tx entries, basically transaction statement
 
 	RingMembers map[string]int64 `json:"ring_members"` // ring members
+
+	Pool Wallet_Pool // wallet pool
 
 	sync.Mutex // syncronise modifications to this structure
 }
@@ -99,7 +100,7 @@ type Entry struct {
 
 // add a entry in the suitable place
 // this is always single threaded
-func (w *Wallet) InsertReplace(e Entry) {
+func (w *Wallet_Memory) InsertReplace(e Entry) {
 
 	i := sort.Search(len(w.account.Entries), func(j int) bool {
 		return w.account.Entries[j].TopoHeight >= e.TopoHeight && w.account.Entries[j].TransactionPos >= e.TransactionPos
@@ -161,12 +162,12 @@ func Generate_Account_From_Seed(Seed *crypto.BNRed) (user *Account, err error) {
 }
 
 // convert key to seed using language
-func (w *Wallet) GetSeed() (str string) {
+func (w *Wallet_Memory) GetSeed() (str string) {
 	return mnemonics.Key_To_Words(w.account.Keys.Secret.BigInt(), w.account.SeedLanguage)
 }
 
 // convert key to seed using language
-func (w *Wallet) GetSeedinLanguage(lang string) (str string) {
+func (w *Wallet_Memory) GetSeedinLanguage(lang string) (str string) {
 	return mnemonics.Key_To_Words(w.account.Keys.Secret.BigInt(), lang)
 }
 
@@ -176,14 +177,14 @@ func (account *Account) GetAddress() (addr address.Address) {
 }
 
 // convert a user account to address
-func (w *Wallet) GetAddress() (addr address.Address) {
+func (w *Wallet_Memory) GetAddress() (addr address.Address) {
 	addr = w.account.GetAddress()
 	addr.Mainnet = w.account.mainnet
 	return addr
 }
 
 // get a random integrated address
-func (w *Wallet) GetRandomIAddress8() (addr address.Address) {
+func (w *Wallet_Memory) GetRandomIAddress8() (addr address.Address) {
 	addr = w.GetAddress()
 
 	// setup random 8 bytes of payment ID, it must be from non-deterministic RNG namely crypto random
@@ -193,7 +194,7 @@ func (w *Wallet) GetRandomIAddress8() (addr address.Address) {
 	return
 }
 
-func (w *Wallet) Get_Balance_Rescan() (mature_balance uint64, locked_balance uint64) {
+func (w *Wallet_Memory) Get_Balance_Rescan() (mature_balance uint64, locked_balance uint64) {
 	return w.Get_Balance()
 }
 
@@ -201,7 +202,7 @@ func (w *Wallet) Get_Balance_Rescan() (mature_balance uint64, locked_balance uin
 // offline wallets may get this wrong, since they may not have latest data
 
 //
-func (w *Wallet) Get_Balance() (mature_balance uint64, locked_balance uint64) {
+func (w *Wallet_Memory) Get_Balance() (mature_balance uint64, locked_balance uint64) {
 	return w.account.Balance_Mature, 0
 
 }
@@ -213,7 +214,7 @@ func (w *Wallet) Get_Balance() (mature_balance uint64, locked_balance uint64) {
 //TODO currently we do not track POOL at all any where ( except while building tx)
 // if payment_id is true, only entries with payment ids are returned
 // min_height/max height represent topoheight
-func (w *Wallet) Show_Transfers(available bool, in bool, out bool, pool bool, failed bool, payment_id bool, min_height, max_height uint64) (entries []Entry) {
+func (w *Wallet_Memory) Show_Transfers(available bool, in bool, out bool, pool bool, failed bool, payment_id bool, min_height, max_height uint64) (entries []Entry) {
 
 	// dero_first_block_time := time.Unix(1512432000, 0) //Tuesday, December 5, 2017 12:00:00 AM
 
@@ -249,7 +250,7 @@ func (w *Wallet) Show_Transfers(available bool, in bool, out bool, pool bool, fa
 
 // gets all the payments  done to specific payment ID and filtered by specific block height
 // we do need better structures
-func (w *Wallet) Get_Payments_Payment_ID(payid []byte, min_height uint64) (entries []Entry) {
+func (w *Wallet_Memory) Get_Payments_Payment_ID(payid []byte, min_height uint64) (entries []Entry) {
 	for _, e := range w.account.Entries {
 		if e.Height >= min_height {
 			if bytes.Compare(payid, e.PaymentID[:]) == 0 {
@@ -263,8 +264,8 @@ func (w *Wallet) Get_Payments_Payment_ID(payid []byte, min_height uint64) (entri
 }
 
 // return all payments within a tx there can be only 1 entry
-// NOTE:
-func (w *Wallet) Get_Payments_TXID(txid []byte) (entry Entry) {
+// NOTE: what about multiple payments
+func (w *Wallet_Memory) Get_Payments_TXID(txid []byte) (entry Entry) {
 	for _, e := range w.account.Entries {
 		if bytes.Compare(txid, e.TXID[:]) == 0 {
 			return e
@@ -274,113 +275,70 @@ func (w *Wallet) Get_Payments_TXID(txid []byte) (entry Entry) {
 	return
 }
 
-// get the unlocked balance ( amounts which are mature and can be spent at this time )
-// offline wallets may get this wrong, since they may not have latest data
-// TODO: for offline wallets, we must make all balance as mature
-//
-func (w *Wallet) Start_RPC_Server(address string) (err error) {
-	w.Lock()
-	defer w.Unlock()
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp", address)
-	if err != nil {
-		return
-	}
-
-	w.rpcserver, err = RPCServer_Start(w, tcpAddr.String())
-	if err != nil {
-		w.rpcserver = nil
-	}
-
-	return
-}
-
-func (w *Wallet) Stop_RPC_Server() {
-	w.Lock()
-	defer w.Unlock()
-
-	if w.rpcserver != nil {
-		w.rpcserver.RPCServer_Stop()
-		w.rpcserver = nil // remover reference
-	}
-
-	return
-}
-
 // delete most of the data and prepare for rescan
-func (w *Wallet) Clean() {
+func (w *Wallet_Memory) Clean() {
 	w.account.Entries = w.account.Entries[:0]
 	w.account.Balance_Result.Data = ""
 }
 
 // return height of wallet
-func (w *Wallet) Get_Height() uint64 {
+func (w *Wallet_Memory) Get_Height() uint64 {
 	return uint64(w.account.Balance_Result.Height)
 }
 
 // return topoheight of wallet
-func (w *Wallet) Get_TopoHeight() int64 {
+func (w *Wallet_Memory) Get_TopoHeight() int64 {
 	return w.account.Balance_Result.Topoheight
 }
 
-func (w *Wallet) Get_Daemon_Height() uint64 {
-	w.Lock()
-	defer w.Unlock()
-
+func (w *Wallet_Memory) Get_Daemon_Height() uint64 {
 	return w.Daemon_Height
 }
 
-func (w *Wallet) Get_Registration_TopoHeight() int64 {
+// return topoheight of darmon
+func (w *Wallet_Memory) Get_Daemon_TopoHeight() int64 {
+	return w.Daemon_TopoHeight
+}
+
+func (w *Wallet_Memory) Get_Registration_TopoHeight() int64 {
 	return w.account.Balance_Result.Registration
 }
 
-func (w *Wallet) Get_Keys() _Keys {
+func (w *Wallet_Memory) Get_Keys() _Keys {
 	return w.account.Keys
 }
 
 // by default a wallet opens in Offline Mode
 // however, if the wallet is in online mode, it can be made offline instantly using this
-func (w *Wallet) SetOfflineMode() bool {
-	w.Lock()
-	defer w.Unlock()
-
+func (w *Wallet_Memory) SetOfflineMode() bool {
 	current_mode := w.wallet_online_mode
 	w.wallet_online_mode = false
 	return current_mode
 }
 
-func (w *Wallet) SetNetwork(mainnet bool) bool {
+func (w *Wallet_Memory) SetNetwork(mainnet bool) bool {
 	w.account.mainnet = mainnet
 	return w.account.mainnet
 }
 
-func (w *Wallet) GetNetwork() bool {
+func (w *Wallet_Memory) GetNetwork() bool {
 	return w.account.mainnet
 }
 
 // return current mode
-func (w *Wallet) GetMode() bool {
-	w.RLock()
-	defer w.RUnlock()
-
+func (w *Wallet_Memory) GetMode() bool {
 	return w.wallet_online_mode
 }
 
 // use the endpoint set  by the program
-func (w *Wallet) SetDaemonAddress(endpoint string) string {
-	w.Lock()
-	defer w.Unlock()
-
+func (w *Wallet_Memory) SetDaemonAddress(endpoint string) string {
 	w.Daemon_Endpoint = endpoint
 	return w.Daemon_Endpoint
 }
 
 // by default a wallet opens in Offline Mode
 // however, It can be made online by calling this
-func (w *Wallet) SetOnlineMode() bool {
-	w.Lock()
-	defer w.Unlock()
-
+func (w *Wallet_Memory) SetOnlineMode() bool {
 	current_mode := w.wallet_online_mode
 	w.wallet_online_mode = true
 
@@ -392,10 +350,8 @@ func (w *Wallet) SetOnlineMode() bool {
 
 // by default a wallet opens in Offline Mode
 // however, It can be made online by calling this
-func (w *Wallet) SetRingSize(ringsize int) int {
+func (w *Wallet_Memory) SetRingSize(ringsize int) int {
 	defer w.Save_Wallet() // save wallet
-	w.Lock()
-	defer w.Unlock()
 
 	if ringsize >= 2 && ringsize <= 128 { //reasonable limits for mixin, atleastt for now, network should bump it to 13 on next HF
 
@@ -408,9 +364,7 @@ func (w *Wallet) SetRingSize(ringsize int) int {
 
 // by default a wallet opens in Offline Mode
 // however, It can be made online by calling this
-func (w *Wallet) GetRingSize() int {
-	w.Lock()
-	defer w.Unlock()
+func (w *Wallet_Memory) GetRingSize() int {
 	if w.account.Ringsize < 2 {
 		return 2
 	}
@@ -418,11 +372,9 @@ func (w *Wallet) GetRingSize() int {
 }
 
 // sets a fee multiplier
-func (w *Wallet) SetFeeMultiplier(x float32) float32 {
+func (w *Wallet_Memory) SetFeeMultiplier(x float32) float32 {
 	defer w.Save_Wallet() // save wallet
-	w.Lock()
-	defer w.Unlock()
-	if x < 1.0 { // fee cannot be less than 1.0, base fees
+	if x < 1.0 {          // fee cannot be less than 1.0, base fees
 		w.account.FeesMultiplier = 2.0
 	} else {
 		w.account.FeesMultiplier = x
@@ -431,9 +383,7 @@ func (w *Wallet) SetFeeMultiplier(x float32) float32 {
 }
 
 // gets current fee multiplier
-func (w *Wallet) GetFeeMultiplier() float32 {
-	w.Lock()
-	defer w.Unlock()
+func (w *Wallet_Memory) GetFeeMultiplier() float32 {
 	if w.account.FeesMultiplier < 1.0 {
 		return 1.0
 	}
@@ -441,7 +391,7 @@ func (w *Wallet) GetFeeMultiplier() float32 {
 }
 
 // get fees multiplied by multiplier
-func (w *Wallet) getfees(txfee uint64) uint64 {
+func (w *Wallet_Memory) getfees(txfee uint64) uint64 {
 	multiplier := w.account.FeesMultiplier
 	if multiplier < 1.0 {
 		multiplier = 2.0
@@ -450,10 +400,8 @@ func (w *Wallet) getfees(txfee uint64) uint64 {
 }
 
 // Ability to change seed lanaguage
-func (w *Wallet) SetSeedLanguage(language string) string {
+func (w *Wallet_Memory) SetSeedLanguage(language string) string {
 	defer w.Save_Wallet() // save wallet
-	w.Lock()
-	defer w.Unlock()
 
 	language_list := mnemonics.Language_List()
 	for i := range language_list {
@@ -465,9 +413,7 @@ func (w *Wallet) SetSeedLanguage(language string) string {
 }
 
 // retrieve current seed language
-func (w *Wallet) GetSeedLanguage() string {
-	w.Lock()
-	defer w.Unlock()
+func (w *Wallet_Memory) GetSeedLanguage() string {
 	if w.account.SeedLanguage == "" { // default is English
 		return "English"
 	}
@@ -475,7 +421,7 @@ func (w *Wallet) GetSeedLanguage() string {
 }
 
 // retrieve  secret key for any tx we may have created
-func (w *Wallet) GetRegistrationTX() *transaction.Transaction {
+func (w *Wallet_Memory) GetRegistrationTX() *transaction.Transaction {
 	var tx transaction.Transaction
 	tx.Version = 1
 	tx.TransactionType = transaction.REGISTRATION
@@ -493,7 +439,7 @@ func (w *Wallet) GetRegistrationTX() *transaction.Transaction {
 }
 
 // this basically does a  Schnorr Signature on random information for registration
-func (w *Wallet) sign() (c, s *big.Int) {
+func (w *Wallet_Memory) sign() (c, s *big.Int) {
 	var tmppoint bn256.G1
 
 	tmpsecret := crypto.RandomScalar()
@@ -510,7 +456,7 @@ func (w *Wallet) sign() (c, s *big.Int) {
 }
 
 // retrieve  secret key for any tx we may have created
-func (w *Wallet) GetTXKey(txhash crypto.Hash) string {
+func (w *Wallet_Memory) GetTXKey(txhash crypto.Hash) string {
 	for _, e := range w.account.Entries {
 		if !e.Coinbase && !e.Incoming && e.TXID == txhash {
 			return e.Proof
@@ -518,21 +464,4 @@ func (w *Wallet) GetTXKey(txhash crypto.Hash) string {
 	}
 
 	return ""
-}
-
-// we need better names for functions
-func (w *Wallet) GetTXOutDetails(txhash crypto.Hash) (details structures.Outgoing_Transfer_Details) {
-
-	panic("not implemented")
-	/*
-		data_bytes, err := w.load_key_value(BLOCKCHAIN_UNIVERSE, []byte(TX_OUT_DETAILS_BUCKET), txhash[:])
-		if err != nil {
-			return
-		}
-
-		if len(data_bytes) > 10 {
-			json.Unmarshal(data_bytes, &details)
-		}
-	*/
-	return
 }

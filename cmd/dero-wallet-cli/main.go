@@ -33,7 +33,6 @@ import "sync/atomic"
 //import "bufio"
 //import "bytes"
 //import "net/http"
-//import "encoding/hex"
 
 import "github.com/romana/rlog"
 import "github.com/chzyer/readline"
@@ -84,9 +83,9 @@ Usage:
   `
 var menu_mode bool = true // default display menu mode
 //var account_valid bool = false                        // if an account has been opened, do not allow to create new account in this session
-var offline_mode bool        // whether we are in offline mode
-var sync_in_progress int     //  whether sync is in progress with daemon
-var wallet *walletapi.Wallet //= &walletapi.Account{} // all account  data is available here
+var offline_mode bool             // whether we are in offline mode
+var sync_in_progress int          //  whether sync is in progress with daemon
+var wallet *walletapi.Wallet_Disk //= &walletapi.Account{} // all account  data is available here
 //var address string
 var sync_time time.Time // used to suitable update  prompt
 
@@ -119,8 +118,8 @@ func main() {
 		log.Fatalf("Error while parsing options err: %s\n", err)
 	}
 
-   // init the lookup table one, anyone importing walletapi should init this first
-   walletapi.Balance_lookup_table = walletapi.Initialize_LookupTable(1, 1<<19)
+	// init the lookup table one, anyone importing walletapi should init this first, this will take around 1 sec on any recent system
+	walletapi.Initialize_LookupTable(1, 1<<20)
 
 	// We need to initialize readline first, so it changes stderr to ansi processor on windows
 	l, err := readline.NewEx(&readline.Config{
@@ -275,6 +274,7 @@ func main() {
 	if wallet != nil {
 		common_processing(wallet)
 	}
+	go walletapi.Keep_Connectivity() // maintain connectivity
 
 	//pipe_reader, pipe_writer = io.Pipe() // create pipes
 
@@ -436,7 +436,7 @@ func update_prompt(l *readline.Instance) {
 }
 
 // create a new wallet from scratch from random numbers
-func Create_New_Wallet(l *readline.Instance) (w *walletapi.Wallet, err error) {
+func Create_New_Wallet(l *readline.Instance) (w *walletapi.Wallet_Disk, err error) {
 
 	// ask user a file name to store the data
 

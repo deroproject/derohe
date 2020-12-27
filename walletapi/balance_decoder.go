@@ -16,22 +16,22 @@
 
 package walletapi
 
-import "os"
+import "runtime"
 import "fmt"
 import "sort"
 import "math/big"
 import "encoding/binary"
 
-import "github.com/mattn/go-isatty"
-import "github.com/cheggaaa/pb/v3"
+//import "github.com/mattn/go-isatty"
+//import "github.com/cheggaaa/pb/v3"
 
 import "github.com/deroproject/derohe/crypto"
 import "github.com/deroproject/derohe/crypto/bn256"
 
-// this file implements balance decoder whih has to be bruteforce
+// this file implements balance decoder whih has to be bruteforced
 // balance is a 64 bit field and total effort is 2^64
 // but in reality, the balances are well distributed with the expectation that no one will ever be able to collect over 2 ^ 40
-// However, 2^40 is solvable in less than 1 sec on a single core, with around 128 MB RAM, see below
+// However, 2^40 is solvable in less than 1 sec on a single core, with around 8 MB RAM, see below
 // these tables are sharable between wallets
 
 //type PreComputeTable [16*1024*1024]uint64 // each table is 128 MB in size
@@ -57,56 +57,80 @@ func (p PreComputeTable) Len() int           { return len(p) }
 func (p PreComputeTable) Less(i, j int) bool { return p[i] < p[j] }
 func (p PreComputeTable) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
+var precompute_table_ready = make(chan int)
+
 // with some more smartness table can be condensed more to contain 16.3% more entries within the same size
 func Initialize_LookupTable(count int, table_size int) *LookupTable {
 	t := make([]PreComputeTable, count, count)
 
-	terminal := isatty.IsTerminal(os.Stdout.Fd())
+	if table_size&0xff != 0 {
+		panic("table size must be multiple of 256")
+	}
 
-	var acc, tmp bn256.G1 // avoid allocations every loop
+	//terminal := isatty.IsTerminal(os.Stdout.Fd())
+
+	var acc bn256.G1 // avoid allocations every loop
 	acc.ScalarMult(crypto.G, new(big.Int).SetUint64(0))
+
+	small_table := make([]*bn256.G1, 256, 256)
+	for k := range small_table {
+		small_table[k] = new(bn256.G1)
+	}
+
+	var compressed [33]byte
 
 	for i := range t {
 		t[i] = make([]uint64, table_size, table_size)
 
-		bar := pb.New(table_size)
-		if terminal {
-			bar.Start()
-		}
-		for j := range (t)[i] {
-			tmp.Set(&acc)
+		//bar := pb.New(table_size)
+		//if terminal {
+		//	bar.Start()
+		//}
+		for j := 0; j < table_size; j += 256 {
 
-			if terminal {
-				bar.Increment()
+			for k := range small_table {
+				small_table[k].Set(&acc)
+				acc.Add(small_table[k], crypto.G)
 			}
+			(bn256.G1Array(small_table)).MakeAffine() // precompute everything ASAP
 
-			// convert acc to compressed point and extract last 5 bytes
-			compressed := acc.EncodeCompressed()
+			//if terminal {
+			//	bar.Add(256)
+			//}
 
-			// replace last bytes by j in coded form
-			compressed[32] = byte(uint64(j) & 0xff)
-			compressed[31] = byte((uint64(j) >> 8) & 0xff)
-			compressed[30] = byte((uint64(j) >> 16) & 0xff)
+			for k := range small_table {
+				// convert acc to compressed point and extract last 5 bytes
+				//compressed := small_table[k].EncodeCompressed()
+				small_table[k].EncodeCompressedToBuf(compressed[:])
 
-			(t)[i][j] = binary.BigEndian.Uint64(compressed[25:])
-			acc.Add(&tmp, crypto.G)
+				// replace last bytes by j in coded form
+				compressed[32] = byte(uint64(j+k) & 0xff)
+				compressed[31] = byte((uint64(j+k) >> 8) & 0xff)
+				compressed[30] = byte((uint64(j+k) >> 16) & 0xff)
+
+				(t)[i][j+k] = binary.BigEndian.Uint64(compressed[25:])
+			}
 
 			//  if j < 300  {
 			//      fmt.Printf("%d[%d]th entry %x\n",i,j, (t)[i][j])
 			// }
 
-			//if j % 10000 == 0 {
-			//    fmt.Printf("completed %f (j %d)\n", float32(j)*100/float32(len((t)[i])), j)
-			//}
+			if j%1000 == 0 && runtime.GOOS == "js" {
+				fmt.Printf("completed %f (j %d)\n", float32(j)*100/float32(len((t)[i])), j)
+				runtime.Gosched() // gives others opportunity to run
+			}
 		}
 
 		//fmt.Printf("sorting start\n")
 		sort.Sort(t[i])
 		//fmt.Printf("sortingcomplete\n")
-		bar.Finish()
+		//bar.Finish()
 	}
 	//fmt.Printf("lookuptable complete\n")
 	t1 := LookupTable(t)
+
+	Balance_lookup_table = &t1
+	close(precompute_table_ready)
 	return &t1
 }
 
@@ -118,6 +142,7 @@ func (t *LookupTable) Lookup(p *bn256.G1, previous_balance uint64) (balance uint
 	//fmt.Printf("decoding balance now\n",)
 	var acc bn256.G1
 
+	<-precompute_table_ready // wait till precompute table is ready
 	// check if previous balance is still sane though it may have mutated
 
 	acc.ScalarMult(crypto.G, new(big.Int).SetUint64(previous_balance))

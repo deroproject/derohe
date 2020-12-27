@@ -28,6 +28,7 @@ import "github.com/deroproject/derohe/crypto"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/walletapi"
+import "github.com/deroproject/derohe/walletapi/rpcserver"
 
 // display menu before a wallet is opened
 func display_easymenu_pre_open_command(l *readline.Instance) {
@@ -206,7 +207,7 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 }
 
 // sets online mode, starts RPC server etc
-func common_processing(wallet *walletapi.Wallet) {
+func common_processing(wallet *walletapi.Wallet_Disk) {
 	if globals.Arguments["--offline"].(bool) == true {
 		//offline_mode = true
 	} else {
@@ -227,13 +228,13 @@ func common_processing(wallet *walletapi.Wallet) {
 			rpc_address = globals.Arguments["--rpc-bind"].(string)
 		}
 		globals.Logger.Infof("Starting RPC server at %s", rpc_address)
-		err := wallet.Start_RPC_Server(rpc_address)
-		if err != nil {
+
+		if _, err := rpcserver.RPCServer_Start(wallet); err != nil {
 			globals.Logger.Warnf("Error starting rpc server err %s", err)
 
 		}
 
 	}
-    time.Sleep(time.Second)
+	time.Sleep(time.Second)
 
 }

@@ -21,6 +21,8 @@ type Tree struct {
 	size     int
 	Tags     []string // tags used while commit, will get cleaned after commit
 
+	snapshot_version uint64 // used to track which snapshot version this tree has loaded from
+
 	tmp_buffer bytes.Buffer
 }
 
@@ -109,37 +111,34 @@ func Commit(trees ...*Tree) (committed_version uint64, err error) {
 	trees[0].store.commitsync.Lock()
 	defer trees[0].store.commitsync.Unlock()
 
-	gv, err := trees[0].store.LoadSnapshot(0)
+	// sanity checkthat all trees were derived from the same snapshot
+	first_tree_snapshot_version := trees[0].snapshot_version
+	for i := range trees {
+		if first_tree_snapshot_version != trees[i].snapshot_version {
+			return 0, fmt.Errorf("all trees simultaneously committed must be derived from the same snapshot")
+		}
+	}
+
+	gv, err := trees[0].store.LoadSnapshot(first_tree_snapshot_version)
 	if err != nil {
 		return
 	}
 
-	for _, tree := range trees {
+	for _, tree := range trees { // commit all the trees with reference to same snapshot
 		if err = gv.commit(tree); err != nil {
 			return
 		}
 	}
 
-	// version should be committed only if it has changed
-	// this block of code writes reverse version pointers
-	_, highest_version, findex, fpos := trees[0].store.findhighestsnapshotinram()
-	var valuearray [HASHSIZE]byte
-	var key [512]byte
-	key[0] = ':'
-	key[1] = ':'
-	done := 2
-	done += binary.PutUvarint(key[done:], highest_version)
-
-	valuesize := encode(findex, fpos, valuearray[:]) //store link of previous version root to previous version findex,fpos
-
-	if err = gv.vroot.Insert(gv.store, newLeaf(sum([]byte(key[:done])), []byte(key[:done]), valuearray[:valuesize])); err == nil {
-		if findex, fpos, err = trees[0].commit_inner(gv, true, 0, gv.vroot); err == nil { // we must discard any version changes
-			if err = trees[0].store.writeVersionData(gv.vroot.version_current, findex, fpos); err == nil {
-				committed_version = gv.vroot.version_current
+	var findex, fpos uint32
+	if findex, fpos, err = trees[0].commit_inner(gv, true, 0, gv.vroot); err == nil { // version number increments here
+		if err = trees[0].store.writeVersionData(gv.vroot.version_current, findex, fpos); err == nil {
+			committed_version = gv.vroot.version_current
+			for i := range trees {
+				trees[i].snapshot_version = committed_version // increment version
 			}
 		}
 	}
-
 	//fmt.Printf("committing version tree %x\n", gv.vroot.Hash(gv.store))
 
 	// this is we are cleaning up the trees, should we report bak any error , why  should this code be here
@@ -323,7 +322,8 @@ func (t *Tree) commit_inner(gv *Snapshot, specialversion bool, level int, in *in
 
 		if specialversion { // this is for the version root
 			// lets increment the version number and put it again
-			_, in.version_current, _, _ = t.store.findhighestsnapshotinram() // setup index properly
+
+			_, in.version_current, _, _, _ = t.store.findhighestsnapshotinram() // setup index properly
 			in.version_current++
 			in.version_previous = old_version
 

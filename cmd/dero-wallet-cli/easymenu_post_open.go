@@ -132,14 +132,14 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 		reg_tx := wallet.GetRegistrationTX()
 
-		if ConfirmYesNoDefaultNo(l, "Confirm Registration (y/N)") {
+
 			// at this point we must send the registration transaction
 
 			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.Pls wait till the account is registered.", wallet.GetAddress())
 
 			wallet.SendTransaction(reg_tx)
 
-		}
+		
 
 	case "6":
 		offline_tx = true

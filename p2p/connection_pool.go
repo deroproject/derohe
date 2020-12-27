@@ -66,9 +66,11 @@ type Queued_Command struct {
 // golang restricts 64 bit uint64/int atomic on a 64 bit boundary
 // therefore all atomics are on the top
 type Connection struct {
-	Height       int64 // last height sent by peer  ( first member alignments issues)
-	StableHeight int64 // last stable height
-	TopoHeight   int64 // topo height, current topo height, this is the only thing we require for syncing
+	Height       int64       // last height sent by peer  ( first member alignments issues)
+	StableHeight int64       // last stable height
+	TopoHeight   int64       // topo height, current topo height, this is the only thing we require for syncing
+	StateHash    crypto.Hash // statehash at the top
+	Pruned       int64       // till where chain has been pruned on this node
 
 	LastObjectRequestTime int64  // when was the last item placed in object list
 	BytesIn               uint64 // total bytes in
@@ -260,9 +262,9 @@ func Connection_Print() {
 	fmt.Printf("Connection info for peers\n")
 
 	if globals.Arguments["--debug"].(bool) == true {
-		fmt.Printf("%-20s %-16s %-5s %-7s %-7s %23s %3s %5s %s %s %s %s %10s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "S/H/T", "DIR", "QUEUE", "     IN", "    OUT", " IN SPEED", " OUT SPEED", "Version")
+		fmt.Printf("%-20s %-16s %-5s %-7s %-7s %23s %3s %5s %s %s %s %s %16s %16s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "S/H/T", "DIR", "QUEUE", "     IN", "    OUT", " IN SPEED", " OUT SPEED", "Version", "Statehash")
 	} else {
-		fmt.Printf("%-20s %-16s %-5s %-7s %-7s %17s %3s %5s %s %s %s %s %10s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "H/T", "DIR", "QUEUE", "     IN", "    OUT", " IN SPEED", " OUT SPEED", "Version")
+		fmt.Printf("%-20s %-16s %-5s %-7s %-7s %17s %3s %5s %s %s %s %s %16s %16s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "H/T", "DIR", "QUEUE", "     IN", "    OUT", " IN SPEED", " OUT SPEED", "Version", "Statehash")
 
 	}
 
@@ -320,11 +322,11 @@ func Connection_Print() {
 
 		if globals.Arguments["--debug"].(bool) == true {
 			hstring := fmt.Sprintf("%d/%d/%d", clist[i].StableHeight, clist[i].Height, clist[i].TopoHeight)
-			fmt.Printf("%-20s %16x %5d %7s %7s %23s %s %5d %7s %7s %8s %9s     %10s %s\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].IsConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag)
+			fmt.Printf("%-20s %16x %5d %7s %7s %23s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].IsConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:])
 
 		} else {
 			hstring := fmt.Sprintf("%d/%d", clist[i].Height, clist[i].TopoHeight)
-			fmt.Printf("%-20s %16x %5d %7s %7s %17s %s %5d %7s %7s %8s %9s     %10s %s\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].IsConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag)
+			fmt.Printf("%-20s %16x %5d %7s %7s %17s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].IsConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:8])
 
 		}
 
@@ -542,18 +544,19 @@ func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int
 		}
 	}()
 
-	var request Notify_New_Objects_Struct
-
+	var request Object_Request_Struct
 	fill_common_skip_topoheight(&request.Common) // fill common info, but skip topo height
-	request.Command = V2_NOTIFY_NEW_TX
-	request.Tx = tx.Serialize()
+	request.Command = V2_NOTIFY_INVENTORY
+
+	txhash := tx.GetHash()
+
+	request.Tx_list = append(request.Tx_list, txhash)
 
 	serialized, err := msgpack.Marshal(&request)
 	if err != nil {
 		panic(err)
 	}
 
-	txhash := tx.GetHash()
 	our_height := chain.Get_Height()
 
 	unique_map := UniqueConnections()
@@ -585,16 +588,23 @@ func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int
 					}
 				}()
 
-				connection.Send_Message(serialized) // send the bytes
-
-				// mark the TX  as having sent to this node
-				// when this tx is
-				connection.TXpool_cache_lock.Lock()
+				resend := true
 				// disable cache if not possible due to options
+				// assuming the peer is good, he would like to obtain the tx ASAP
 				if globals.Arguments["--lowcpuram"].(bool) == false && connection.TXpool_cache != nil {
-					connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])] = uint32(time.Now().Unix())
+					connection.TXpool_cache_lock.Lock()
+					if _, ok := connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])]; !ok {
+						connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])] = uint32(time.Now().Unix())
+						resend = true
+					} else {
+						resend = false
+					}
+					connection.TXpool_cache_lock.Unlock()
 				}
-				connection.TXpool_cache_lock.Unlock()
+
+				if resend {
+					connection.Send_Message(serialized) // send the bytes
+				}
 
 			}(v)
 		}
@@ -662,7 +672,7 @@ func trigger_sync() {
 
 		//connection.Lock()   recursive mutex are not suported
 		// only choose highest available peers for syncing
-		if atomic.LoadUint32(&connection.State) != HANDSHAKE_PENDING && topoheight <= atomic.LoadInt64(&connection.TopoHeight) { // skip pre-handshake connections
+		if atomic.LoadUint32(&connection.State) != HANDSHAKE_PENDING && topoheight <= atomic.LoadInt64(&connection.TopoHeight) && topoheight >= connection.Pruned { // skip pre-handshake connections
 			// check whether we are lagging with this connection
 			//connection.Lock()
 			islagging := chain.IsLagging(connection.CDIFF.Load().(*big.Int)) // we only use cdiff to see if we need to resync

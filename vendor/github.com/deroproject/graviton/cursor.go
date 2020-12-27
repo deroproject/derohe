@@ -140,7 +140,3 @@ try_again:
 		return k, v, fmt.Errorf("unknown node type, corruption")
 	}
 }
-
-
-
-

@@ -45,7 +45,7 @@ import "github.com/deroproject/derohe/address"
 import "github.com/deroproject/derohe/crypto/bn256"
 
 // send amount to specific addresses
-func (w *Wallet) Transfer(addr []address.Address, amount []uint64, unlock_time uint64, payment_id_hex string, fees_per_kb uint64, ringsize uint64, transfer_all bool) (tx *transaction.Transaction, err error) {
+func (w *Wallet_Memory) Transfer(addr []address.Address, amount []uint64, unlock_time uint64, payment_id_hex string, fees_per_kb uint64, ringsize uint64, transfer_all bool) (tx *transaction.Transaction, err error) {
 
 	//    var  transfer_details structures.Outgoing_Transfer_Details
 	w.transfer_mutex.Lock()
@@ -146,6 +146,14 @@ func (w *Wallet) Transfer(addr []address.Address, amount []uint64, unlock_time u
 	previous := w.account.Balance_Result.Data
 
 	self_e, err := w.GetEncryptedBalance("", w.GetAddress().String())
+	if err != nil {
+		return
+	}
+
+	WaitNewHeightBlock() // wait till a new block at new height is found
+	// due to this we weill dispatch a new tx immediate after a block is found for better propagation
+
+	self_e, err = w.GetEncryptedBalance("", w.GetAddress().String())
 	if err != nil {
 		return
 	}

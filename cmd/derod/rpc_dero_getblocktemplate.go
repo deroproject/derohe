@@ -44,16 +44,16 @@ func (DERO_RPC_APIS) GetBlockTemplate(ctx context.Context, p structures.GetBlock
 		}
 	}()
 	/*
-		if !get_block_limiter.Allow() { // if rate limiter allows, then add block to chain
-			logger.Warnf("Too many get block template requests per sec rejected by chain.")
+			if !get_block_limiter.Allow() { // if rate limiter allows, then add block to chain
+				logger.Warnf("Too many get block template requests per sec rejected by chain.")
 
-	                return nil,&jsonrpc.Error{
-			Code:    jsonrpc.ErrorCodeInvalidRequest,
-			Message: "Too many get block template requests per sec rejected by chain.",
-		}
+		                return nil,&jsonrpc.Error{
+				Code:    jsonrpc.ErrorCodeInvalidRequest,
+				Message: "Too many get block template requests per sec rejected by chain.",
+			}
 
 
-		}
+			}
 	*/
 
 	// validate address

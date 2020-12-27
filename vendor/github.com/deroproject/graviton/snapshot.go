@@ -19,13 +19,12 @@ type Snapshot struct {
 // note: 0th tree is not stored in disk
 // also note that commits are being done so versions might be change
 func (store *Store) LoadSnapshot(version uint64) (*Snapshot, error) {
-	if !store.version_data_loaded {
-		if err := store.loadsnapshottablestoram(); err != nil {
-			return nil, err
-		}
-	}
+	var err error
 
-	_, highest_version, findex, fpos := store.findhighestsnapshotinram() // only latest version can be reached from the table
+	_, highest_version, findex, fpos, err := store.findhighestsnapshotinram() // only latest version can be reached from the table
+	if err != nil {
+		return nil, err
+	}
 	if version > highest_version {
 		return nil, fmt.Errorf("Database highest version: %d you requested %d.Not Possible!!", highest_version, version)
 	}
@@ -38,30 +37,18 @@ func (store *Store) LoadSnapshot(version uint64) (*Snapshot, error) {
 				return nil, err
 			} else {
 				return &Snapshot{store: store, version: highest_version, findex: uint32(findex), fpos: uint32(fpos), vroot: vroot}, nil
-
 			}
 		}
 	}
 	// user requested an arbitrary version between 1 and highest_version -1
-	_, hvroot, err := store.loadrootusingpos(findex, fpos) // load highest version root tree
-	if err != nil {
+	if findex, fpos, err = store.ReadVersionData(version); err != nil {
 		return nil, err
 	}
-
-	var key = [512]byte{':', ':'} // now use it to locate specific version tree
-	done := 2
-	done += binary.PutUvarint(key[done:], version)
-
-	eposition, err := hvroot.Get(store, sum(key[:done]))
-	if err != nil {
-		return nil, err
-	}
-
-	findex, fpos = decode(eposition)
 	_, vroot, err := store.loadrootusingpos(findex, fpos)
 	if err != nil {
 		return nil, err
 	}
+
 	return &Snapshot{store: store, version: version, findex: findex, fpos: fpos, vroot: vroot}, nil
 }
 
@@ -91,26 +78,12 @@ func (s *Snapshot) loadTree(key []byte) (tree *Tree, err error) {
 	if position, err = s.vroot.Get(s.store, sum(key)); err == nil { // underscore is first character
 
 		if bname, root, err = s.store.loadrootusingpos(decode(position)); err == nil {
-			tree = &Tree{store: s.store, root: root, treename: bname}
+			tree = &Tree{store: s.store, root: root, treename: bname, snapshot_version: s.version}
 			tree.Hash()
 		}
 	}
 
 	return tree, err
-}
-
-func (store *Store) findhighestsnapshotinram() (index int, version uint64, findex, fpos uint32) {
-	var highest_version uint64
-	for i := 0; i < internal_MAX_VERSIONS_TO_KEEP; i++ {
-		if highest_version < binary.LittleEndian.Uint64(store.version_data[i*internal_VERSION_RECORD_SIZE:]) {
-			index = i
-			version = binary.LittleEndian.Uint64(store.version_data[i*internal_VERSION_RECORD_SIZE:])
-			findex = uint32(binary.LittleEndian.Uint64(store.version_data[i*internal_VERSION_RECORD_SIZE+8:]))
-			fpos = uint32(binary.LittleEndian.Uint64(store.version_data[i*internal_VERSION_RECORD_SIZE+16:]))
-			highest_version = version
-		}
-	}
-	return
 }
 
 // Load a versioned tree from the store all trees have there own version number
@@ -122,7 +95,7 @@ func (s *Snapshot) GetTreeWithVersion(treename string, version uint64) (*Tree, e
 	}
 
 	if version == 0 {
-		return &Tree{root: newInner(0), treename: treename, store: s.store}, nil
+		return &Tree{root: newInner(0), treename: treename, store: s.store, snapshot_version: s.version}, nil
 	}
 
 	done := 1

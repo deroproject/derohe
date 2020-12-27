@@ -512,7 +512,7 @@ var main_template string = `
       <h2 style="margin-bottom: 0px">Transactions in the last 11 blocks</h2>
 
     <h4 style="font-size: 14px; margin-top: 0px">(Median size of these blocks: 0.09 kB)</h4>
-
+    {{ template "paging" . }}
     <div class="center">
 
             <table class="center">

@@ -87,30 +87,37 @@ func (connection *Connection) Handle_ObjectRequest(buf []byte) {
 		connection.Exit()
 	}
 
-	if len(request.Block_list) < 1 { // we are expecting 1 block
+	if len(request.Block_list) < 1 && len(request.Tx_list) < 1 { // we are expecting 1 block or 1 tx
 		rlog.Warnf("malformed object request  received, banning peer %+v %s", request, connection.logid)
 		connection.Exit()
 	}
 
-	for i := 0; i < len(request.Block_list); i++ { // find the common point in our chain
+	for i := range request.Block_list { // find the common point in our chain
 		var cbl Complete_Block
-		if chain.Is_Block_Topological_order(request.Block_list[i]) {
-			bl, _ := chain.Load_BL_FROM_ID(request.Block_list[i])
-			cbl.Block = bl.Serialize()
-			for j := range bl.Tx_hashes {
-				var tx_bytes []byte
-				if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[j]); err != nil {
-					return
-				}
-				cbl.Txs = append(cbl.Txs, tx_bytes) // append all the txs
-
+		bl, _ := chain.Load_BL_FROM_ID(request.Block_list[i])
+		cbl.Block = bl.Serialize()
+		for j := range bl.Tx_hashes {
+			var tx_bytes []byte
+			if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[j]); err != nil {
+				return
 			}
-		}
+			cbl.Txs = append(cbl.Txs, tx_bytes) // append all the txs
 
+		}
 		response.CBlocks = append(response.CBlocks, cbl)
 	}
 
-	// we can serve maximum of 1024 BLID = 32 KB
+	for i := range request.Tx_list { // find the common point in our chain
+		var tx_bytes []byte
+		if tx := chain.Mempool.Mempool_Get_TX(request.Tx_list[i]); tx != nil { // if tx can be satisfied from pool, so be it
+			tx_bytes = tx.Serialize()
+		} else if tx := chain.Regpool.Regpool_Get_TX(request.Tx_list[i]); tx != nil { // if tx can be satisfied from regpool, so be it
+			tx_bytes = tx.Serialize()
+		} else if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(request.Tx_list[i]); err != nil {
+			return
+		}
+		response.Txs = append(response.Txs, tx_bytes) // append all the txs
+	}
 
 	// if everything is OK, we must respond with object response
 	fill_common(&response.Common) // fill common info

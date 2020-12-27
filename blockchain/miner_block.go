@@ -100,12 +100,12 @@ func (chain *Blockchain) Create_new_miner_block(miner_address address.Address, t
 		if len(bl.Tips) >= 3 {
 			break
 		}
-        if !chain.verifyNonReachabilitytips(append([]crypto.Hash{tips[i]}, bl.Tips...) ) {  // avoid any tips which fail reachability test
-		    continue
-        }
-        if len(bl.Tips) == 0 ||  (len(bl.Tips)>=1 &&  chain.Load_Height_for_BL_ID(bl.Tips[0]) >= chain.Load_Height_for_BL_ID(tips[i]) &&  chain.Load_Height_for_BL_ID(bl.Tips[0]) - chain.Load_Height_for_BL_ID(tips[i]) <= config.STABLE_LIMIT/2) {
-            bl.Tips = append(bl.Tips, tips[i])
-        }
+		if !chain.verifyNonReachabilitytips(append([]crypto.Hash{tips[i]}, bl.Tips...)) { // avoid any tips which fail reachability test
+			continue
+		}
+		if len(bl.Tips) == 0 || (len(bl.Tips) >= 1 && chain.Load_Height_for_BL_ID(bl.Tips[0]) >= chain.Load_Height_for_BL_ID(tips[i]) && chain.Load_Height_for_BL_ID(bl.Tips[0])-chain.Load_Height_for_BL_ID(tips[i]) <= config.STABLE_LIMIT/2) {
+			bl.Tips = append(bl.Tips, tips[i])
+		}
 	}
 
 	//fmt.Printf("miner block placing tips %+v\n", bl.Tips)
@@ -274,7 +274,7 @@ func (chain *Blockchain) Create_new_block_template_mining(top_hash crypto.Hash, 
 	cache_block_mutex.Lock()
 	defer cache_block_mutex.Unlock()
 
-	if (cache_block.Timestamp +1) < (uint64(uint64(time.Now().UTC().Unix()))) || (cache_block.Timestamp > 0 && int64(cache_block.Height) != chain.Get_Height()+1) {
+	if (cache_block.Timestamp+1) < (uint64(uint64(time.Now().UTC().Unix()))) || (cache_block.Timestamp > 0 && int64(cache_block.Height) != chain.Get_Height()+1) {
 		_, bl = chain.Create_new_miner_block(miner_address, nil)
 		cache_block = bl // setup cache for 1 sec
 	} else {
@@ -426,7 +426,7 @@ func (chain *Blockchain) Accept_new_block(block_template []byte, blockhashing_bl
 		cache_block.Timestamp = 0 // expire cache block
 
 		if !chain.simulator { // if not in simulator mode, relay block to the chain
-				chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network
+			chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network
 		}
 	} else {
 		logger.Warnf("Block Rejected %s error %s", bl.GetHash(), err)

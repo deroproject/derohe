@@ -316,21 +316,34 @@ func TestPersistantStore_Empty(t *testing.T) {
 	require.Panics(t, func() { emptystore.uint_to_filename(0) }) // memory store cannot  translate filenames
 
 	emptystore.storage_layer = unknown_layer
-	require.Error(t, emptystore.loadfiles())               // files cannot be loaded from unknown layer
-	require.Error(t, emptystore.loadsnapshottablestoram()) // snapshot table cannot eb loaded from unknown layer
-	emptystore.storage_layer = memory
-	emptystore.versionrootfile = &file{memoryfile: make([]byte, 512, 512)}
-	require.NoError(t, emptystore.loadsnapshottablestoram())
+	require.Error(t, emptystore.loadfiles()) // files cannot be loaded from unknown layer
 
 	emptystore.storage_layer = unknown_layer
 	require.Error(t, emptystore.writeVersionData(0, 0, 0)) // unknown cannot write version data
+	_, err := emptystore.LoadSnapshot(0)                   // unknown storage layer cannot give verions
+	require.Error(t, err)
 
-	//emptystore.storage_layer = memory
-	//emptystore.versionrootfile  = &file{}
-	//require.Error(t,emptystore.writeVersionData(0,0,0)) // unknown cannot write version data
+	_, _, err = emptystore.ReadVersionData(99) // unknown cannot read version data
+	require.Error(t, err)
+
+	{
+		store, err := NewMemStore()
+		_, _, err = store.ReadVersionData(99) // cannot read  future version from memory
+		require.Error(t, err)
+	}
+
+	{
+		dir, err := ioutil.TempDir("", "example99")
+		require.NoError(t, err)
+		defer os.RemoveAll(dir) // clean up
+		store, err := NewDiskStore(dir)
+
+		_, _, err = store.ReadVersionData(99) // cannot read  future version from memory
+		require.Error(t, err)
+	}
 
 	emptystore.storage_layer = unknown_layer
-	_, err := emptystore.read(0, 0, nil)
+	_, err = emptystore.read(0, 0, nil)
 	require.Error(t, err) // unknown cannot read data
 
 	store, err := NewMemStore()

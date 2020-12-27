@@ -21,7 +21,7 @@ import "github.com/deroproject/derohe/crypto/bn256"
 // BUG BUG BUG  this needs to be updated and add more context
 // this function is used to encrypt/decrypt payment id
 // as the operation is symmetric XOR, is the same in both direction
-// 
+//
 func EncryptDecryptPaymentID(blinder *bn256.G1, input []byte) (output []byte) {
 
 	// input must be exactly 8 bytes long

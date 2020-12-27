@@ -65,6 +65,10 @@ func (connection *Connection) Handle_ObjectResponse(buf []byte) {
 		rlog.Warnf("we got %d response for %d requests %s %s", len(response.CBlocks), len(expected.BLID), connection.logid)
 	}
 
+	if len(response.Txs) != len(expected.TXID) { // we requested x block , peer sent us y blocks, time to ban peer
+		rlog.Warnf("we got %d response for %d requests %s %s", len(response.CBlocks), len(expected.BLID), connection.logid)
+	}
+
 	for i := 0; i < len(response.CBlocks); i++ { // process incoming full blocks
 		var cbl block.Complete_Block // parse incoming block and deserialize it
 		var bl block.Block
@@ -107,11 +111,31 @@ func (connection *Connection) Handle_ObjectResponse(buf []byte) {
 		if !ok && err == errormsg.ErrInvalidPoW {
 			connection.logger.Warnf("This peer should be banned")
 			connection.Exit()
+			return
+		}
+
+		if !ok && err == errormsg.ErrPastMissing {
+			rlog.Warnf("Error Incoming Block coould not be added due to missing past, so skipping future block err %s %s", err, connection.logid)
+			return
 		}
 
 		// add the object to object pool from where it will be consume
 		// queue_block_received(bl.GetHash(),&cbl)
 
+	}
+
+	for i := range response.Txs { // process incoming txs for mempool
+		if !chain.Mempool.Mempool_TX_Exist(expected.TXID[i]) { // we still donot have it, so try to process it
+			var tx transaction.Transaction
+			err = tx.DeserializeHeader(response.Txs[i])
+			if err != nil { // we have a tx which could not be deserialized ban peer
+				rlog.Warnf("Error Incoming TX could not be deserialized err %s %s", err, connection.logid)
+				connection.Exit()
+
+				return
+			}
+			chain.Add_TX_To_Pool(&tx) // currently we are ignoring error
+		}
 	}
 
 }

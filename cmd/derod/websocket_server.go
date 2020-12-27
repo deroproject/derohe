@@ -27,6 +27,8 @@ import "context"
 import "strings"
 import "runtime/debug"
 
+import "github.com/romana/rlog"
+
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/blockchain"
@@ -55,6 +57,39 @@ type RPCServer struct {
 //var Exit_In_Progress bool
 var chain *blockchain.Blockchain
 var logger *log.Entry
+
+var client_connections sync.Map
+
+var options = &jrpc2.ServerOptions{AllowPush: true}
+
+// this function triggers notification to all clients that they should repoll
+func Notify_Block_Addition() {
+
+	for {
+		chain.RPC_NotifyNewBlock.L.Lock()
+		chain.RPC_NotifyNewBlock.Wait()
+		chain.RPC_NotifyNewBlock.L.Unlock()
+		client_connections.Range(func(key, value interface{}) bool {
+
+			key.(*jrpc2.Server).Notify(context.Background(), "Repoll", nil)
+			return true
+		})
+	}
+}
+
+func Notify_Height_Changes() {
+
+	for {
+		chain.RPC_NotifyNewBlock.L.Lock()
+		chain.RPC_NotifyNewBlock.Wait()
+		chain.RPC_NotifyNewBlock.L.Unlock()
+		client_connections.Range(func(key, value interface{}) bool {
+
+			key.(*jrpc2.Server).Notify(context.Background(), "HRepoll", nil)
+			return true
+		})
+	}
+}
 
 func RPCServer_Start(params map[string]interface{}) (*RPCServer, error) {
 
@@ -222,6 +257,8 @@ func (r *RPCServer) Run() {
 
 	//r.mux.HandleFunc("/json_rpc/debug", mr.ServeDebug)
 
+	go Notify_Block_Addition() // process all blocks
+	go Notify_Height_Changes() // gives notification of changed height
 	if err := r.srv.ListenAndServe(); err != http.ErrServerClosed {
 		logger.Warnf("ERR listening to address err %s", err)
 	}
@@ -232,10 +269,11 @@ func hello(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "DERO BLOCKCHAIN Hello world!")
 }
 
-var upgrader = websocket.Upgrader{} // use default options
+var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }} // use default options
 
 func ws_handler(w http.ResponseWriter, r *http.Request) {
 
+	var ws_server *jrpc2.Server
 	defer func() {
 
 		// safety so if anything wrong happens, verification fails
@@ -243,17 +281,23 @@ func ws_handler(w http.ResponseWriter, r *http.Request) {
 			logger.Warnf("Recovered while processing websocket request, Stack trace below ")
 			logger.Warnf("Stack trace  \n%s", debug.Stack())
 		}
+		if ws_server != nil {
+			client_connections.Delete(ws_server)
+		}
 
 	}()
 
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade:", err)
+		rlog.Warnf("upgrade:", err)
 		return
 	}
+
 	defer c.Close()
 	input_output := rwc.New(c)
-	jrpc2.NewServer(assigner, nil).Start(channel.RawJSON(input_output, input_output)).Wait()
+	ws_server = jrpc2.NewServer(assigner, options).Start(channel.RawJSON(input_output, input_output))
+	client_connections.Store(ws_server, 1)
+	ws_server.Wait()
 
 }
 

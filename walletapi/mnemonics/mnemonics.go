@@ -72,7 +72,7 @@ func Language_List() (list []string) {
 //this function converts a list of words to a key
 func Words_To_Key(words_line string) (language_name string, keybig *big.Int, err error) {
 
-    var key [32]byte
+	var key [32]byte
 	checksum_present := false
 	words := strings.Fields(words_line)
 	//rlog.Tracef(1, "len of words %d", words)
@@ -128,7 +128,7 @@ func Words_To_Key(words_line string) (language_name string, keybig *big.Int, err
 	//fmt.Printf("words %+v\n", indices)
 	//fmt.Printf("key %x\n", key)
 
-    keybig = new(big.Int).SetBytes(key[:])
+	keybig = new(big.Int).SetBytes(key[:])
 
 	return
 }
@@ -136,7 +136,7 @@ func Words_To_Key(words_line string) (language_name string, keybig *big.Int, err
 // this will map the key to recovery words from the spcific language
 // language must exist,if not we return english
 func Key_To_Words(keybig *big.Int, language string) (words_line string) {
-    var key [32]byte 
+	var key [32]byte
 	var words []string // all words are appended here
 
 	l_index := 0
@@ -147,15 +147,14 @@ func Key_To_Words(keybig *big.Int, language string) (words_line string) {
 		}
 	}
 
-    // FillBytes not available pre 1.15
-    bb := keybig.Bytes()
-    j := 32
-    for i := len(bb)-1; i >= 0; i-- {
-        j-- 
-        key[j] = bb[i]
-        
-    }
+	// FillBytes not available pre 1.15
+	bb := keybig.Bytes()
+	j := 32
+	for i := len(bb) - 1; i >= 0; i-- {
+		j--
+		key[j] = bb[i]
 
+	}
 
 	// total numbers of words in specified language dictionary
 	word_list_length := uint32(len(Languages[l_index].Words))
