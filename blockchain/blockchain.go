@@ -230,7 +230,7 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 	//   logger.Fatalf("Testing complete quitting")
 
-	//go clean_up_valid_cache() // clean up valid cache
+	go clean_up_valid_cache() // clean up valid cache
 
 	/*  txlist := chain.Mempool.Mempool_List_TX()
 	    for i := range txlist {
@@ -1501,7 +1501,7 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 			panic(err)
 		}
 
-		if chain.IsBlockSyncBlockHeight(r.BLOCK_ID) || r.Height == 0 {
+		if chain.IsBlockSyncBlockHeight(r.BLOCK_ID) || r.Height == 1 {
 			break
 		}
 

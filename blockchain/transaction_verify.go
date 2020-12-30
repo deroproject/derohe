@@ -105,14 +105,14 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 
 		if _, err := balance_tree.Get(minertx.MinerAddress[:]); err != nil {
 			//logger.Infof("balance not obtained err %s\n",err)
-			return false
+			//return false
 		} else {
 			return true
 		}
 
 	}
 
-	return true
+	return false
 }
 
 // all non miner tx must be non-coinbase tx
@@ -137,8 +137,17 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 		return false
 	}
 
+	tx_hash = tx.GetHash()
+
 	if tx.TransactionType == transaction.REGISTRATION {
+		if _, ok := transaction_valid_cache.Load(tx_hash); ok {
+			return true //logger.Infof("Found in cache %s ",tx_hash)
+		} else {
+			//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
+		}
+
 		if tx.IsRegistrationValid() {
+			transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
 			return true
 		}
 		return false
@@ -230,6 +239,12 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 		panic("mentioned balance tree not found, cannot verify TX")
 	}
 
+	if _, ok := transaction_valid_cache.Load(tx_hash); ok {
+		return true //logger.Infof("Found in cache %s ",tx_hash)
+	} else {
+		//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
+	}
+
 	//logger.Infof("dTX  state tree has been found")
 
 	// now lets calculate CLn and CRn
@@ -251,6 +266,7 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 
 	if tx.Proof.Verify(&tx.Statement, tx.GetHash()) {
 		//logger.Infof("dTX verified with proof successfuly")
+		transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
 		return true
 	}
 	logger.Infof("transaction verification failed\n")
