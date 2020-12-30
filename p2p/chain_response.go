@@ -74,7 +74,7 @@ func (connection *Connection) Handle_ChainResponse(buf []byte) {
 	// we do not need reorganisation if deviation is less than  or equak to 7 blocks
 	// only pop blocks if the system has somehow deviated more than 7 blocks
 	// if the deviation is less than 7 blocks, we internally reorganise everything
-	if chain.Load_TOPO_HEIGHT()-response.Start_topoheight >= config.STABLE_LIMIT && connection.SyncNode {
+	if chain.Get_Height() -response.Start_height > config.STABLE_LIMIT && connection.SyncNode {
 		// get our top block
 		rlog.Infof("rewinding status our %d  peer %d", chain.Load_TOPO_HEIGHT(), response.Start_topoheight)
 		pop_count := chain.Load_TOPO_HEIGHT() - response.Start_topoheight
@@ -84,7 +84,12 @@ func (connection *Connection) Handle_ChainResponse(buf []byte) {
 		connection.Send_ChainRequest()
 		return
 
-	}
+	}else if chain.Get_Height()-response.Start_height <= config.STABLE_LIMIT {
+        pop_count := chain.Load_TOPO_HEIGHT() - response.Start_topoheight
+		chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
+    }else{ // we must somehow notify that deviation is way too much and manual interaction is necessary, so as any bug for chain deviationmay be detected
+
+    }
 
 	// response only 128 blocks at a time
 	max_blocks_to_queue := 128
@@ -93,7 +98,8 @@ func (connection *Connection) Handle_ChainResponse(buf []byte) {
 
 	rlog.Infof("response block list %d\n", len(response.Block_list))
 	for i := range response.Block_list {
-		if chain.Load_Block_Topological_order(response.Block_list[i]) == -1 { // if block is not in our chain, add it to request list
+        our_topo_order := chain.Load_Block_Topological_order(response.Block_list[i])
+		if  our_topo_order != (int64(i)+ response.Start_topoheight) ||  chain.Load_Block_Topological_order(response.Block_list[i]) == -1 { // if block is not in our chain, add it to request list
 			//queue_block(request.Block_list[i])
 			if max_blocks_to_queue >= 0 {
 				max_blocks_to_queue--

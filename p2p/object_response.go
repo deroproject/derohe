@@ -69,6 +69,25 @@ func (connection *Connection) Handle_ObjectResponse(buf []byte) {
 		rlog.Warnf("we got %d response for %d requests %s %s", len(response.CBlocks), len(expected.BLID), connection.logid)
 	}
 
+    // make sure connection does not timeout and be killed while processing huge blocks
+    processing_complete := make(chan bool)
+    go func() {
+            ticker := time.NewTicker(500 * time.Millisecond)
+            defer ticker.Stop()
+        for {
+                select {
+                    case <- processing_complete: return // complete the loop
+                    case  <-ticker.C:// give the chain some more time to respond
+		                    atomic.StoreInt64(&connection.LastObjectRequestTime, time.Now().Unix())
+                    }
+            }
+        }()
+
+    defer func() {
+            processing_complete <- true
+        }()
+    
+     
 	for i := 0; i < len(response.CBlocks); i++ { // process incoming full blocks
 		var cbl block.Complete_Block // parse incoming block and deserialize it
 		var bl block.Block

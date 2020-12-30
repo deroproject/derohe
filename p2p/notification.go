@@ -18,7 +18,7 @@ package p2p
 
 //import "fmt"
 //import "net"
-//import "sync"
+import "sync/atomic"
 import "time"
 
 import "encoding/binary"
@@ -178,6 +178,24 @@ func (connection *Connection) Handle_Notification_Block(buf []byte) {
 			cbl.Txs = append(cbl.Txs, tx) // tx is from disk
 		}
 	}
+
+// make sure connection does not timeout and be killed while processing huge blocks
+    processing_complete := make(chan bool)
+    go func() {
+            ticker := time.NewTicker(500 * time.Millisecond)
+            defer ticker.Stop()
+        for {
+                select {
+                    case <- processing_complete: return // complete the loop
+                    case  <-ticker.C:// give the chain some more time to respond
+		                    atomic.StoreInt64(&connection.LastObjectRequestTime, time.Now().Unix())
+                    }
+            }
+        }()
+
+    defer func() {
+            processing_complete <- true
+        }()
 
 	// check if we can add ourselves to chain
 	if err, ok := chain.Add_Complete_Block(&cbl); ok { // if block addition was successfil
