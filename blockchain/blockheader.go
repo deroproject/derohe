@@ -17,13 +17,13 @@
 package blockchain
 
 //import "fmt"
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/rpc"
 
 // this function is only used by the RPC and is not used by the core and should be moved to RPC interface
 
 /* fill up the above structure from the blockchain */
-func (chain *Blockchain) GetBlockHeader(hash crypto.Hash) (result structures.BlockHeader_Print, err error) {
+func (chain *Blockchain) GetBlockHeader(hash crypto.Hash) (result rpc.BlockHeader_Print, err error) {
 	bl, err := chain.Load_BL_FROM_ID(hash)
 	if err != nil {
 		return

@@ -28,6 +28,7 @@ import "path/filepath"
 
 import "github.com/romana/rlog"
 
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/graviton"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/globals"
@@ -158,9 +159,9 @@ func rewrite_graviton_store(store *storage, prune_topoheight int64, max_topoheig
 		var old_ss, write_ss *graviton.Snapshot
 		var old_balance_tree, write_balance_tree *graviton.Tree
 		if old_ss, err = store.Balance_store.LoadSnapshot(toporecord.State_Version); err == nil {
-			if old_balance_tree, err = old_ss.GetTree(BALANCE_TREE); err == nil {
+			if old_balance_tree, err = old_ss.GetTree(config.BALANCE_TREE); err == nil {
 				if write_ss, err = write_store.LoadSnapshot(0); err == nil {
-					if write_balance_tree, err = write_ss.GetTree(BALANCE_TREE); err == nil {
+					if write_balance_tree, err = write_ss.GetTree(config.BALANCE_TREE); err == nil {
 
 						var latest_commit_version uint64
 						latest_commit_version, err = clone_entire_tree(old_balance_tree, write_balance_tree)
@@ -195,16 +196,16 @@ func rewrite_graviton_store(store *storage, prune_topoheight int64, max_topoheig
 
 			if old_toporecord, err = store.Topo_store.Read(old_topo); err == nil {
 				if old_ss, err = store.Balance_store.LoadSnapshot(old_toporecord.State_Version); err == nil {
-					if old_balance_tree, err = old_ss.GetTree(BALANCE_TREE); err == nil {
+					if old_balance_tree, err = old_ss.GetTree(config.BALANCE_TREE); err == nil {
 
 						// fetch new tree data
 						if new_toporecord, err = store.Topo_store.Read(new_topo); err == nil {
 							if new_ss, err = store.Balance_store.LoadSnapshot(new_toporecord.State_Version); err == nil {
-								if new_balance_tree, err = new_ss.GetTree(BALANCE_TREE); err == nil {
+								if new_balance_tree, err = new_ss.GetTree(config.BALANCE_TREE); err == nil {
 
 									// fetch tree where to write it
 									if write_ss, err = write_store.LoadSnapshot(0); err == nil {
-										if write_tree, err = write_ss.GetTree(BALANCE_TREE); err == nil {
+										if write_tree, err = write_ss.GetTree(config.BALANCE_TREE); err == nil {
 
 											//   	new_balance_tree.Graph("/tmp/original.dot")
 											//   	write_tree.Graph("/tmp/writable.dot")

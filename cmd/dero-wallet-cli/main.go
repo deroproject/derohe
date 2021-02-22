@@ -119,7 +119,7 @@ func main() {
 	}
 
 	// init the lookup table one, anyone importing walletapi should init this first, this will take around 1 sec on any recent system
-	walletapi.Initialize_LookupTable(1, 1<<20)
+	walletapi.Initialize_LookupTable(1, 1<<17)
 
 	// We need to initialize readline first, so it changes stderr to ansi processor on windows
 	l, err := readline.NewEx(&readline.Config{
@@ -407,11 +407,13 @@ func update_prompt(l *readline.Instance) {
 			balance_string := ""
 
 			//balance_unlocked, locked_balance := wallet.Get_Balance_Rescan()// wallet.Get_Balance()
-			balance_unlocked, locked_balance := wallet.Get_Balance()
-			balance_string = fmt.Sprintf(color_green+"%s "+color_white+"| "+color_yellow+"%s", globals.FormatMoney(balance_unlocked), globals.FormatMoney(locked_balance))
+			balance_unlocked, _ := wallet.Get_Balance()
+			balance_string = fmt.Sprintf(color_green+"%s "+color_white, globals.FormatMoney(balance_unlocked))
 
 			if wallet.Error != nil {
 				balance_string += fmt.Sprintf(color_red+" %s ", wallet.Error)
+			} else if wallet.PoolCount() > 0 {
+				balance_string += fmt.Sprintf(color_yellow+"(%d tx pending for -%s)", wallet.PoolCount(), globals.FormatMoney(wallet.PoolBalance()))
 			}
 
 			testnet_string := ""

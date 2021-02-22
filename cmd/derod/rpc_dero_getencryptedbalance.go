@@ -19,25 +19,23 @@ package main
 import "fmt"
 import "math"
 import "context"
-import "encoding/hex"
 import "runtime/debug"
 
-//import	"log"
-//import 	"net/http"
 import "golang.org/x/xerrors"
-
 import "github.com/deroproject/graviton"
-
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p structures.GetEncryptedBalance_Params) (result structures.GetEncryptedBalance_Result, err error) {
+//import "github.com/deroproject/derohe/dvm"
+//import "github.com/deroproject/derohe/cryptography/crypto"
+
+func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p rpc.GetEncryptedBalance_Params) (result rpc.GetEncryptedBalance_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
+			fmt.Printf("panic stack trace %s\n", debug.Stack())
 		}
 	}()
 
@@ -66,33 +64,23 @@ func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p structures.GetEn
 
 	var balance_tree *graviton.Tree
 
-	if p.Merkle_Balance_TreeHash != "" { // user requested a specific tree hash version
-
-		hash, err := hex.DecodeString(p.Merkle_Balance_TreeHash)
-		if err != nil {
-			panic(err)
-		}
-
-		if len(hash) != 32 {
-			panic("corruted hash")
-		}
-
-		balance_tree, err = ss.GetTreeWithRootHash(hash)
-
-	} else {
-
-		balance_tree, err = ss.GetTree(blockchain.BALANCE_TREE)
-
+	treename := config.BALANCE_TREE
+	keyname := uaddress.Compressed()
+	if !p.SCID.IsZero() {
+		treename = string(p.SCID[:])
 	}
-	if err != nil {
+
+	if balance_tree, err = ss.GetTree(treename); err != nil {
 		panic(err)
 	}
 
-	balance_serialized, err := balance_tree.Get(uaddress.Compressed())
+	bits, _, balance_serialized, err := balance_tree.GetKeyValueFromKey(keyname)
+
+	//fmt.Printf("balance_serialized %x err %s, scid %s keyname %x treename %x\n", balance_serialized,err,p.SCID, keyname, treename)
 
 	if err != nil {
 		if xerrors.Is(err, graviton.ErrNotFound) { // address needs registration
-			return structures.GetEncryptedBalance_Result{ // return success
+			return rpc.GetEncryptedBalance_Result{ // return success
 				Registration: registration,
 				Status:       errormsg.ErrAccountUnregistered.Error(),
 			}, errormsg.ErrAccountUnregistered
@@ -101,7 +89,7 @@ func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p structures.GetEn
 			panic(err)
 		}
 	}
-	merkle_hash, err := balance_tree.Hash()
+	merkle_hash, err := chain.Load_Merkle_Hash(topoheight)
 	if err != nil {
 		panic(err)
 	}
@@ -109,29 +97,15 @@ func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p structures.GetEn
 	// calculate top height merkle tree hash
 	//var dmerkle_hash crypto.Hash
 
-	toporecord, err = chain.Store.Topo_store.Read(chain.Load_TOPO_HEIGHT())
+	dmerkle_hash, err := chain.Load_Merkle_Hash(chain.Load_TOPO_HEIGHT())
 	if err != nil {
 		panic(err)
 	}
 
-	ss, err = chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-	if err != nil {
-		panic(err)
-	}
-
-	balance_tree, err = ss.GetTree(blockchain.BALANCE_TREE)
-	if err != nil {
-		panic(err)
-	}
-
-	dmerkle_hash, err := balance_tree.Hash()
-	if err != nil {
-		panic(err)
-	}
-
-	return structures.GetEncryptedBalance_Result{ // return success
+	return rpc.GetEncryptedBalance_Result{ // return success
 		Data:                     fmt.Sprintf("%x", balance_serialized),
 		Registration:             registration,
+		Bits:                     bits, // no. of bbits required
 		Height:                   toporecord.Height,
 		Topoheight:               topoheight,
 		BlockHash:                fmt.Sprintf("%x", toporecord.BLOCK_ID),
@@ -144,7 +118,7 @@ func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p structures.GetEn
 }
 
 // if address is unregistered, returns negative numbers
-func LocatePointOfRegistration(uaddress *address.Address) int64 {
+func LocatePointOfRegistration(uaddress *rpc.Address) int64 {
 
 	addr := uaddress.Compressed()
 
@@ -192,7 +166,7 @@ func IsRegisteredAtTopoHeight(addr []byte, topoheight int64) bool {
 	}
 
 	var balance_tree *graviton.Tree
-	balance_tree, err = ss.GetTree(blockchain.BALANCE_TREE)
+	balance_tree, err = ss.GetTree(config.BALANCE_TREE)
 	if err != nil {
 		panic(err)
 	}

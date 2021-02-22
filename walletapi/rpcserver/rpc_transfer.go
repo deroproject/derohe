@@ -19,23 +19,15 @@ package rpcserver
 import "fmt"
 import "sync"
 import "context"
-import "encoding/hex"
-import "encoding/json"
 import "runtime/debug"
-
-//import	"log"
-//import 	"net/http"
-
 import "github.com/romana/rlog"
-
-import "github.com/deroproject/derohe/structures"
-import "github.com/deroproject/derohe/address"
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/globals"
+import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/transaction"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 var lock sync.Mutex
 
-func (w *WALLET_RPC_APIS) Transfer(ctx context.Context, p structures.Transfer_Params) (result structures.Transfer_Result, err error) {
+func (w *WALLET_RPC_APIS) Transfer(ctx context.Context, p rpc.Transfer_Params) (err error) {
 
 	lock.Lock()
 	defer lock.Unlock()
@@ -49,78 +41,53 @@ func (w *WALLET_RPC_APIS) Transfer(ctx context.Context, p structures.Transfer_Pa
 	rlog.Debugf("transfer  handler")
 	defer rlog.Debugf("transfer  handler finished")
 
-	if len(p.Destinations) < 1 || p.Mixin != 0 && !crypto.IsPowerOf2(int(p.Mixin)) {
-		return result, fmt.Errorf("invalid ringsize or destinations")
-	}
-
-	rlog.Debugf("Len destinations %d %+v", len(p.Destinations), p)
-
-	payment_id := p.Payment_ID
-	if len(payment_id) > 0 && len(payment_id) != 16 {
-		return result, fmt.Errorf("payment id should be 16 hexchars") // we should give invalid payment ID
-	}
-	if _, err := hex.DecodeString(p.Payment_ID); err != nil {
-		return result, fmt.Errorf("payment id should be 16 hexchars") // we should give invalid payment ID
-	}
-	rlog.Debugf("Payment ID %s", payment_id)
-
-	b, err := json.Marshal(p)
-	if err == nil {
-		rlog.Debugf("Request can be repeated using below command")
-		rlog.Debugf(`curl -X POST http://127.0.0.1:18092/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer_split","params":%s}' -H 'Content-Type: application/json'`, string(b))
-
-	}
-
-	var address_list []address.Address
-	var amount_list []uint64
-	for i := range p.Destinations {
-		a, err := globals.ParseValidateAddress(p.Destinations[i].Address)
+	for _, t := range p.Transfers {
+		_, err = t.Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)
 		if err != nil {
-			rlog.Debugf("Warning Parsing address failed %s err %s\n", p.Destinations[i].Address, err)
-			return result, fmt.Errorf("Warning Parsing address failed %s err %s\n", p.Destinations[i].Address, err)
+			return
 		}
-		address_list = append(address_list, *a)
-		amount_list = append(amount_list, p.Destinations[i].Amount)
-
 	}
 
-	fees_per_kb := uint64(0) // fees  must be calculated by walletapi
 	if !w.wallet.GetMode() { // if wallet is in online mode, use the fees, provided by the daemon, else we need to use what is provided by the user
-
-		return result, fmt.Errorf("Wallet is in offline mode")
+		return fmt.Errorf("Wallet is in offline mode")
 	}
-	tx, err := w.wallet.Transfer(address_list, amount_list, 0, payment_id, fees_per_kb, p.Mixin, false)
+
+	// translate rpc to arguments
+
+	//fmt.Printf("incoming transfer params %+v\n", p)
+
+	if p.SC_Code != "" {
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCACTION, rpc.DataUint64, uint64(rpc.SC_INSTALL)})
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCCODE, rpc.DataString, p.SC_Code})
+	}
+
+	if p.SC_ID != "" {
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCACTION, rpc.DataUint64, uint64(rpc.SC_CALL)})
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCID, rpc.DataHash, crypto.HashHexToHash(p.SC_ID)})
+	}
+
+	/*
+		 // if you need to send tx now mostly for testing purpose use this
+		tx, err := w.wallet.TransferPayload0(p.Transfers, false, p.SC_RPC, false)
+		if err != nil {
+			rlog.Warnf("Error while building Transaction err %s\n", err)
+			return err
+
+		}
+
+		err = w.wallet.SendTransaction(tx)
+		if err != nil {
+			return err
+		}
+	*/
+
+	uid, err := w.wallet.PoolTransfer(p.Transfers, p.SC_RPC)
 	if err != nil {
 		rlog.Warnf("Error while building Transaction err %s\n", err)
-		return result, err
+		return err
 
 	}
+	_ = uid
 
-	//rlog.Infof("fees %s \n", globals.FormatMoney(tx.Statement.Fees))
-
-	//return nil, jsonrpc.ErrInvalidParams()
-
-	if p.Do_not_relay == false { // we do not relay the tx, the user must submit it manually
-		// TODO
-		err = w.wallet.SendTransaction(tx)
-
-		if err == nil {
-			rlog.Debugf("Transaction sent successfully. txid = %s", tx.GetHash())
-		} else {
-			rlog.Debugf("Warning Transaction sending failed txid = %s, err %s", tx.GetHash(), err)
-			return result, fmt.Errorf("Transaction sending failed txid = %s, err %s", tx.GetHash(), err)
-		}
-
-	}
-
-	result.Fee = tx.Statement.Fees
-	result.Tx_hash = tx.GetHash().String()
-	if p.Get_tx_hex { // request need TX blobs, give them
-		result.Tx_blob = hex.EncodeToString(tx.SerializeHeader())
-	}
-	//extract proof key and feed it in here
-	if p.Get_tx_key {
-		result.Tx_key = w.wallet.GetTXKey(tx.GetHash())
-	}
-	return result, nil
+	return nil
 }

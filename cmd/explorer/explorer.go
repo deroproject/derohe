@@ -20,9 +20,6 @@ package main
 // this needs only RPC access
 // NOTE: Only use data exported from within the RPC interface, do direct use of exported variables  fom packages
 // NOTE: we can use structs defined within the RPCserver package
-// This is being developed to track down and confirm some bugs
-// NOTE: This is NO longer entirely compliant with the xyz RPC interface ( the pool part is not compliant), currently and can be used as it for their chain,
-// atleast for the last 1 year
 
 // TODO: error handling is non-existant ( as this was built up in hrs ). Add proper error handling
 //
@@ -31,7 +28,9 @@ import "time"
 import "fmt"
 
 //import "net"
-//import "bytes"
+import "bytes"
+import "unicode"
+import "unsafe" // need to avoid this, but only used by byteviewer
 import "strings"
 import "strconv"
 import "context"
@@ -48,11 +47,11 @@ import log "github.com/sirupsen/logrus"
 //import "github.com/ybbus/jsonrpc"
 
 import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/proof"
 import "github.com/deroproject/derohe/glue/rwc"
 
@@ -164,7 +163,7 @@ func Connect() (err error) {
 		fmt.Printf("Ping Received %s\n", result)
 	}
 
-	var info structures.GetInfo_Result
+	var info rpc.GetInfo_Result
 
 	// collect all the data afresh,  execute rpc to service
 	if err = rpc_client.Call("DERO.GetInfo", nil, &info); err != nil {
@@ -248,6 +247,7 @@ type txinfo struct {
 	Version         int    // version of tx
 	Size            string // size of tx in KB
 	Sizeuint64      uint64 // size of tx in bytes
+	Burn_Value      string //  value of burned amount
 	Fee             string // fee in TX
 	Feeuint64       uint64 // fee in atomic units
 	In              int    // inputs counts
@@ -263,18 +263,37 @@ type txinfo struct {
 	InvalidBlock    []string // the tx is invalid in which block
 	Skipped         bool     // this is only valid, when a block is being listed
 	Ring_size       int
-	//Ring         [][]globals.TX_Output_Data
+	Ring            [][][]byte // contains entire ring  in raw form
 
 	TXpublickey string
 	PayID32     string // 32 byte payment ID
 	PayID8      string // 8 byte encrypted payment ID
 
-	Proof_address string // address agains which which the proving ran
-	Proof_index   int64  // proof satisfied for which index
-	Proof_amount  string // decoded amount
-	Proof_PayID8  string // decrypted 8 byte payment id
-	Proof_error   string // error if any while decoding proof
+	Proof_address     string // address agains which which the proving ran
+	Proof_index       int64  // proof satisfied for which index
+	Proof_amount      string // decoded amount
+	Proof_Payload_raw string // payload raw bytes
+	Proof_Payload     string //   if proof decoded, decoded , else decode error
+	Proof_error       string // error if any while decoding proof
 
+	SC_TX_Available    string            //bool   // whether this contains an SC TX
+	SC_Signer          string            // whether SC signer
+	SC_Signer_verified string            // whether SC signer  can be verified successfully
+	SC_Balance         uint64            // SC SC_Balance in atomic units
+	SC_Balance_string  string            // SC_Balance in DERO
+	SC_Keys            map[string]string // SC key value of
+	SC_Args            rpc.Arguments     // rpc.Arguments
+	SC_Code            string            // install SC
+
+	Assets []Asset
+}
+
+type Asset struct {
+	SCID      crypto.Hash
+	Fees      string
+	Burn      string
+	Ring      []string
+	Ring_size int
 }
 
 // any information for block which needs to be printed
@@ -306,7 +325,7 @@ type block_info struct {
 // if hash is less than 64 bytes then it is considered a height parameter
 func load_block_from_rpc(info *block_info, block_hash string, recursive bool) (err error) {
 	var bl block.Block
-	var bresult structures.GetBlock_Result
+	var bresult rpc.GetBlock_Result
 
 	var block_height int
 	var block_bin []byte
@@ -314,7 +333,7 @@ func load_block_from_rpc(info *block_info, block_hash string, recursive bool) (e
 		fmt.Sscanf(block_hash, "%d", &block_height)
 		// user requested block height
 		log.Debugf("User requested block at topoheight %d  user input %s", block_height, block_hash)
-		if err = rpc_client.Call("DERO.GetBlock", structures.GetBlock_Params{Height: uint64(block_height)}, &bresult); err != nil {
+		if err = rpc_client.Call("DERO.GetBlock", rpc.GetBlock_Params{Height: uint64(block_height)}, &bresult); err != nil {
 			return fmt.Errorf("getblock rpc failed")
 		}
 
@@ -322,7 +341,7 @@ func load_block_from_rpc(info *block_info, block_hash string, recursive bool) (e
 
 		log.Debugf("User requested block using hash %s", block_hash)
 
-		if err = rpc_client.Call("DERO.GetBlock", structures.GetBlock_Params{Hash: block_hash}, &bresult); err != nil {
+		if err = rpc_client.Call("DERO.GetBlock", rpc.GetBlock_Params{Hash: block_hash}, &bresult); err != nil {
 			return fmt.Errorf("getblock rpc failed")
 		}
 	}
@@ -405,10 +424,17 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 	info.Sizeuint64 = uint64(len(tx.Serialize()))
 	info.Version = int(tx.Version)
 	//info.Extra = fmt.Sprintf("%x", tx.Extra)
-	info.RootHash = fmt.Sprintf("%x", tx.Statement.Roothash[:])
+
+	if len(tx.Payloads) >= 1 {
+		info.RootHash = fmt.Sprintf("%x", tx.Payloads[0].Statement.Roothash[:])
+	}
 	info.HeightBuilt = tx.Height
 	//info.In = len(tx.Vin)
 	//info.Out = len(tx.Vout)
+
+	if tx.TransactionType == transaction.BURN_TX {
+		info.Burn_Value = fmt.Sprintf(" %.05f", float64(tx.Value)/100000)
+	}
 
 	switch tx.TransactionType {
 
@@ -418,7 +444,7 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 			panic(err)
 		}
 
-		astring := address.NewAddressFromKeys(&acckey)
+		astring := rpc.NewAddressFromKeys(&acckey)
 		astring.Mainnet = mainnet
 		info.OutAddress = append(info.OutAddress, astring.String())
 		info.Amount = globals.FormatMoney(tx.Value)
@@ -429,7 +455,7 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 			panic(err)
 		}
 
-		astring := address.NewAddressFromKeys(&acckey)
+		astring := rpc.NewAddressFromKeys(&acckey)
 		astring.Mainnet = mainnet
 		info.OutAddress = append(info.OutAddress, astring.String())
 
@@ -440,23 +466,15 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 		if err := acckey.DecodeCompressed(tx.MinerAddress[:]); err != nil {
 			panic(err)
 		}
-		astring := address.NewAddressFromKeys(&acckey)
+		astring := rpc.NewAddressFromKeys(&acckey)
 		astring.Mainnet = mainnet
 		info.OutAddress = append(info.OutAddress, astring.String())
-	case transaction.NORMAL:
+	case transaction.NORMAL, transaction.BURN_TX, transaction.SC_TX:
 
-		info.Fee = fmt.Sprintf("%.05f", float64(tx.Statement.Fees)/100000)
-		info.Feeuint64 = tx.Statement.Fees
-		info.Amount = "?"
+	}
 
-		info.Ring_size = len(tx.Statement.Publickeylist_compressed) //len(tx.Vin[0].(transaction.Txin_to_key).Key_offsets)
-
-		for i := range tx.Statement.Publickeylist {
-			astring := address.NewAddressFromKeys((*crypto.Point)(tx.Statement.Publickeylist[i]))
-			astring.Mainnet = mainnet
-			info.OutAddress = append(info.OutAddress, astring.String())
-
-		}
+	if tx.TransactionType == transaction.SC_TX {
+		info.SC_Args = tx.SCDATA
 	}
 
 	// if outputs cannot be located, do not panic
@@ -468,21 +486,11 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 	switch 0 {
 	case 0:
 		info.Type = "DERO_HOMOMORPHIC"
-		/*case 1:
-			info.Type = "RingCT/1 MG"
-		case 2:
-			info.Type = "RingCT/2 Simple"
-		case 3:
-			info.Type = "RingCT/3 Full bulletproof"
-		case 4:
-			info.Type = "RingCT/4 Simple Bulletproof"
-		*/
-
 	default:
-		panic("not implement")
+		panic("not implemented")
 	}
 
-	if !info.In_Pool && !info.CoinBase && tx.TransactionType == transaction.NORMAL { // find the age of block and other meta
+	if !info.In_Pool && !info.CoinBase && (tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.SC_TX) { // find the age of block and other meta
 		var blinfo block_info
 		err := load_block_from_rpc(&blinfo, fmt.Sprintf("%s", info.Height), false) // we only need block data and not data of txs
 		if err != nil {
@@ -504,8 +512,8 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 
 // load and setup txinfo from rpc
 func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
-	var tx_params structures.GetTransaction_Params
-	var tx_result structures.GetTransaction_Result
+	var tx_params rpc.GetTransaction_Params
+	var tx_result rpc.GetTransaction_Result
 
 	//fmt.Printf("Requesting tx data %s", txhash);
 	tx_params.Tx_Hashes = append(tx_params.Tx_Hashes, txhash)
@@ -541,13 +549,46 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 	}
 
 	if tx.IsCoinbase() { // fill miner tx reward from what the chain tells us
-		info.Amount = fmt.Sprintf("%.012f", float64(uint64(tx_result.Txs[0].Reward))/1000000000000)
+		info.Amount = fmt.Sprintf("%.05f", float64(uint64(tx_result.Txs[0].Reward))/100000)
 	}
 
 	info.ValidBlock = tx_result.Txs[0].ValidBlock
 	info.InvalidBlock = tx_result.Txs[0].InvalidBlock
 
-	//info.Ring = tx_result.Txs[0].Ring
+	info.Ring = tx_result.Txs[0].Ring
+
+	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.SC_TX {
+
+		for t := range tx.Payloads {
+			var a Asset
+			a.SCID = tx.Payloads[t].SCID
+			a.Fees = fmt.Sprintf("%.05f", float64(tx.Payloads[t].Statement.Fees)/100000)
+			a.Burn = fmt.Sprintf("%.05f", float64(tx.Payloads[t].BurnValue)/100000)
+			a.Ring_size = len(tx_result.Txs[0].Ring[t])
+
+			for i := range tx_result.Txs[0].Ring[t] {
+
+				point_compressed := tx_result.Txs[0].Ring[t][i]
+				var p bn256.G1
+				if err = p.DecodeCompressed(point_compressed[:]); err != nil {
+					continue
+				}
+
+				astring := rpc.NewAddressFromKeys((*crypto.Point)(&p))
+				astring.Mainnet = mainnet
+				a.Ring = append(a.Ring, astring.String())
+			}
+
+			info.Assets = append(info.Assets, a)
+
+		}
+		//fmt.Printf("assets  now %+v\n", info.Assets)
+	}
+
+	info.SC_Balance = tx_result.Txs[0].Balance
+	info.SC_Balance_string = fmt.Sprintf("%.05f", float64(uint64(info.SC_Balance)/100000))
+	info.SC_Code = tx_result.Txs[0].Code
+	//info.Ring = strings.Join(info.OutAddress, " ")
 
 	//fmt.Printf("tx_result %+v\n",tx_result.Txs)
 	// fmt.Printf("response contained tx %s \n", tx.GetHash())
@@ -607,14 +648,14 @@ func tx_handler(w http.ResponseWriter, r *http.Request) {
 	if tx_proof != "" {
 
 		// there may be more than 1 amounts, only first one is shown
-		addresses, amounts, payids, err := proof.Prove(tx_proof, info.Hex, mainnet)
+		addresses, amounts, raw, decoded, err := proof.Prove(tx_proof, info.Hex, info.Ring, mainnet)
 		if err == nil { //&& len(amounts) > 0 && len(indexes) > 0{
-			log.Debugf("Successfully proved transaction %s len(payids) %d", tx_hex, len(payids))
+			log.Debugf("Successfully proved transaction %s len(payids) %d", tx_hex, len(decoded))
 			info.Proof_address = addresses[0]
 			info.Proof_amount = globals.FormatMoney(amounts[0])
-			if len(payids) >= 1 {
-				info.Proof_PayID8 = fmt.Sprintf("%x", payids[0]) // decrypted payment ID
-			}
+			info.Proof_Payload_raw = BytesViewer(raw[0]).String() // raw payload
+			info.Proof_Payload = decoded[0]
+
 		} else {
 			log.Debugf("err while proving %s", err)
 			if err != nil {
@@ -675,7 +716,7 @@ func fill_tx_structure(pos int, size_in_blocks int) (data []block_info) {
 
 func show_page(w http.ResponseWriter, page int) {
 	data := map[string]interface{}{}
-	var info structures.GetInfo_Result
+	var info rpc.GetInfo_Result
 
 	data["title"] = "DERO  HE BlockChain Explorer(v1)"
 	data["servertime"] = time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -747,7 +788,7 @@ exit_error:
 
 func txpool_handler(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{}
-	var info structures.GetInfo_Result
+	var info rpc.GetInfo_Result
 
 	data["title"] = "DERO  HE BlockChain Explorer(v1)"
 	data["servertime"] = time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -801,7 +842,7 @@ func root_handler(w http.ResponseWriter, r *http.Request) {
 
 // search handler, finds the items using rpc bruteforce
 func search_handler(w http.ResponseWriter, r *http.Request) {
-	var info structures.GetInfo_Result
+	var info rpc.GetInfo_Result
 	var err error
 
 	log.Debugf("Showing search page")
@@ -860,7 +901,7 @@ func search_handler(w http.ResponseWriter, r *http.Request) {
 
 	{ // show error page
 		data := map[string]interface{}{}
-		var info structures.GetInfo_Result
+		var info rpc.GetInfo_Result
 
 		data["title"] = "DERO HE BlockChain Explorer(v1)"
 		data["servertime"] = time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -901,7 +942,7 @@ func fill_tx_pool_info(data map[string]interface{}, max_count int) error {
 
 	var err error
 	var txs []txinfo
-	var txpool structures.GetTxPool_Result
+	var txpool rpc.GetTxPool_Result
 
 	data["mempool"] = txs // initialize with empty data
 	if err = rpc_client.Call("DERO.GetTxPool", nil, &txpool); err != nil {
@@ -923,5 +964,56 @@ func fill_tx_pool_info(data map[string]interface{}, max_count int) error {
 
 	data["mempool"] = txs
 	return nil
+}
 
+// BytesViewer bytes viewer
+type BytesViewer []byte
+
+// String returns view in hexadecimal
+func (b BytesViewer) String() string {
+	if len(b) == 0 {
+		return "invlaid string"
+	}
+	const head = `
+| Address  | Hex                                             | Text             |
+| -------: | :---------------------------------------------- | :--------------- |
+`
+	const row = 16
+	result := make([]byte, 0, len(head)/2*(len(b)/16+3))
+	result = append(result, head...)
+	for i := 0; i < len(b); i += row {
+		result = append(result, "| "...)
+		result = append(result, fmt.Sprintf("%08x", i)...)
+		result = append(result, " | "...)
+
+		k := i + row
+		more := 0
+		if k >= len(b) {
+			more = k - len(b)
+			k = len(b)
+		}
+		for j := i; j != k; j++ {
+			if b[j] < 16 {
+				result = append(result, '0')
+			}
+			result = strconv.AppendUint(result, uint64(b[j]), 16)
+			result = append(result, ' ')
+		}
+		for j := 0; j != more; j++ {
+			result = append(result, "   "...)
+		}
+		result = append(result, "| "...)
+		buf := bytes.Map(func(r rune) rune {
+			if unicode.IsSpace(r) {
+				return ' '
+			}
+			return r
+		}, b[i:k])
+		result = append(result, buf...)
+		for j := 0; j != more; j++ {
+			result = append(result, ' ')
+		}
+		result = append(result, " |\n"...)
+	}
+	return *(*string)(unsafe.Pointer(&result))
 }

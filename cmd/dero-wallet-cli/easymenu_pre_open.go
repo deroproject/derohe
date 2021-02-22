@@ -24,7 +24,7 @@ import "encoding/hex"
 
 import "github.com/chzyer/readline"
 
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/walletapi"
@@ -61,6 +61,8 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 		command = strings.ToLower(line_parts[0])
 	}
 
+	var wallett *walletapi.Wallet_Disk
+
 	//account_state := account_valid
 	switch command {
 	case "1": // open existing wallet
@@ -68,7 +70,7 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 
 		// ask user a password
 		for i := 0; i < 3; i++ {
-			wallet, err = walletapi.Open_Encrypted_Wallet(filename, ReadPassword(l, filename))
+			wallett, err = walletapi.Open_Encrypted_Wallet(filename, ReadPassword(l, filename))
 			if err != nil {
 				globals.Logger.Warnf("Error occurred while opening wallet file %s. err %s", filename, err)
 				wallet = nil
@@ -77,7 +79,9 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 				break
 			}
 		}
-		if wallet != nil {
+		if wallett != nil {
+			wallet = wallett
+			wallett = nil
 			globals.Logger.Infof("Successfully opened wallet")
 
 			common_processing(wallet)
@@ -89,17 +93,20 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 
 		password := ReadConfirmedPassword(l, "Enter password", "Confirm password")
 
-		wallet, err = walletapi.Create_Encrypted_Wallet_Random(filename, password)
+		wallett, err = walletapi.Create_Encrypted_Wallet_Random(filename, password)
 		if err != nil {
 			globals.Logger.Warnf("Error occured while creating new wallet, err: %s", err)
 			wallet = nil
 			break
 
 		}
-		err = wallet.Set_Encrypted_Wallet_Password(password)
+		err = wallett.Set_Encrypted_Wallet_Password(password)
 		if err != nil {
 			globals.Logger.Warnf("Error changing password")
 		}
+		wallet = wallett
+		wallett = nil
+
 		seed_language := choose_seed_language(l)
 		wallet.SetSeedLanguage(seed_language)
 		globals.Logger.Debugf("Seed Language %s", seed_language)
@@ -114,11 +121,13 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 		password := ReadConfirmedPassword(l, "Enter password", "Confirm password")
 		electrum_words := read_line_with_prompt(l, "Enter seed (25 words) : ")
 
-		wallet, err = walletapi.Create_Encrypted_Wallet_From_Recovery_Words(filename, password, electrum_words)
+		wallett, err = walletapi.Create_Encrypted_Wallet_From_Recovery_Words(filename, password, electrum_words)
 		if err != nil {
 			globals.Logger.Warnf("Error while recovering wallet using seed err %s\n", err)
 			break
 		}
+		wallet = wallett
+		wallett = nil
 		//globals.Logger.Debugf("Seed Language %s", account.SeedLanguage)
 		globals.Logger.Infof("Successfully recovered wallet from seed")
 		common_processing(wallet)
@@ -136,12 +145,14 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 			break
 		}
 
-		wallet, err = walletapi.Create_Encrypted_Wallet(filename, password, new(crypto.BNRed).SetBytes(seed_raw))
+		wallett, err = walletapi.Create_Encrypted_Wallet(filename, password, new(crypto.BNRed).SetBytes(seed_raw))
 		if err != nil {
 			globals.Logger.Warnf("Error while recovering wallet using seed key err %s\n", err)
 			break
 		}
 		globals.Logger.Infof("Successfully recovered wallet from hex seed")
+		wallet = wallett
+		wallett = nil
 		seed_language := choose_seed_language(l)
 		wallet.SetSeedLanguage(seed_language)
 		globals.Logger.Debugf("Seed Language %s", seed_language)
@@ -233,8 +244,10 @@ func common_processing(wallet *walletapi.Wallet_Disk) {
 			globals.Logger.Warnf("Error starting rpc server err %s", err)
 
 		}
-
 	}
 	time.Sleep(time.Second)
+
+	// init_script_engine(wallet) // init script engine
+	// init_plugins_engine(wallet) // init script engine
 
 }

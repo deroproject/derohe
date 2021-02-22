@@ -21,16 +21,12 @@ import "context"
 import "encoding/hex"
 import "encoding/json"
 import "runtime/debug"
-
-//import	"log"
-//import 	"net/http"
-
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/rpc"
 
 //import "github.com/deroproject/derosuite/blockchain"
 
-func (DERO_RPC_APIS) GetBlock(ctx context.Context, p structures.GetBlock_Params) (result structures.GetBlock_Result, err error) {
+func (DERO_RPC_APIS) GetBlock(ctx context.Context, p rpc.GetBlock_Params) (result rpc.GetBlock_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -70,7 +66,7 @@ func (DERO_RPC_APIS) GetBlock(ctx context.Context, p structures.GetBlock_Params)
 	if err != nil { // if err return err
 		return
 	}
-	return structures.GetBlock_Result{ // return success
+	return rpc.GetBlock_Result{ // return success
 		Block_Header: block_header,
 		Blob:         hex.EncodeToString(bl.Serialize()),
 		Json:         string(json_encoded_bytes),

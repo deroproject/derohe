@@ -136,65 +136,6 @@ func (r *RPCServer) RPCServer_Stop() {
 // setup handlers
 func (r *RPCServer) Run() {
 
-	/*
-	   	mr := jsonrpc.NewMethodRepository()
-
-	   	if err := mr.RegisterMethod("Main.Echo", EchoHandler{}, EchoParams{}, EchoResult{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	// install getblockcount handler
-	   	if err := mr.RegisterMethod("getblockcount", GetBlockCount_Handler{}, structures.GetBlockCount_Params{}, structures.GetBlockCount_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	// install on_getblockhash
-	   	if err := mr.RegisterMethod("on_getblockhash", On_GetBlockHash_Handler{}, structures.On_GetBlockHash_Params{}, structures.On_GetBlockHash_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	// install getblocktemplate handler
-	   	//if err := mr.RegisterMethod("getblocktemplate", GetBlockTemplate_Handler{}, structures.GetBlockTemplate_Params{}, structures.GetBlockTemplate_Result{}); err != nil {
-	   	//	log.Fatalln(err)
-	   	//}
-
-	   	// submitblock handler
-	   	if err := mr.RegisterMethod("submitblock", SubmitBlock_Handler{}, structures.SubmitBlock_Params{}, structures.SubmitBlock_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	if err := mr.RegisterMethod("getlastblockheader", GetLastBlockHeader_Handler{}, structures.GetLastBlockHeader_Params{}, structures.GetLastBlockHeader_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	if err := mr.RegisterMethod("getblockheaderbyhash", GetBlockHeaderByHash_Handler{}, structures.GetBlockHeaderByHash_Params{}, structures.GetBlockHeaderByHash_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	//if err := mr.RegisterMethod("getblockheaderbyheight", GetBlockHeaderByHeight_Handler{}, structures.GetBlockHeaderByHeight_Params{}, structures.GetBlockHeaderByHeight_Result{}); err != nil {
-	   	//	log.Fatalln(err)
-	   	//}
-
-	   	if err := mr.RegisterMethod("getblockheaderbytopoheight", GetBlockHeaderByTopoHeight_Handler{}, structures.GetBlockHeaderByTopoHeight_Params{}, structures.GetBlockHeaderByHeight_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	if err := mr.RegisterMethod("getblock", GetBlock_Handler{}, structures.GetBlock_Params{}, structures.GetBlock_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	if err := mr.RegisterMethod("get_info", GetInfo_Handler{}, structures.GetInfo_Params{}, structures.GetInfo_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	       if err := mr.RegisterMethod("getencryptedbalance", GetEncryptedBalance_Handler{}, structures.GetEncryptedBalance_Params{}, structures.GetEncryptedBalance_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-
-	   	if err := mr.RegisterMethod("gettxpool", GetTxPool_Handler{}, structures.GetTxPool_Params{}, structures.GetTxPool_Result{}); err != nil {
-	   		log.Fatalln(err)
-	   	}
-	*/
 	// create a new mux
 	r.mux = http.NewServeMux()
 
@@ -344,7 +285,8 @@ var historical_apis = handler.Map{"getinfo": handler.New(dero_apis.GetInfo),
 	"getblockcount":              handler.New(dero_apis.GetBlockCount),
 	"getlastblockheader":         handler.New(dero_apis.GetLastBlockHeader),
 	"getblocktemplate":           handler.New(dero_apis.GetBlockTemplate),
-	"getencryptedbalance":        handler.New(dero_apis.GetEncryptedBalance)}
+	"getencryptedbalance":        handler.New(dero_apis.GetEncryptedBalance),
+	"getsc":                      handler.New(dero_apis.GetSC)}
 
 func translate_http_to_jsonrpc_and_vice_versa(w http.ResponseWriter, r *http.Request) {
 	bridge.ServeHTTP(w, r)

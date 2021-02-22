@@ -17,6 +17,8 @@
 package rpcserver
 
 import "io"
+
+import "io/ioutil"
 import "net"
 import "fmt"
 import "net/http"
@@ -31,6 +33,8 @@ import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/blockchain"
 import "github.com/deroproject/derohe/walletapi"
+
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/glue/rwc"
 
 import log "github.com/sirupsen/logrus"
@@ -130,7 +134,26 @@ func (r *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 	r.mux.HandleFunc("/json_rpc", translate_http_to_jsonrpc_and_vice_versa)
 	r.mux.HandleFunc("/ws", ws_handler)
 	r.mux.HandleFunc("/", hello)
-	//r.mux.Handle("/json_rpc", mr)
+
+	// handle SC installer,        // this will install an sc an
+
+	r.mux.HandleFunc("/install_sc", func(w http.ResponseWriter, req *http.Request) { // translate call internally,  how to do it using a single json request
+		var p rpc.Transfer_Params
+
+		b, err := ioutil.ReadAll(req.Body)
+		defer req.Body.Close()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		p.SC_Code = string(b) // encode as base64
+		p.Transfers = append(p.Transfers, rpc.Transfer{Destination: "deto1qxsplx7vzgydacczw6vnrtfh3fxqcjevyxcvlvl82fs8uykjkmaxgfgulfha5", Amount: 1})
+		if err := wallet_apis.Transfer(context.Background(), p); err != nil {
+			fmt.Fprintf(w, err.Error())
+			return
+		}
+	})
 
 	// handle nasty http requests
 	//r.mux.HandleFunc("/getheight", getheight)
@@ -205,7 +228,7 @@ func ws_handler(w http.ResponseWriter, r *http.Request) {
 }
 
 var assigner = handler.ServiceMap{
-	"WALLET": handler.NewService(WALLET_RPC_APIS{}),
+	"WALLET": handler.NewService(&wallet_apis),
 	"DERO":   handler.NewService(DERO_RPC_APIS{}),
 }
 
@@ -213,7 +236,7 @@ type WALLET_RPC_APIS struct {
 	wallet *walletapi.Wallet_Disk
 } // exports daemon status and other RPC apis
 
-func (WALLET_RPC_APIS) Echo(ctx context.Context, args []string) string {
+func (*WALLET_RPC_APIS) Echo(ctx context.Context, args []string) string {
 	return "WALLET " + strings.Join(args, " ")
 }
 
@@ -236,21 +259,28 @@ var bridge = jhttp.NewBridge(internal_server.Client)
 var wallet_apis WALLET_RPC_APIS
 var dero_apis DERO_RPC_APIS
 
-var historical_apis = handler.Map{"getaddress": handler.New(wallet_apis.GetAddress),
-	"getbalance":               handler.New(wallet_apis.GetBalance),
-	"get_bulk_payments":        handler.New(wallet_apis.GetBulkPayments),
+var historical_apis = handler.Map{
+	"getaddress": handler.New(wallet_apis.GetAddress),
+	"GetAddress": handler.New(wallet_apis.GetAddress),
+	"getbalance": handler.New(wallet_apis.GetBalance),
+	"GetBalance": handler.New(wallet_apis.GetBalance),
+	//	"get_bulk_payments":        handler.New(wallet_apis.GetBulkPayments),
+	//	"GetBulkPayments":        handler.New(wallet_apis.GetBulkPayments),
 	"getheight":                handler.New(wallet_apis.GetHeight),
+	"GetHeight":                handler.New(wallet_apis.GetHeight),
 	"get_transfer_by_txid":     handler.New(wallet_apis.GetTransferbyTXID),
+	"GetTransferbyTXID":        handler.New(wallet_apis.GetTransferbyTXID),
 	"get_transfers":            handler.New(wallet_apis.GetTransfers),
+	"GetTransfers":             handler.New(wallet_apis.GetTransfers),
 	"make_integrated_address":  handler.New(wallet_apis.MakeIntegratedAddress),
+	"MakeIntegratedAddress":    handler.New(wallet_apis.MakeIntegratedAddress),
 	"split_integrated_address": handler.New(wallet_apis.SplitIntegratedAddress),
+	"SplitIntegratedAddress":   handler.New(wallet_apis.SplitIntegratedAddress),
 	"query_key":                handler.New(wallet_apis.QueryKey),
+	"QueryKey":                 handler.New(wallet_apis.QueryKey),
 	"transfer":                 handler.New(wallet_apis.Transfer),
+	"Transfer":                 handler.New(wallet_apis.Transfer),
 	"transfer_split":           handler.New(wallet_apis.Transfer),
-	//	"getblockcount":              handler.New(wallet_apis.GetBlockCount),
-	//	"getlastblockheader":         handler.New(wallet_apis.GetLastBlockHeader),
-	//	"getblocktemplate":           handler.New(wallet_apis.GetBlockTemplate),
-	//	"getencryptedbalance":        handler.New(wallet_apis.GetEncryptedBalance)
 }
 
 func translate_http_to_jsonrpc_and_vice_versa(w http.ResponseWriter, r *http.Request) {

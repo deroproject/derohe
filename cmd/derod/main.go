@@ -45,12 +45,12 @@ import "github.com/deroproject/derohe/p2p"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/blockchain"
 import "github.com/deroproject/derohe/transaction"
 
 //import "github.com/deroproject/derosuite/checkpoints"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derosuite/cryptonight"
 
@@ -62,7 +62,7 @@ var command_line string = `derod
 DERO : A secure, private blockchain with smart-contracts
 
 Usage:
-  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--disable-checkpoints] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... 	 [--min-peers=<11>] [--rpc-bind=<127.0.0.1:9999>] [--lowcpuram] [--mining-address=<wallet_address>] [--mining-threads=<cpu_num>] [--node-tag=<unique name>] [--prune-history=<50>]
+  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--fullnode] [--disable-checkpoints] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... 	 [--min-peers=<11>] [--rpc-bind=<127.0.0.1:9999>] [--node-tag=<unique name>] [--prune-history=<50>]
   derod -h | --help
   derod --version
 
@@ -71,6 +71,7 @@ Options:
   --version     Show version.
   --testnet  	Run in testnet mode.
   --debug       Debug mode enabled, print log messages
+  --fullnode       Full node mode (this option has effect only while bootstrapping)
   --socks-proxy=<socks_ip:port>  Use a proxy to connect to network.
   --data-dir=<directory>    Store blockchain data at this location
   --rpc-bind=<127.0.0.1:9999>    RPC listens on this ip:port
@@ -78,10 +79,6 @@ Options:
   --add-exclusive-node=<ip:port>	Connect to specific peer only 
   --add-priority-node=<ip:port>	Maintain persistant connection to specified peer
   --sync-node       Sync node automatically with the seeds nodes. This option is for rare use.
-  --min-peers=<11>      Number of connections the daemon tries to maintain  
-  --lowcpuram          Disables some RAM consuming sections (deactivates mining/ultra compact protocol etc).
-  --mining-address=<wallet_address>         This address is rewarded when a block is mined sucessfully
-  --mining-threads=<cpu_num>         Number of CPU threads for mining
   --node-tag=<unique name>	Unique name of node, visible to everyone
   --prune-history=<50>	prunes blockchain history until the specific topo_height
 
@@ -188,64 +185,23 @@ func main() {
 
 	p2p.P2P_Init(params)
 
-	rpc, _ := RPCServer_Start(params)
+	rpcserver, _ := RPCServer_Start(params)
 
 	// setup function pointers
 	// these pointers need to fixed
 
 	chain.Mempool.P2P_TX_Relayer = func(tx *transaction.Transaction, peerid uint64) (count int) {
-		count += p2p.Broadcast_Tx(tx, peerid)
+		count += int(p2p.Broadcast_Tx(tx, peerid))
 		return
 	}
 
 	chain.Regpool.P2P_TX_Relayer = func(tx *transaction.Transaction, peerid uint64) (count int) {
-		count += p2p.Broadcast_Tx(tx, peerid)
+		count += int(p2p.Broadcast_Tx(tx, peerid))
 		return
 	}
 
 	chain.P2P_Block_Relayer = func(cbl *block.Complete_Block, peerid uint64) {
 		p2p.Broadcast_Block(cbl, peerid)
-	}
-
-	if globals.Arguments["--lowcpuram"].(bool) == false && globals.Arguments["--sync-node"].(bool) == false { // enable v1 of protocol only if requested
-
-		// if an address has been provided, verify that it satisfies //mainnet/testnet criteria
-		if globals.Arguments["--mining-address"] != nil {
-
-			addr, err := globals.ParseValidateAddress(globals.Arguments["--mining-address"].(string))
-			if err != nil {
-				globals.Logger.Fatalf("Mining address is invalid: err %s", err)
-			}
-			params["mining-address"] = addr
-
-			//log.Debugf("Setting up proxy using %s", Arguments["--socks-proxy"].(string))
-		}
-
-		if globals.Arguments["--mining-threads"] != nil {
-			thread_count := 0
-			if s, err := strconv.Atoi(globals.Arguments["--mining-threads"].(string)); err == nil {
-				//fmt.Printf("%T, %v", s, s)
-				thread_count = s
-
-			} else {
-				globals.Logger.Fatalf("Mining threads argument cannot be parsed: err %s", err)
-			}
-
-			if thread_count > runtime.GOMAXPROCS(0) {
-				globals.Logger.Fatalf("Mining threads (%d) is more than available CPUs (%d). This is NOT optimal", thread_count, runtime.GOMAXPROCS(0))
-
-			}
-			params["mining-threads"] = thread_count
-
-			if _, ok := params["mining-address"]; !ok {
-				globals.Logger.Fatalf("Mining threads require a valid wallet address")
-			}
-
-			globals.Logger.Infof("System will mine to %s with %d threads. Good Luck!!", globals.Arguments["--mining-address"].(string), thread_count)
-
-			go start_miner(chain, params["mining-address"].(*address.Address), nil, thread_count)
-		}
-
 	}
 
 	//go time_check_routine() // check whether server time is in sync
@@ -397,7 +353,7 @@ func main() {
 				break
 			}
 		//
-		case command == "import_chain": // this migrates existing chain from DERO to DERO atlantis
+		case command == "import_chain": // this migrates existing chain from DERO atlantis to DERO HE
 			/*
 				f, err := os.Open("/tmp/raw_export.txt")
 				if err != nil {
@@ -553,27 +509,14 @@ func main() {
 					diff = chain.Load_Block_Difficulty(current_block_id)
 				}
 
-				toporecord, err := chain.Store.Topo_store.Read(i)
-				if err != nil {
-					log.Infof("Skipping block at height %d due to error while obtaining toporecord %s\n", i, err)
-					continue
-				}
-
-				ss, err := chain.Store.Balance_store.LoadSnapshot(uint64(toporecord.State_Version))
-				if err != nil {
-					panic(err)
-				}
-
-				balance_tree, err := ss.GetTree(blockchain.BALANCE_TREE)
+				balance_hash, err := chain.Load_Merkle_Hash(i)
 
 				if err != nil {
 					panic(err)
 				}
-
-				balance_hash, _ := balance_tree.Hash()
 
 				log.Infof("topo height: %10d,  height %d, timestamp: %10d, difficulty: %s cdiff: %s", i, chain.Load_Height_for_BL_ID(current_block_id), timestamp, diff.String(), cdiff.String())
-				log.Infof("Block Id: %s , balance_tree hash %x \n", current_block_id, balance_hash)
+				log.Infof("Block Id: %s , balance_tree hash %s \n", current_block_id, balance_hash)
 				log.Infof("")
 
 			}
@@ -625,14 +568,9 @@ func main() {
 
 		case command == "start_mining": // it needs 2 parameters, one dero address, second number of threads
 			var tx *transaction.Transaction
-			var addr *address.Address
+			var addr *rpc.Address
 			if mining {
 				fmt.Printf("Mining is already started\n")
-				continue
-			}
-
-			if globals.Arguments["--lowcpuram"].(bool) {
-				globals.Logger.Warnf("Mining is deactivated since daemon is running in low cpu mode, please check program options.")
 				continue
 			}
 
@@ -642,7 +580,7 @@ func main() {
 			}
 
 			if len(line_parts) != 3 {
-				fmt.Printf("This function requires 2 parameters 1) dero address or registration TX  2) number of threads\n")
+				fmt.Printf("This function requires 2 parameters 1) dero address  2) number of threads\n")
 				continue
 			}
 
@@ -661,40 +599,16 @@ func main() {
 
 			}
 
-			hexdecoded, err := hex.DecodeString(line_parts[1])
-			if err == nil {
-				tx = &transaction.Transaction{}
-				if err = tx.DeserializeHeader(hexdecoded); err == nil {
+			var err error
 
-					if tx.IsRegistration() {
-
-						if tx.IsRegistrationValid() {
-
-							addr = &address.Address{
-								PublicKey: new(crypto.Point),
-							}
-
-							err = addr.PublicKey.DecodeCompressed(tx.MinerAddress[0:33])
-
-						} else {
-							err = fmt.Errorf("Registration TX is invalid")
-						}
-					} else {
-						err = fmt.Errorf("TX is not registration")
-					}
-				}
-			} else {
-				err = nil
-
-				addr, err = globals.ParseValidateAddress(line_parts[1])
-				if err != nil {
-					globals.Logger.Warnf("Mining address is invalid: err %s", err)
-					continue
-				}
-
-			}
+			addr, err = globals.ParseValidateAddress(line_parts[1])
 			if err != nil {
-				globals.Logger.Warnf("Registration TX/Mining address is invalid: err %s", err)
+				globals.Logger.Warnf("Mining address is invalid: err %s", err)
+				continue
+			}
+
+			if err != nil {
+				globals.Logger.Warnf("Mining address is invalid: err %s", err)
 				continue
 			}
 
@@ -757,24 +671,11 @@ func main() {
 						fmt.Printf("Height: %d\n", chain.Load_Height_for_BL_ID(hash))
 						fmt.Printf("TopoHeight: %d\n", s)
 
-						toporecord, err := chain.Store.Topo_store.Read(s)
-						if err != nil {
-							log.Infof("Skipping block at topo height %d due to error while obtaining toporecord %s\n", s, err)
-							panic(err)
-							continue
-						}
+						bhash, err := chain.Load_Merkle_Hash(s)
 
-						ss, err := chain.Store.Balance_store.LoadSnapshot(uint64(toporecord.State_Version))
 						if err != nil {
 							panic(err)
 						}
-
-						balance_tree, err := ss.GetTree(blockchain.BALANCE_TREE)
-						if err != nil {
-							panic(err)
-						}
-
-						bhash, _ := balance_tree.Hash()
 
 						fmt.Printf("BALANCE_TREE : %s\n", bhash)
 
@@ -1124,7 +1025,7 @@ exit:
 	globals.Logger.Infof("Exit in Progress, Please wait")
 	time.Sleep(100 * time.Millisecond) // give prompt update time to finish
 
-	rpc.RPCServer_Stop()
+	rpcserver.RPCServer_Stop()
 	p2p.P2P_Shutdown() // shutdown p2p subsystem
 	chain.Shutdown()   // shutdown chain subsysem
 
@@ -1155,7 +1056,7 @@ func writenode(chain *blockchain.Blockchain, w *bufio.Writer, blid crypto.Hash, 
 		panic(err)
 	}
 
-	addr := address.NewAddressFromKeys(&acckey)
+	addr := rpc.NewAddressFromKeys(&acckey)
 	addr.Mainnet = globals.IsMainnet()
 
 	w.WriteString(fmt.Sprintf("L%s  [ fillcolor=%s label = \"%s %d height %d score %d stored %d order %d\nminer %s\"  ];\n", blid.String(), color, blid.String(), 0, chain.Load_Height_for_BL_ID(blid), 0, chain.Load_Block_Cumulative_Difficulty(blid), chain.Load_Block_Topological_order(blid), addr.String()))

@@ -20,23 +20,14 @@ import "fmt"
 import "time"
 import "context"
 import "runtime/debug"
-
-//import	"log"
-//import 	"net/http"
-
 import "golang.org/x/time/rate"
-
-//import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/address"
-import "github.com/deroproject/derohe/structures"
-
-//import "github.com/deroproject/derohe/transaction"
+import "github.com/deroproject/derohe/rpc"
 
 // rate limiter is deployed, in case RPC is exposed over internet
 // someone should not be just giving fake inputs and delay chain syncing
 var get_block_limiter = rate.NewLimiter(16.0, 8) // 16 req per sec, burst of 8 req is okay
 
-func (DERO_RPC_APIS) GetBlockTemplate(ctx context.Context, p structures.GetBlockTemplate_Params) (result structures.GetBlockTemplate_Result, err error) {
+func (DERO_RPC_APIS) GetBlockTemplate(ctx context.Context, p rpc.GetBlockTemplate_Params) (result rpc.GetBlockTemplate_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -57,7 +48,7 @@ func (DERO_RPC_APIS) GetBlockTemplate(ctx context.Context, p structures.GetBlock
 	*/
 
 	// validate address
-	miner_address, err := address.NewAddress(p.Wallet_Address)
+	miner_address, err := rpc.NewAddress(p.Wallet_Address)
 	if err != nil {
 		return result, fmt.Errorf("Address could not be parsed, err:%s", err)
 	}
@@ -72,7 +63,7 @@ func (DERO_RPC_APIS) GetBlockTemplate(ctx context.Context, p structures.GetBlock
 	for i := range bl.Tips {
 		prev_hash = prev_hash + bl.Tips[i].String()
 	}
-	return structures.GetBlockTemplate_Result{
+	return rpc.GetBlockTemplate_Result{
 		Blocktemplate_blob: block_template_hex,
 		Blockhashing_blob:  block_hashing_blob_hex,
 		Reserved_Offset:    uint64(reserved_pos),

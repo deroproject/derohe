@@ -31,7 +31,7 @@ import log "github.com/sirupsen/logrus"
 
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 // this is only used for sorting and nothing else
 type TX_Sorting_struct struct {
@@ -126,7 +126,7 @@ func (obj *mempool_object) UnmarshalJSON(data []byte) error {
 	err = obj.Tx.DeserializeHeader(tx_bytes)
 
 	if err == nil {
-		obj.FEEperBYTE = obj.Tx.Statement.Fees / obj.Size
+		obj.FEEperBYTE = obj.Tx.Fees() / obj.Size
 	}
 	return err
 }
@@ -283,7 +283,7 @@ func (pool *Mempool) Mempool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	var object mempool_object
 	tx_hash := crypto.Hash(tx.GetHash())
 
-	if pool.Mempool_Keyimage_Spent(tx.Proof.Nonce()) {
+	if pool.Mempool_Keyimage_Spent(tx.Payloads[0].Proof.Nonce()) {
 		rlog.Debugf("Rejecting TX, since nonce already seen %x", tx_hash)
 		return false
 	}
@@ -300,7 +300,7 @@ func (pool *Mempool) Mempool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	//		pool.key_images.Store(tx.Vin[i].(transaction.Txin_to_key).K_image,true) // add element to map for next check
 	//	}
 
-	pool.key_images.Store(tx.Proof.Nonce(), true)
+	pool.key_images.Store(tx.Payloads[0].Proof.Nonce(), true)
 
 	// we are here means we can add it to pool
 	object.Tx = tx
@@ -308,7 +308,7 @@ func (pool *Mempool) Mempool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	object.Added = uint64(time.Now().UTC().Unix())
 
 	object.Size = uint64(len(tx.Serialize()))
-	object.FEEperBYTE = tx.Statement.Fees / object.Size
+	object.FEEperBYTE = tx.Fees() / object.Size
 
 	pool.txs.Store(tx_hash, &object)
 
@@ -367,7 +367,7 @@ func (pool *Mempool) Mempool_Delete_TX(txid crypto.Hash) (tx *transaction.Transa
 	//	for i := 0; i < len(object.Tx.Vin); i++ {
 	//		pool.key_images.Delete(object.Tx.Vin[i].(transaction.Txin_to_key).K_image)
 	//	}
-	pool.key_images.Delete(tx.Proof.Nonce())
+	pool.key_images.Delete(tx.Payloads[0].Proof.Nonce())
 
 	//pool.sort_list()     // sort and update pool list
 	pool.modified = true // pool has been modified

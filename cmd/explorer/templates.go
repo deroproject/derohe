@@ -303,7 +303,10 @@ var tx_template string = `{{define "tx"}}
 {{ template "header" . }}
             <div>
                 <H4 style="margin:5px">Tx hash: {{.info.Hash}} Type {{.info.TransactionType }}</H4>
-                <H5 style="margin:5px">Tx prefix hash: {{.info.PrefixHash}}</H5>
+                
+                {{if eq .info.TransactionType "BURN" }}
+                    <H4 style="margin:5px; color: red">Burns: {{.info.Burn_Value }} DERO</H4>
+                {{end}}
 
                 <H5>Block: <a href="/block/{{.info.ValidBlock}}">{{.info.ValidBlock}}</a> (VALID) </H5>
 
@@ -329,7 +332,7 @@ var tx_template string = `{{define "tx"}}
 
 {{end}}
 
-{{if eq .info.TransactionType "NORMAL"}}
+{{if or (eq .info.TransactionType "NORMAL")  (eq .info.TransactionType "BURN")  (eq .info.TransactionType "SC") }}
 
                 <H5 style="margin:5px">Tx RootHash: {{.info.RootHash}}  built height : {{.info.HeightBuilt}} </H5>
 
@@ -360,23 +363,40 @@ var tx_template string = `{{define "tx"}}
                         <td colspan="3">Extra: {{.info.Extra}}</td>
                     </tr>
                 </table>
-              <h3>{{len .info.OutAddress}} inputs/outputs (RING size)</h3>
-              <div class="center">
+
+             {{range $ii, $ee := .info.Assets}} 
+                 <H5>SCID: {{$ee.SCID}}   {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} Burned {{$ee.Burn}}</H5>
+
+                 <div class="center">
                   <table class="center">
                       <tr>
                           <td>address</td>
-                          <td>amount</td>
                       </tr>
                       
-                      {{range $i, $e := .info.OutAddress}} 
+                      {{range $i, $e := $ee.Ring}} 
                       <tr>
                           <td>{{ $e }}</td>
-                          <td>{{$.info.Amount}}</td>
                       </tr>
                       {{end}}
                   </table>
               </div>
+
+            {{end}}
               
+{{if eq .info.TransactionType "SC"}}
+   <table class="center" style="width: 80%; margin-top:10px">
+                    <tr>
+                        <td>SC Balance:  {{  .info.SC_Balance_string }} DERO</td>
+                    </tr>
+                    <tr>
+                        <td>SC CODE:<pre style="text-align: left;">  {{  .info.SC_Code }}</pre></td>
+                    </tr>
+                    <tr>
+                        <td>SC Arguments: {{  .info.SC_Args }}</td>
+                    </tr>
+    </table>
+
+{{end}}
 <!-- TODO currently we donot enable user to prove or decode something -->
 <br/>
 <br/>
@@ -415,8 +435,13 @@ var tx_template string = `{{define "tx"}}
                         <tr>
                         <td><h2><font color="blue">{{.info.Proof_address}} Received {{.info.Proof_amount}} DERO
 
-                        {{if .info.Proof_PayID8}}
-                           <br/> Decrypted Payment ID {{ .info.Proof_PayID8}}
+
+                        {{if .info.Proof_Payload}}
+                            <br/> Decoded Data {{ .info.Proof_Payload}}
+
+                           <br/> Raw Data 
+                            <br/><pre>{{ .info.Proof_Payload_raw}}</pre>
+                           
                         {{end}}
                      </font>  </h2> 
    </td>

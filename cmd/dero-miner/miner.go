@@ -37,9 +37,9 @@ import "strconv"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/astrobwt"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
 import log "github.com/sirupsen/logrus"
 import "github.com/ybbus/jsonrpc"
@@ -48,10 +48,10 @@ import "github.com/romana/rlog"
 import "github.com/chzyer/readline"
 import "github.com/docopt/docopt-go"
 
-var rpcClient *jsonrpc.RPCClient
+var rpcClient jsonrpc.RPCClient
 var netClient *http.Client
 var mutex sync.RWMutex
-var job structures.GetBlockTemplate_Result
+var job rpc.GetBlockTemplate_Result
 var maxdelay int = 10000
 var threads int
 var iterations int = 100
@@ -423,7 +423,7 @@ func increase_delay() {
 func getwork() {
 
 	// create client
-	rpcClient = jsonrpc.NewRPCClient(daemon_rpc_address + "/json_rpc")
+	rpcClient = jsonrpc.NewClient(daemon_rpc_address + "/json_rpc")
 
 	var netTransport = &http.Transport{
 		Dial: (&net.Dialer{
@@ -450,9 +450,9 @@ func getwork() {
 
 	for {
 
-		response, err = rpcClient.CallNamed("getblocktemplate", map[string]interface{}{"wallet_address": fmt.Sprintf("%s", wallet_address), "reserve_size": 10})
+		response, err = rpcClient.Call("getblocktemplate", map[string]interface{}{"wallet_address": fmt.Sprintf("%s", wallet_address), "reserve_size": 10})
 		if err == nil {
-			var block_template structures.GetBlockTemplate_Result
+			var block_template rpc.GetBlockTemplate_Result
 			err = response.GetObject(&block_template)
 			if err == nil {
 				mutex.Lock()

@@ -30,11 +30,12 @@ import "encoding/hex"
 
 import "github.com/chzyer/readline"
 
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/crypto"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/address"
 import "github.com/deroproject/derohe/walletapi"
+
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 var account walletapi.Account
 
@@ -80,7 +81,32 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		fallthrough
 	case "balance": // give user his balance
 		balance_unlocked, locked_balance := wallet.Get_Balance_Rescan()
-		fmt.Fprintf(l.Stderr(), "Balance    : "+color_green+"%s"+color_white+"\n\n", globals.FormatMoney(locked_balance+balance_unlocked))
+		fmt.Fprintf(l.Stderr(), "DERO Balance    : "+color_green+"%s"+color_white+"\n", globals.FormatMoney(locked_balance+balance_unlocked))
+
+		line_parts := line_parts[1:] // remove first part
+
+		switch len(line_parts) {
+		case 0:
+			//globals.Logger.Warnf("not implemented")
+			break
+
+		case 1: // scid balance
+			scid := crypto.HashHexToHash(line_parts[0])
+
+			//globals.Logger.Infof("scid1 %s  line_parts %+v", scid, line_parts)
+			balance, err := wallet.GetDecryptedBalanceAtTopoHeight(scid, -1, wallet.GetAddress().String())
+
+			//globals.Logger.Infof("scid %s", scid)
+			if err != nil {
+				globals.Logger.Infof("error %s", err)
+			} else {
+				fmt.Fprintf(l.Stderr(), "SCID %s Balance    : "+color_green+"%s"+color_white+"\n\n", line_parts[0], globals.FormatMoney(balance))
+			}
+
+		case 2: // scid balance at topoheight
+			globals.Logger.Warnf("not implemented")
+			break
+		}
 
 	case "rescan_bc", "rescan_spent": // rescan from 0
 		if offline_mode {
@@ -123,7 +149,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 				globals.Logger.Warnf("Error parsing txhash")
 				break
 			}
-			key := wallet.GetTXKey(crypto.HexToHash(line_parts[1]))
+			key := wallet.GetTXKey(line_parts[1])
 			if key != "" {
 				globals.Logger.Infof("TX Proof key \"%s\"", key)
 			} else {
@@ -134,7 +160,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 			globals.Logger.Warnf("eg. get_tx_key ea551b02b9f1e8aebe4d7b1b7f6bf173d76ae614cb9a066800773fee9e226fd7")
 		}
 	case "sweep_all", "transfer_all": // transfer everything
-		Transfer_Everything(l)
+		//Transfer_Everything(l)
 
 	case "show_transfers":
 		show_transfers(l, wallet, 100)
@@ -153,11 +179,37 @@ func handle_prompt_command(l *readline.Instance, line string) {
 	case "i8", "integrated_address": // user wants a random integrated address 8 bytes
 		a := wallet.GetRandomIAddress8()
 		fmt.Fprintf(l.Stderr(), "Wallet integrated address : "+color_green+"%s"+color_white+"\n", a.String())
-		fmt.Fprintf(l.Stderr(), "Embedded payment ID : "+color_green+"%x"+color_white+"\n", a.PaymentID)
+		fmt.Fprintf(l.Stderr(), "Embedded Arguments : "+color_green+"%s"+color_white+"\n", a.Arguments)
 
 	case "version":
 		globals.Logger.Infof("Version %s\n", config.Version.String())
 
+	case "burn":
+		line_parts := line_parts[1:] // remove first part
+		if len(line_parts) < 2 {
+			globals.Logger.Warnf("burn needs destination address  and amount as input parameter")
+			break
+		}
+		addr := line_parts[0]
+		send_amount := uint64(1)
+		burn_amount, err := globals.ParseAmount(line_parts[1])
+		if err != nil {
+			globals.Logger.Warnf("Error Parsing burn amount \"%s\" err %s", line_parts[1], err)
+			return
+		}
+		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
+
+			//uid, err := wallet.PoolTransferWithBurn(addr, send_amount, burn_amount, data, rpc.Arguments{})
+
+			uid, err := wallet.PoolTransfer([]rpc.Transfer{rpc.Transfer{Amount: send_amount, Burn: burn_amount, Destination: addr}}, rpc.Arguments{}) // empty SCDATA
+			_ = uid
+			if err != nil {
+				globals.Logger.Warnf("Error while building Transaction err %s\n", err)
+				break
+			}
+			//fmt.Printf("queued tx err %s\n", err)
+			//build_relay_transaction(l, uid, err, offline_tx, amount_list)
+		}
 	case "transfer":
 		// parse the address, amount pair
 		/*
@@ -221,16 +273,6 @@ func handle_prompt_command(l *readline.Instance, line string) {
 
 			}
 
-			// if user provided an integrated address donot ask him payment id
-			// otherwise confirm whether user wants to send without payment id
-			if payment_id_integrated == false && len(payment_id) == 0 {
-				payment_id_bytes, err := ReadPaymentID(l)
-				payment_id = hex.EncodeToString(payment_id_bytes)
-				if err != nil {
-					globals.Logger.Warnf("Err :%s", err)
-					break
-				}
-			}
 
 			offline := false
 			tx, inputs, input_sum, change, err := wallet.Transfer(addr_list, amount_list, 0, payment_id, 0, 0)
@@ -241,6 +283,10 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		globals.Exit_In_Progress = true
 		if wallet != nil {
 			wallet.Close_Encrypted_Wallet() // overwrite previous instance
+		}
+	case "flush": // flush wallet pool
+		if wallet != nil {
+			fmt.Fprintf(l.Stderr(), "Flushed %d transactions from wallet pool\n", wallet.PoolClear())
 		}
 
 	case "": // blank enter key just loop
@@ -317,85 +363,8 @@ func handle_set_command(l *readline.Instance, line string) {
 	}
 }
 
-func Transfer_Everything(l *readline.Instance) {
-	/*
-		if wallet.Is_View_Only() {
-			fmt.Fprintf(l.Stderr(), color_yellow+"View Only wallet cannot transfer."+color_white)
-		}
-
-		if !ValidateCurrentPassword(l, wallet) {
-			globals.Logger.Warnf("Invalid password")
-			return
-		}
-
-		// a , amount_to_transfer, err := collect_transfer_info(l,wallet)
-		addr, err := ReadAddress(l)
-		if err != nil {
-			globals.Logger.Warnf("Err :%s", err)
-			return
-		}
-
-		var payment_id []byte
-		// if user provided an integrated address donot ask him payment id
-		if !addr.IsIntegratedAddress() {
-			payment_id, err = ReadPaymentID(l)
-			if err != nil {
-				globals.Logger.Warnf("Err :%s", err)
-				return
-			}
-		} else {
-			globals.Logger.Infof("Payment ID is integreted in address ID:%x", addr.PaymentID)
-		}
-
-		fees_per_kb := uint64(0) // fees  must be calculated by walletapi
-
-		tx, inputs, input_sum, err := wallet.Transfer_Everything(*addr, hex.EncodeToString(payment_id), 0, fees_per_kb, 5)
-
-		_ = inputs
-		if err != nil {
-			globals.Logger.Warnf("Error while building Transaction err %s\n", err)
-			return
-		}
-		globals.Logger.Infof("%d Inputs Selected for %s DERO", len(inputs), globals.FormatMoney12(input_sum))
-		globals.Logger.Infof("fees %s DERO", globals.FormatMoneyPrecision(tx.RctSignature.Get_TX_Fee(), 12))
-		globals.Logger.Infof("TX Size %0.1f KiB (should be  < 240 KiB)", float32(len(tx.Serialize()))/1024.0)
-		offline_tx := false
-		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
-
-			if offline_tx { // if its an offline tx, dump it to a file
-				cur_dir, err := os.Getwd()
-				if err != nil {
-					globals.Logger.Warnf("Cannot obtain current directory to save tx")
-					return
-				}
-				filename := filepath.Join(cur_dir, tx.GetHash().String()+".tx")
-				err = ioutil.WriteFile(filename, []byte(hex.EncodeToString(tx.Serialize())), 0600)
-				if err == nil {
-					if err == nil {
-						globals.Logger.Infof("Transaction saved successfully. txid = %s", tx.GetHash())
-						globals.Logger.Infof("Saved to %s", filename)
-					} else {
-						globals.Logger.Warnf("Error saving tx to %s , err %s", filename, err)
-					}
-				}
-
-			} else {
-
-				err = wallet.SendTransaction(tx) // relay tx to daemon/network
-				if err == nil {
-					globals.Logger.Infof("Transaction sent successfully. txid = %s", tx.GetHash())
-				} else {
-					globals.Logger.Warnf("Transaction sending failed txid = %s, err %s", tx.GetHash(), err)
-				}
-
-			}
-		}
-	*/
-
-}
-
 // read an address with all goodies such as color encoding and other things in prompt
-func ReadAddress(l *readline.Instance) (a *address.Address, err error) {
+func ReadAddress(l *readline.Instance) (a *rpc.Address, err error) {
 	setPasswordCfg := l.GenPasswordConfig()
 	setPasswordCfg.EnableMask = false
 
@@ -435,17 +404,9 @@ func ReadAddress(l *readline.Instance) (a *address.Address, err error) {
 	return
 }
 
-/*
-// read an payment with all goodies such as color encoding and other things in prompt
-func ReadPaymentID(l *readline.Instance) (payment_id []byte, err error) {
+func ReadFloat64(l *readline.Instance, cprompt string, default_value float64) (a float64, err error) {
 	setPasswordCfg := l.GenPasswordConfig()
 	setPasswordCfg.EnableMask = false
-
-	// ask user whether he want to enter a payment ID
-
-	if !ConfirmYesNoDefaultNo(l, "Provide Payment ID (y/N)") { // user doesnot want to provide payment it, skip
-		return
-	}
 
 	prompt_mutex.Lock()
 	defer prompt_mutex.Unlock()
@@ -455,19 +416,17 @@ func ReadPaymentID(l *readline.Instance) (payment_id []byte, err error) {
 		color := color_green
 
 		if len(line) >= 1 {
-			_, err := hex.DecodeString(string(line))
-			if (len(line) == 16 || len(line) == 64) && err == nil {
-				error_message = ""
-			} else {
+			_, err := strconv.ParseFloat(string(line), 64)
+			if err != nil {
 				error_message = " " //err.Error()
 			}
 		}
 
 		if error_message != "" {
 			color = color_red // Should we display the error message here??
-			l.SetPrompt(fmt.Sprintf("%sEnter Payment ID (16/64 hex char): ", color))
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default %f): ", color, cprompt, default_value))
 		} else {
-			l.SetPrompt(fmt.Sprintf("%sEnter Payment ID (16/64 hex char): ", color))
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default %f): ", color, cprompt, default_value))
 
 		}
 
@@ -479,21 +438,128 @@ func ReadPaymentID(l *readline.Instance) (payment_id []byte, err error) {
 	if err != nil {
 		return
 	}
-	payment_id, err = hex.DecodeString(string(line))
+	a, err = strconv.ParseFloat(string(line), 64)
+	l.SetPrompt(cprompt)
+	l.Refresh()
+	return
+}
+
+func ReadUint64(l *readline.Instance, cprompt string, default_value uint64) (a uint64, err error) {
+	setPasswordCfg := l.GenPasswordConfig()
+	setPasswordCfg.EnableMask = false
+
+	prompt_mutex.Lock()
+	defer prompt_mutex.Unlock()
+
+	setPasswordCfg.SetListener(func(line []rune, pos int, key rune) (newLine []rune, newPos int, ok bool) {
+		error_message := ""
+		color := color_green
+
+		if len(line) >= 1 {
+			_, err := strconv.ParseUint(string(line), 0, 64)
+			if err != nil {
+				error_message = " " //err.Error()
+			}
+		}
+
+		if error_message != "" {
+			color = color_red // Should we display the error message here??
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default %d): ", color, cprompt, default_value))
+		} else {
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default %d): ", color, cprompt, default_value))
+
+		}
+
+		l.Refresh()
+		return nil, 0, false
+	})
+
+	line, err := l.ReadPasswordWithConfig(setPasswordCfg)
 	if err != nil {
 		return
 	}
-	l.SetPrompt(prompt)
+	a, err = strconv.ParseUint(string(line), 0, 64)
+	l.SetPrompt(cprompt)
 	l.Refresh()
-
-	if len(payment_id) == 8 || len(payment_id) == 32 {
-		return
-	}
-
-	err = fmt.Errorf("Invalid Payment ID")
 	return
 }
-*/
+
+func ReadInt64(l *readline.Instance, cprompt string, default_value int64) (a int64, err error) {
+	setPasswordCfg := l.GenPasswordConfig()
+	setPasswordCfg.EnableMask = false
+
+	prompt_mutex.Lock()
+	defer prompt_mutex.Unlock()
+
+	setPasswordCfg.SetListener(func(line []rune, pos int, key rune) (newLine []rune, newPos int, ok bool) {
+		error_message := ""
+		color := color_green
+
+		if len(line) >= 1 {
+			_, err := strconv.ParseInt(string(line), 0, 64)
+			if err != nil {
+				error_message = " " //err.Error()
+			}
+		}
+
+		if error_message != "" {
+			color = color_red // Should we display the error message here??
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default %d): ", color, cprompt, default_value))
+		} else {
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default %d): ", color, cprompt, default_value))
+
+		}
+
+		l.Refresh()
+		return nil, 0, false
+	})
+
+	line, err := l.ReadPasswordWithConfig(setPasswordCfg)
+	if err != nil {
+		return
+	}
+	a, err = strconv.ParseInt(string(line), 0, 64)
+	l.SetPrompt(cprompt)
+	l.Refresh()
+	return
+}
+
+func ReadString(l *readline.Instance, cprompt string, default_value string) (a string, err error) {
+	setPasswordCfg := l.GenPasswordConfig()
+	setPasswordCfg.EnableMask = false
+
+	prompt_mutex.Lock()
+	defer prompt_mutex.Unlock()
+
+	setPasswordCfg.SetListener(func(line []rune, pos int, key rune) (newLine []rune, newPos int, ok bool) {
+		error_message := ""
+		color := color_green
+
+		if len(line) < 1 {
+			error_message = " " //err.Error()
+		}
+
+		if error_message != "" {
+			color = color_red // Should we display the error message here??
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default '%s'): ", color, cprompt, default_value))
+		} else {
+			l.SetPrompt(fmt.Sprintf("%sEnter %s (default '%s'): ", color, cprompt, default_value))
+
+		}
+
+		l.Refresh()
+		return nil, 0, false
+	})
+
+	line, err := l.ReadPasswordWithConfig(setPasswordCfg)
+	if err != nil {
+		return
+	}
+	a = string(line)
+	l.SetPrompt(cprompt)
+	l.Refresh()
+	return
+}
 
 // confirms whether the user wants to confirm yes
 func ConfirmYesNoDefaultYes(l *readline.Instance, prompt_temporary string) bool {
@@ -656,32 +722,6 @@ func PressAnyKey(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 	return
 }
 
-/*
-// if we are in offline, scan default or user provided file
-// this function will replay the blockchain data in offline mode
-func trigger_offline_data_scan() {
-	filename := default_offline_datafile
-
-	if globals.Arguments["--offline_datafile"] != nil {
-		filename = globals.Arguments["--offline_datafile"].(string)
-	}
-
-	f, err := os.Open(filename)
-	if err != nil {
-		globals.Logger.Warnf("Cannot read offline data file=\"%s\"  err: %s   ", filename, err)
-		return
-	}
-	w := bufio.NewReader(f)
-	gzipreader, err := gzip.NewReader(w)
-	if err != nil {
-		globals.Logger.Warnf("Error while decompressing offline data file=\"%s\"  err: %s   ", filename, err)
-		return
-	}
-	defer gzipreader.Close()
-	io.Copy(pipe_writer, gzipreader)
-}
-*/
-
 // this completer is used to complete the commands at the prompt
 // BUG, this needs to be disabled in menu mode
 var completer = readline.NewPrefixCompleter(
@@ -733,6 +773,7 @@ func usage(w io.Writer) {
 	io.WriteString(w, "\t\033[1mtransfer\033[0m\tTransfer/Send DERO to another address\n")
 	io.WriteString(w, "\t\t\tEg. transfer <address> <amount>\n")
 	io.WriteString(w, "\t\033[1mtransfer_all\033[0m\tTransfer everything to another address\n")
+	io.WriteString(w, "\t\033[1mflush\033[0m\tFlush local wallet pool (for testing purposes)\n")
 	io.WriteString(w, "\t\033[1mversion\033[0m\t\tShow version\n")
 	io.WriteString(w, "\t\033[1mbye\033[0m\t\tQuit wallet\n")
 	io.WriteString(w, "\t\033[1mexit\033[0m\t\tQuit wallet\n")
@@ -754,7 +795,7 @@ func display_seed(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 
 	keys := wallet.Get_Keys()
-    h := "0000000000000000000000000000000000000000000000"+keys.Secret.Text(16)
+	h := "0000000000000000000000000000000000000000000000" + keys.Secret.Text(16)
 	fmt.Fprintf(os.Stderr, "secret key: "+color_red+"%s"+color_white+"\n", h[len(h)-64:])
 
 	fmt.Fprintf(os.Stderr, "public key: %s\n", keys.Public.StringHex())
@@ -769,15 +810,8 @@ func rescan_bc(wallet *walletapi.Wallet_Disk) {
 
 }
 
-func is_registered(wallet *walletapi.Wallet_Disk) bool {
-	if wallet.Get_Registration_TopoHeight() == -1 {
-		return false
-	}
-	return true
-}
-
 func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi.Wallet_Disk) bool {
-	if !is_registered(wallet) {
+	if !wallet.IsRegistered() {
 		globals.Logger.Warnf("Your account is not registered.Please register.")
 	}
 	return true
@@ -786,11 +820,9 @@ func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi
 // show the transfers to the user originating from this account
 func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, limit uint64) {
 
-	available := true
 	in := true
 	out := true
-	pool := true    // this is not processed still TODO list
-	failed := false // this is not processed still TODO list
+	coinbase := true
 	min_height := uint64(0)
 	max_height := uint64(0)
 
@@ -798,37 +830,18 @@ func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, limit u
 	line_parts := strings.Fields(line)
 	if len(line_parts) >= 2 {
 		switch strings.ToLower(line_parts[1]) {
-		case "available":
-			available = true
-			in = false
+		case "coinbase":
 			out = false
-			pool = false
-			failed = false
+			in = false
+
 		case "in":
-			available = true
+			coinbase = false
 			in = true
 			out = false
-			pool = false
-			failed = false
 		case "out":
-			available = false
+			coinbase = false
 			in = false
 			out = true
-			pool = false
-			failed = false
-		case "pool":
-			available = false
-			in = false
-			out = false
-			pool = true
-			failed = false
-		case "failed":
-			available = false
-			in = false
-			out = false
-			pool = false
-			failed = true
-
 		}
 	}
 
@@ -851,7 +864,7 @@ func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, limit u
 	}
 
 	// request payments without payment id
-	transfers := wallet.Show_Transfers(available, in, out, pool, failed, false, min_height, max_height) // receives sorted list of transfers
+	transfers := wallet.Show_Transfers(coinbase, in, out, min_height, max_height, "", "", 0, 0) // receives sorted list of transfers
 
 	if len(transfers) == 0 {
 		globals.Logger.Warnf("No transfers available")
@@ -872,16 +885,42 @@ func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, limit u
 			if transfers[i].Coinbase {
 				io.WriteString(l.Stderr(), fmt.Sprintf(color_green+"%s Height %d TopoHeight %d  Coinbase (miner reward) received %s DERO"+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, globals.FormatMoney(transfers[i].Amount)))
 
-			} else if len(transfers[i].PaymentID) == 0 {
-				io.WriteString(l.Stderr(), fmt.Sprintf(color_green+"%s Height %d TopoHeight %d transaction %s received %s DERO"+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount)))
 			} else {
-				payment_id := fmt.Sprintf("%x", transfers[i].PaymentID)
-				io.WriteString(l.Stderr(), fmt.Sprintf(color_green+"%s Height %d TopoHeight %d transaction %s received %s DERO"+color_white+" PAYMENT ID:%s\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), payment_id))
+
+				args, err := transfers[i].ProcessPayload()
+				if err != nil {
+					io.WriteString(l.Stderr(), fmt.Sprintf(color_green+"%s Height %d TopoHeight %d transaction %s received %s DERO Proof: %s"+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), transfers[i].Proof))
+
+					io.WriteString(l.Stderr(), fmt.Sprintf("Full Entry\n", transfers[i])) // dump entire entry for debugging purposes
+
+				} else if len(args) == 0 { // no rpc
+
+					io.WriteString(l.Stderr(), fmt.Sprintf(color_green+"%s Height %d TopoHeight %d transaction %s received %s DERO Proof: %s NO RPC CALL"+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), transfers[i].Proof))
+
+				} else { // yes, its rpc
+					io.WriteString(l.Stderr(), fmt.Sprintf(color_green+"%s Height %d TopoHeight %d transaction %s received %s DERO Proof: %s RPC CALL arguments %s "+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), transfers[i].Proof, args))
+
+				}
+
 			}
 
 		case 1:
-			payment_id := fmt.Sprintf("%x", transfers[i].PaymentID)
-			io.WriteString(l.Stderr(), fmt.Sprintf(color_magenta+"%s Height %d TopoHeight %d transaction %s spent %s DERO"+color_white+" PAYMENT ID: %s  Proof:%s\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), payment_id, transfers[i].Proof))
+
+			args, err := transfers[i].ProcessPayload()
+			if err != nil {
+				io.WriteString(l.Stderr(), fmt.Sprintf(color_yellow+"%s Height %d TopoHeight %d transaction %s spent %s DERO Destination: %s Proof: %s\n"+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), transfers[i].Destination, transfers[i].Proof))
+
+				io.WriteString(l.Stderr(), fmt.Sprintf("Err decoding entry %s\nFull Entry %+v\n", err, transfers[i])) // dump entire entry for debugging purposes
+
+			} else if len(args) == 0 { // no rpc
+
+				io.WriteString(l.Stderr(), fmt.Sprintf(color_yellow+"%s Height %d TopoHeight %d transaction %s spent %s DERO Destination: %s Proof: %s  NO RPC CALL"+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), transfers[i].Destination, transfers[i].Proof))
+
+			} else { // yes, its rpc
+				io.WriteString(l.Stderr(), fmt.Sprintf(color_yellow+"%s Height %d TopoHeight %d transaction %s spent %s DERO Destination: %s Proof: %s RPC CALL arguments %s "+color_white+"\n", transfers[i].Time.Format(time.RFC822), transfers[i].Height, transfers[i].TopoHeight, transfers[i].TXID, globals.FormatMoney(transfers[i].Amount), transfers[i].Destination, transfers[i].Proof, args))
+
+			}
+
 		case 2:
 			fallthrough
 		default:

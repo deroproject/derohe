@@ -31,9 +31,9 @@ import "github.com/romana/rlog"
 
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/rpc"
 
 //import "github.com/deroproject/derohe/emission"
 import "github.com/deroproject/derohe/transaction"
@@ -50,7 +50,7 @@ import "github.com/deroproject/graviton"
 // the top hash over which to do mining now ( it should already be in the chain)
 // this is work in progress
 // TODO we need to rework fees algorithm, to improve its quality and lower fees
-func (chain *Blockchain) Create_new_miner_block(miner_address address.Address, tx *transaction.Transaction) (cbl *block.Complete_Block, bl block.Block) {
+func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *transaction.Transaction) (cbl *block.Complete_Block, bl block.Block) {
 	//chain.Lock()
 	//defer chain.Unlock()
 
@@ -88,7 +88,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address address.Address, t
 		panic(err)
 	}
 
-	balance_tree, err := ss.GetTree(BALANCE_TREE)
+	balance_tree, err := ss.GetTree(config.BALANCE_TREE)
 	if err != nil {
 		panic(err)
 	}
@@ -268,7 +268,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address address.Address, t
 var cache_block block.Block
 var cache_block_mutex sync.Mutex
 
-func (chain *Blockchain) Create_new_block_template_mining(top_hash crypto.Hash, miner_address address.Address, reserve_space int) (bl block.Block, blockhashing_blob string, block_template_blob string, reserved_pos int) {
+func (chain *Blockchain) Create_new_block_template_mining(top_hash crypto.Hash, miner_address rpc.Address, reserve_space int) (bl block.Block, blockhashing_blob string, block_template_blob string, reserved_pos int) {
 
 	rlog.Debugf("Mining block will give reward to %s", miner_address)
 	cache_block_mutex.Lock()
@@ -310,12 +310,6 @@ var duplicate_height_check = map[uint64]bool{}
 // otherwise the miner is trying to attack the network
 
 func (chain *Blockchain) Accept_new_block(block_template []byte, blockhashing_blob []byte) (blid crypto.Hash, result bool, err error) {
-
-	// check whether  we are in lowcpu mode, if yes reject the block
-	if globals.Arguments["--lowcpuram"].(bool) {
-		globals.Logger.Warnf("Mining is deactivated since daemon is running in low cpu mode, please check program options.")
-		return blid, false, fmt.Errorf("Please decativate lowcpuram mode")
-	}
 	if globals.Arguments["--sync-node"].(bool) {
 		globals.Logger.Warnf("Mining is deactivated since daemon is running with --sync-mode, please check program options.")
 		return blid, false, fmt.Errorf("Please deactivate --sync-node option before mining")
@@ -415,7 +409,6 @@ func (chain *Blockchain) Accept_new_block(block_template []byte, blockhashing_bl
 	}
 
 	err, result = chain.Add_Complete_Block(cbl)
-
 	if result {
 
 		duplicate_height_check[bl.Height] = true

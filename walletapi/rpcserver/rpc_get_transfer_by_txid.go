@@ -19,62 +19,25 @@ package rpcserver
 import "fmt"
 import "context"
 import "runtime/debug"
-import "encoding/hex"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) GetTransferbyTXID(ctx context.Context, p structures.Get_Transfer_By_TXID_Params) (result structures.Get_Transfer_By_TXID_Result, err error) {
+func (w *WALLET_RPC_APIS) GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (result rpc.Get_Transfer_By_TXID_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
 		}
 	}()
 
-	txid, err := hex.DecodeString(p.TXID)
-	if err != nil {
-		return result, fmt.Errorf("%s could NOT be hex decoded err %s", p.TXID, err)
-	}
-
-	if len(txid) != 32 {
+	if len(p.TXID) != 64 {
 		return result, fmt.Errorf("%s not 64 hex bytes", p.TXID)
 	}
 
 	// if everything is okay, fire the query and convert the result to output format
-	entry := w.wallet.Get_Payments_TXID(txid)
-	result.Transfer = structures.Transfer_Details{TXID: entry.TXID.String(),
-		Payment_ID:  hex.EncodeToString(entry.PaymentID),
-		Height:      entry.Height,
-		Amount:      entry.Amount,
-		Unlock_time: entry.Unlock_Time,
-	}
-	if entry.Height == 0 {
+	result.Entry = w.wallet.Get_Payments_TXID(p.TXID)
+
+	if result.Entry.Height == 0 {
 		return result, fmt.Errorf("Transaction not found. TXID %s", p.TXID)
 	}
 
-	for i := range entry.Details.Daddress {
-		result.Transfer.Destinations = append(result.Transfer.Destinations,
-			structures.Destination{
-				Address: entry.Details.Daddress[i],
-				Amount:  entry.Details.Amount[i],
-			})
-	}
-
-	if len(entry.Details.PaymentID) >= 1 {
-		result.Transfer.Payment_ID = entry.Details.PaymentID
-	}
-
-	if entry.Status == 0 { // if we have an amount
-		result.Transfer.Type = "in"
-		// send the result
-		return result, nil
-
-	}
-	// setup in/out
-	if entry.Status == 1 { // if we have an amount
-		result.Transfer.Type = "out"
-		// send the result
-		return result, nil
-
-	}
-
-	return result, fmt.Errorf("Transaction not found. TXID %s", p.TXID)
+	return result, nil
 }

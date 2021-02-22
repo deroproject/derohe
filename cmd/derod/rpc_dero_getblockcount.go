@@ -17,10 +17,10 @@
 package main
 
 import "context"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (DERO_RPC_APIS) GetBlockCount(ctx context.Context) structures.GetBlockCount_Result {
-	return structures.GetBlockCount_Result{
+func (DERO_RPC_APIS) GetBlockCount(ctx context.Context) rpc.GetBlockCount_Result {
+	return rpc.GetBlockCount_Result{
 		Count:  uint64(chain.Get_Height()),
 		Status: "OK",
 	}

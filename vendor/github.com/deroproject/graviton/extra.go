@@ -4,6 +4,10 @@ import "fmt"
 import "math"
 import "crypto/rand"
 
+
+func (t *Tree) GetName() (string) {
+	return t.treename
+}
 // Random returns a random key,value from the tree, provided a tree has keys
 // the following are limitations
 // a tree containing 0 key, value pairs will return err

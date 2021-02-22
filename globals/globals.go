@@ -24,12 +24,14 @@ import "strings"
 import "strconv"
 import "math/big"
 import "path/filepath"
+import "runtime/debug"
 import "golang.org/x/net/proxy"
+import "github.com/romana/rlog"
 import "github.com/sirupsen/logrus"
 import log "github.com/sirupsen/logrus"
 
 import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/rpc"
 
 type ChainState int // block chain can only be in 2 state, either SYNCRONISED or syncing
 
@@ -66,17 +68,20 @@ var Dialer proxy.Dialer = proxy.Direct // for proxy and direct connections
 // all program arguments are available here
 var Arguments map[string]interface{}
 
+func InitNetwork() {
+	Config = config.Mainnet                    // default is mainnnet
+	if Arguments["--testnet"].(bool) == true { // setup testnet if requested
+		Config = config.Testnet
+	}
+
+}
 func Initialize() {
 	var err error
 	_ = err
 
 	Arguments["--testnet"] = true // force testnet every where
 
-	Config = config.Mainnet                    // default is mainnnet
-	if Arguments["--testnet"].(bool) == true { // setup testnet if requested
-		Config = config.Testnet
-	}
-
+	InitNetwork()
 	// formatter := &logrus.TextFormatter{DisableColors : true}
 
 	//Logger= &logrus.Logger{Formatter:formatter}
@@ -117,6 +122,14 @@ func Initialize() {
 		fmt.Printf("Error creating/accessing directory %s , err %s\n", GetDataDirectory(), err)
 	}
 
+}
+
+// used to recover in case of panics
+func Recover() {
+	if r := recover(); r != nil {
+		rlog.Warnf("Recovered while handling connection, Stack trace below", r)
+		rlog.Warnf("Stack trace  \n%s", debug.Stack())
+	}
 }
 
 // tells whether we are in mainnet mode
@@ -163,7 +176,7 @@ func CTXString(entry *logrus.Entry) string {
 // newbies, see type the next in python interpretor "3.33-3.13"
 //
 func FormatMoney(amount uint64) string {
-	return FormatMoneyPrecision(amount, 5) // default is 8 precision after floating point
+	return FormatMoneyPrecision(amount, 5) // default is 5 precision after floating point
 }
 
 // 0
@@ -192,12 +205,12 @@ func FormatMoneyPrecision(amount uint64, precision int) string {
 	float_amount, _, _ := big.ParseFloat(fmt.Sprintf("%d", amount), 10, 0, big.ToZero)
 	result := new(big.Float)
 	result.Quo(float_amount, hard_coded_decimals)
-	return result.Text('f', precision) // 8 is display precision after floating point
+	return result.Text('f', precision) // 5 is display precision after floating point
 }
 
 // this will parse and validate an address, in reference to the current main/test mode
-func ParseValidateAddress(str string) (addr *address.Address, err error) {
-	addr, err = address.NewAddress(strings.TrimSpace(str))
+func ParseValidateAddress(str string) (addr *rpc.Address, err error) {
+	addr, err = rpc.NewAddress(strings.TrimSpace(str))
 	if err != nil {
 		return
 	}

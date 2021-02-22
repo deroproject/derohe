@@ -25,8 +25,8 @@ import "encoding/binary"
 //import "github.com/mattn/go-isatty"
 //import "github.com/cheggaaa/pb/v3"
 
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/crypto/bn256"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
 
 // this file implements balance decoder whih has to be bruteforced
 // balance is a 64 bit field and total effort is 2^64

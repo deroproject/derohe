@@ -16,7 +16,7 @@
 
 package blockchain
 
-//import "fmt"
+import "fmt"
 import "time"
 
 /*import "bytes"
@@ -33,11 +33,11 @@ import "github.com/deroproject/graviton"
 //import "github.com/romana/rlog"
 import log "github.com/sirupsen/logrus"
 
-//import "github.com/deroproject/derohe/config"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/crypto/bn256"
+import "github.com/deroproject/derohe/cryptography/bn256"
 
 //import "github.com/deroproject/derosuite/emission"
 
@@ -71,10 +71,10 @@ func clean_up_valid_cache() {
 
 /* Coinbase transactions need to verify registration
  * */
-func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, minertx *transaction.Transaction) (result bool) {
+func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, minertx *transaction.Transaction) (err error) {
 
 	if !minertx.IsCoinbase() { // transaction is not coinbase, return failed
-		return false
+		return fmt.Errorf("tx is not coinbase")
 	}
 
 	// make sure miner address is registered
@@ -82,7 +82,7 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(cbl.Bl.Height - 1))
 	// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
 	if len(topos) < 1 {
-		return false
+		return fmt.Errorf("could not find previous height blocks")
 	}
 
 	var balance_tree *graviton.Tree
@@ -90,29 +90,26 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 
 		toporecord, err := chain.Store.Topo_store.Read(topos[i])
 		if err != nil {
-			log.Infof("Skipping block at height %d due to error while obtaining toporecord %s\n", i, err)
-			continue
+			return fmt.Errorf("could not read block at height %d due to error while obtaining toporecord topos %+v processing %d err:%s\n", cbl.Bl.Height-1, topos, i, err)
 		}
 
 		ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
 		if err != nil {
-			panic(err)
+			return err
 		}
 
-		if balance_tree, err = ss.GetTree(BALANCE_TREE); err != nil {
-			panic(err)
+		if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
+			return err
 		}
 
 		if _, err := balance_tree.Get(minertx.MinerAddress[:]); err != nil {
-			//logger.Infof("balance not obtained err %s\n",err)
+			return fmt.Errorf("balance not obtained err %s\n", err)
 			//return false
-		} else {
-			return true
 		}
 
 	}
 
-	return false
+	return nil // success comes last
 }
 
 // all non miner tx must be non-coinbase tx
@@ -122,156 +119,223 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 // if the transaction has passed the check it can be added to mempool, relayed or added to blockchain
 // the transaction has already been deserialized thats it
 // It also expands the transactions, using the repective state trie
-func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *transaction.Transaction) (result bool) {
+func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *transaction.Transaction) (err error) {
 
 	var tx_hash crypto.Hash
 	defer func() { // safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
 			logger.WithFields(log.Fields{"txid": tx_hash}).Warnf("Recovered while Verifying transaction, failed verification, Stack trace below")
 			logger.Warnf("Stack trace  \n%s", debug.Stack())
-			result = false
+			err = fmt.Errorf("Stack Trace %s", debug.Stack())
 		}
 	}()
 
 	if tx.Version != 1 {
-		return false
+		return fmt.Errorf("TX should be version 1")
 	}
 
 	tx_hash = tx.GetHash()
 
 	if tx.TransactionType == transaction.REGISTRATION {
 		if _, ok := transaction_valid_cache.Load(tx_hash); ok {
-			return true //logger.Infof("Found in cache %s ",tx_hash)
+			return nil //logger.Infof("Found in cache %s ",tx_hash)
 		} else {
 			//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
 		}
 
 		if tx.IsRegistrationValid() {
 			transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
-			return true
+			return nil
 		}
-		return false
+		return fmt.Errorf("Registration has invalid signature")
 	}
 
-	// currently we allow 2 types of transaction
-	if !(tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.REGISTRATION) {
-		return false
+	// currently we allow following types of transaction
+	if !(tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.SC_TX || tx.TransactionType == transaction.BURN_TX) {
+		return fmt.Errorf("Unknown transaction type")
 	}
 
-	// check sanity
-	if tx.Statement.RingSize != uint64(len(tx.Statement.Publickeylist_compressed)) || tx.Statement.RingSize != uint64(len(tx.Statement.Publickeylist)) {
-		return false
+	if tx.TransactionType == transaction.BURN_TX {
+		if tx.Value == 0 {
+			return fmt.Errorf("Burn Value cannot be zero")
+		}
 	}
 
 	// avoid some bugs lurking elsewhere
 	if tx.Height != uint64(int64(tx.Height)) {
-		return false
+		return fmt.Errorf("invalid tx height")
 	}
 
-	if tx.Statement.RingSize < 2 { // ring size minimum 4
-		return false
-	}
-
-	if tx.Statement.RingSize > 128 { // ring size current limited to 128
-		return false
-	}
-
-	if !crypto.IsPowerOf2(len(tx.Statement.Publickeylist_compressed)) {
-		return false
-	}
-
-	// check duplicate ring members within the tx
-	{
-		key_map := map[string]bool{}
-		for i := range tx.Statement.Publickeylist_compressed {
-			key_map[string(tx.Statement.Publickeylist_compressed[i][:])] = true
-		}
-		if len(key_map) != len(tx.Statement.Publickeylist_compressed) {
-			return false
+	for t := range tx.Payloads {
+		// check sanity
+		if tx.Payloads[t].Statement.RingSize != uint64(len(tx.Payloads[t].Statement.Publickeylist_pointers)/int(tx.Payloads[t].Statement.Bytes_per_publickey)) {
+			return fmt.Errorf("corrupted key pointers ringsize")
 		}
 
+		if tx.Payloads[t].Statement.RingSize < 2 { // ring size minimum 4
+			return fmt.Errorf("RingSize cannot be less than 2")
+		}
+
+		if tx.Payloads[t].Statement.RingSize > 128 { // ring size current limited to 128
+			return fmt.Errorf("RingSize cannot be more than 128")
+		}
+
+		if !crypto.IsPowerOf2(len(tx.Payloads[t].Statement.Publickeylist_pointers) / int(tx.Payloads[t].Statement.Bytes_per_publickey)) {
+			return fmt.Errorf("corrupted key pointers")
+		}
+
+		// check duplicate ring members within the tx
+		{
+			key_map := map[string]bool{}
+			for i := 0; i < int(tx.Payloads[t].Statement.RingSize); i++ {
+				key_map[string(tx.Payloads[t].Statement.Publickeylist_pointers[i*int(tx.Payloads[t].Statement.Bytes_per_publickey):(i+1)*int(tx.Payloads[t].Statement.Bytes_per_publickey)])] = true
+			}
+			if len(key_map) != int(tx.Payloads[t].Statement.RingSize) {
+				return fmt.Errorf("Duplicated ring members")
+			}
+
+		}
+		tx.Payloads[t].Statement.CLn = tx.Payloads[t].Statement.CLn[:0]
+		tx.Payloads[t].Statement.CRn = tx.Payloads[t].Statement.CRn[:0]
+	}
+
+	match_topo := int64(1)
+
+	// transaction needs to be expanded. this expansion needs  balance state
+	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height))
+
+	// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
+	if len(topos) < 1 {
+		return fmt.Errorf("TX could NOT be expanded")
+	}
+
+	for i := range topos {
+		hash, err := chain.Load_Merkle_Hash(topos[i])
+		if err != nil {
+			continue
+		}
+
+		if hash == tx.Payloads[0].Statement.Roothash {
+			match_topo = topos[i]
+			break // we have found the balance tree with which it was built now lets verify
+		}
+
+	}
+
+	if match_topo < 0 {
+		return fmt.Errorf("mentioned balance tree not found, cannot verify TX")
 	}
 
 	var balance_tree *graviton.Tree
+	toporecord, err := chain.Store.Topo_store.Read(match_topo)
+	if err != nil {
+		return err
+	}
 
-	tx.Statement.CLn = tx.Statement.CLn[:0]
-	tx.Statement.CRn = tx.Statement.CRn[:0]
+	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	if err != nil {
+		return err
+	}
 
-	// this expansion needs  balance state
-	if len(tx.Statement.CLn) == 0 { // transaction needs to be expanded
-		_, topos := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height))
-
-		// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
-		if len(topos) < 1 {
-			panic("TX could NOT be expanded")
-		}
-
-		for i := range topos {
-			toporecord, err := chain.Store.Topo_store.Read(topos[i])
-			if err != nil {
-				//log.Infof("Skipping block at height %d due to error while obtaining toporecord %s\n", i, err)
-				continue
-			}
-
-			ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-			if err != nil {
-				panic(err)
-			}
-
-			if balance_tree, err = ss.GetTree(BALANCE_TREE); err != nil {
-				panic(err)
-			}
-
-			if hash, err := balance_tree.Hash(); err != nil {
-				panic(err)
-			} else {
-				//logger.Infof("dTX balance tree hash from tx %x  treehash from blockchain  %x", tx.Statement.Roothash, hash)
-
-				if hash == tx.Statement.Roothash {
-					break // we have found the balance tree with which it was built now lets verify
-				}
-			}
-			balance_tree = nil
-		}
+	if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
+		return err
 	}
 
 	if balance_tree == nil {
-		panic("mentioned balance tree not found, cannot verify TX")
+		return fmt.Errorf("mentioned balance tree not found, cannot verify TX")
 	}
 
 	if _, ok := transaction_valid_cache.Load(tx_hash); ok {
-		return true //logger.Infof("Found in cache %s ",tx_hash)
+		return nil //logger.Infof("Found in cache %s ",tx_hash)
 	} else {
 		//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
 	}
 
 	//logger.Infof("dTX  state tree has been found")
 
-	// now lets calculate CLn and CRn
-	for i := range tx.Statement.Publickeylist_compressed {
-		balance_serialized, err := balance_tree.Get(tx.Statement.Publickeylist_compressed[i][:])
-		if err != nil {
-			//logger.Infof("balance not obtained err %s\n",err)
-			return false
+	trees := map[crypto.Hash]*graviton.Tree{}
+
+	var zerohash crypto.Hash
+	trees[zerohash] = balance_tree // initialize main tree by default
+
+	for t := range tx.Payloads {
+		tx.Payloads[t].Statement.Publickeylist_compressed = tx.Payloads[t].Statement.Publickeylist_compressed[:0]
+		tx.Payloads[t].Statement.Publickeylist = tx.Payloads[t].Statement.Publickeylist[:0]
+
+		var tree *graviton.Tree
+
+		if _, ok := trees[tx.Payloads[t].SCID]; ok {
+			tree = trees[tx.Payloads[t].SCID]
+		} else {
+
+			//	fmt.Printf("SCID loading %s tree\n", tx.Payloads[t].SCID)
+			tree, _ = ss.GetTree(string(tx.Payloads[t].SCID[:]))
+			trees[tx.Payloads[t].SCID] = tree
 		}
 
-		var ll, rr bn256.G1
-		ebalance := new(crypto.ElGamal).Deserialize(balance_serialized)
+		// now lets calculate CLn and CRn
+		for i := 0; i < int(tx.Payloads[t].Statement.RingSize); i++ {
+			key_pointer := tx.Payloads[t].Statement.Publickeylist_pointers[i*int(tx.Payloads[t].Statement.Bytes_per_publickey) : (i+1)*int(tx.Payloads[t].Statement.Bytes_per_publickey)]
+			_, key_compressed, balance_serialized, err := tree.GetKeyValueFromHash(key_pointer)
+			if err != nil {
+				return fmt.Errorf("balance not obtained err %s\n", err)
+			}
 
-		ll.Add(ebalance.Left, tx.Statement.C[i])
-		tx.Statement.CLn = append(tx.Statement.CLn, &ll)
-		rr.Add(ebalance.Right, tx.Statement.D)
-		tx.Statement.CRn = append(tx.Statement.CRn, &rr)
+			// decode public key and expand
+			{
+				var p bn256.G1
+				var pcopy [33]byte
+				copy(pcopy[:], key_compressed)
+				if err = p.DecodeCompressed(key_compressed[:]); err != nil {
+					return fmt.Errorf("key %d could not be decompressed", i)
+				}
+				tx.Payloads[t].Statement.Publickeylist_compressed = append(tx.Payloads[t].Statement.Publickeylist_compressed, pcopy)
+				tx.Payloads[t].Statement.Publickeylist = append(tx.Payloads[t].Statement.Publickeylist, &p)
+			}
+
+			var ll, rr bn256.G1
+			ebalance := new(crypto.ElGamal).Deserialize(balance_serialized)
+
+			ll.Add(ebalance.Left, tx.Payloads[t].Statement.C[i])
+			tx.Payloads[t].Statement.CLn = append(tx.Payloads[t].Statement.CLn, &ll)
+			rr.Add(ebalance.Right, tx.Payloads[t].Statement.D)
+			tx.Payloads[t].Statement.CRn = append(tx.Payloads[t].Statement.CRn, &rr)
+
+			// prepare for another sub transaction
+			echanges := crypto.ConstructElGamal(tx.Payloads[t].Statement.C[i], tx.Payloads[t].Statement.D)
+			ebalance = new(crypto.ElGamal).Deserialize(balance_serialized).Add(echanges) // homomorphic addition of changes
+			tree.Put(key_compressed, ebalance.Serialize())                               // reserialize and store temporarily, tree will be discarded after verification
+
+		}
 	}
 
-	if tx.Proof.Verify(&tx.Statement, tx.GetHash()) {
-		//logger.Infof("dTX verified with proof successfuly")
+	// at this point has been completely expanded, verify the tx statement
+	for t := range tx.Payloads {
+		if !tx.Payloads[t].Proof.Verify(&tx.Payloads[t].Statement, tx.GetHash(), tx.Payloads[t].BurnValue) {
+
+			fmt.Printf("Statement %+v\n", tx.Payloads[t].Statement)
+			fmt.Printf("Proof %+v\n", tx.Payloads[t].Proof)
+
+			return fmt.Errorf("transaction statement %d verification failed", t)
+		}
+	}
+
+	// these transactions are done
+	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX {
 		transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
-		return true
+		return nil
 	}
-	logger.Infof("transaction verification failed\n")
 
-	return false
+	// we reach here if tx proofs are valid
+	if tx.TransactionType != transaction.SC_TX {
+		return fmt.Errorf("non sc transaction should never reach here")
+	}
+
+	if !tx.IsRegistrationValid() {
+		return fmt.Errorf("SC has invalid signature")
+	}
+
+	return nil
 
 	/*
 		var tx_hash crypto.Hash
@@ -501,23 +565,5 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 
 		//logger.WithFields(log.Fields{"txid": tx_hash}).Debugf("TX successfully verified")
 	*/
-	return true
-}
 
-// double spend check is separate from the core checks ( due to softforks )
-func (chain *Blockchain) Verify_Transaction_NonCoinbase_DoubleSpend_Check(tx *transaction.Transaction) (result bool) {
-	return true
-
-}
-
-// verify all non coinbase tx, single threaded for double spending on current active chain
-func (chain *Blockchain) Verify_Block_DoubleSpending(cbl *block.Complete_Block) (result bool) {
-	/*
-		for i := 0; i < len(cbl.Txs); i++ {
-			if !chain.Verify_Transaction_NonCoinbase_DoubleSpend_Check(dbtx, cbl.Txs[i]) {
-				return false
-			}
-		}
-	*/
-	return true
 }

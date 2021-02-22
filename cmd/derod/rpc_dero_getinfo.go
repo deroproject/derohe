@@ -17,20 +17,15 @@
 package main
 
 import "fmt"
-
-//import "time"
 import "context"
 import "runtime/debug"
-
-//import	"log"
-//import 	"net/http"
-
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/structures"
-import "github.com/deroproject/derohe/blockchain"
+import "github.com/deroproject/derohe/rpc"
 
-func (DERO_RPC_APIS) GetInfo(ctx context.Context) (result structures.GetInfo_Result, err error) {
+//import "github.com/deroproject/derohe/blockchain"
+
+func (DERO_RPC_APIS) GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -44,28 +39,11 @@ func (DERO_RPC_APIS) GetInfo(ctx context.Context) (result structures.GetInfo_Res
 	result.TopoHeight = chain.Load_TOPO_HEIGHT()
 
 	{
-
-		toporecord, err := chain.Store.Topo_store.Read(result.TopoHeight)
-
-		//fmt.Printf("current block %d previous topo %d record %+v  err %s\n", i+base_topo_index, i+base_topo_index-1, toporecord,err)
+		balance_merkle_hash, err := chain.Load_Merkle_Hash(result.TopoHeight)
 		if err != nil {
 			panic(err)
 		}
-		ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-		if err != nil {
-			panic(err)
-		}
-
-		balance_tree, err := ss.GetTree(blockchain.BALANCE_TREE)
-		if err != nil {
-			panic(err)
-		}
-		merkle_hash, err := balance_tree.Hash()
-		if err != nil {
-			panic(err)
-		}
-		result.Merkle_Balance_TreeHash = fmt.Sprintf("%X", merkle_hash[:])
-
+		result.Merkle_Balance_TreeHash = fmt.Sprintf("%X", balance_merkle_hash[:])
 	}
 
 	blid, err := chain.Load_Block_Topological_order_at_index(result.TopoHeight)
@@ -78,7 +56,7 @@ func (DERO_RPC_APIS) GetInfo(ctx context.Context) (result structures.GetInfo_Res
 	result.Top_block_hash = blid.String()
 	result.Target = chain.Get_Current_BlockTime()
 
-	if result.TopoHeight > 50 {
+	if result.TopoHeight-chain.LocatePruneTopo() > 100 {
 		blid50, err := chain.Load_Block_Topological_order_at_index(result.TopoHeight - 50)
 		if err == nil {
 			now := chain.Load_Block_Timestamp(blid)

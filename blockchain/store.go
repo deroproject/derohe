@@ -25,14 +25,12 @@ import "path/filepath"
 import log "github.com/sirupsen/logrus"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/config"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 import "github.com/deroproject/graviton"
 
 import "github.com/golang/groupcache/lru"
-
-// note we are keeping the tree name small for disk savings, since they will be stored n times (atleast or archival nodes)
-const BALANCE_TREE = "B"
 
 // though these can be done within a single DB, these are separated for completely clarity purposes
 type storage struct {
@@ -85,7 +83,7 @@ func (s *storage) IsBalancesIntialized() bool {
 	var balancehash, random_hash [32]byte
 
 	balance_ss, _ := s.Balance_store.LoadSnapshot(0) // load most recent snapshot
-	balancetree, _ := balance_ss.GetTree(BALANCE_TREE)
+	balancetree, _ := balance_ss.GetTree(config.BALANCE_TREE)
 
 	// avoid hardcoding any hash
 	if balancehash, err = balancetree.Hash(); err == nil {
@@ -353,4 +351,43 @@ func (chain *Blockchain) Load_Block_Topological_order_at_index(index_pos int64) 
 		panic("cnnot query clean block id")
 	}
 
+}
+
+//load store hash from 2 tree
+func (chain *Blockchain) Load_Merkle_Hash(index_pos int64) (hash crypto.Hash, err error) {
+
+	toporecord, err := chain.Store.Topo_store.Read(index_pos)
+	if err != nil {
+		return hash, err
+	}
+	if toporecord.IsClean() {
+		err = fmt.Errorf("cannot query clean block")
+		return
+	}
+
+	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	if err != nil {
+		return
+	}
+
+	balance_tree, err := ss.GetTree(config.BALANCE_TREE)
+	if err != nil {
+		return
+	}
+	sc_meta_tree, err := ss.GetTree(config.SC_META)
+	if err != nil {
+		return
+	}
+	balance_merkle_hash, err := balance_tree.Hash()
+	if err != nil {
+		return
+	}
+	meta_merkle_hash, err := sc_meta_tree.Hash()
+	if err != nil {
+		return
+	}
+	for i := range balance_merkle_hash {
+		hash[i] = balance_merkle_hash[i] ^ meta_merkle_hash[i]
+	}
+	return hash, nil
 }

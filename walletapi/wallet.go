@@ -19,27 +19,17 @@ package walletapi
 import "fmt"
 import "sort"
 import "sync"
-import "time"
-import "bytes"
 import "strings"
 import "math/big"
 import "crypto/rand"
 
-//import "encoding/json"
-//import "encoding/binary"
+import "encoding/binary"
 
-//import "github.com/romana/rlog"
-//import "github.com/vmihailenco/msgpack"
+import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
 
-//import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/structures"
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/crypto/bn256"
-
-//import "github.com/deroproject/derosuite/crypto/ringct"
-//import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/walletapi/mnemonics"
-import "github.com/deroproject/derohe/address"
 import "github.com/deroproject/derohe/transaction"
 
 //import "github.com/deroproject/derohe/blockchain/inputmaturity"
@@ -57,6 +47,7 @@ type Account struct {
 	FeesMultiplier float32 `json:"feesmultiplier"` // fees multiplier accurate to 2 decimals
 	Ringsize       int     `json:"ringsize"`       // default mixn to use for txs
 	mainnet        bool
+	Registered     bool `json:"registered"`
 
 	Height     uint64 `json:"height"`     // block height till where blockchain has been scanned
 	TopoHeight int64  `json:"topoheight"` // block height till where blockchain has been scanned
@@ -64,58 +55,48 @@ type Account struct {
 	Balance_Mature uint64 `json:"balance_mature"` // total balance of account
 	Balance_Locked uint64 `json:"balance_locked"` // balance locked
 
-	Balance_Result structures.GetEncryptedBalance_Result // used to cache last successful result
+	Balance_Result rpc.GetEncryptedBalance_Result // used to cache last successful result
 
-	Entries []Entry // all tx entries, basically transaction statement
+	//Entries []rpc.Entry // all tx entries, basically transaction statement
+
+	EntriesNative map[crypto.Hash][]rpc.Entry // all subtokens are stored here
 
 	RingMembers map[string]int64 `json:"ring_members"` // ring members
 
-	Pool Wallet_Pool // wallet pool
+	Pool        Wallet_Pool `json:"pool"`        // wallet pool
+	PoolHistory Wallet_Pool `json:"poolhistory"` // wallet pool
 
 	sync.Mutex // syncronise modifications to this structure
 }
 
-// these structures are completely decoupled from blockchain and live only within the wallet
-// all inputs and outputs which modify balance are presented by this structure
-type Entry struct {
-	Height         uint64                               `json:"height"`
-	TopoHeight     int64                                `json:"topoheight"`
-	BlockHash      string                               `json:"blockhash"`
-	MinerReward    uint64                               `json:"minerreward"`
-	TransactionPos int                                  `json:"poswithinblock"` // pos within block is negative for coinbase
-	Coinbase       bool                                 `json:"coinbase"`
-	Incoming       bool                                 `json:"incoming"`
-	TXID           crypto.Hash                          `json:"txid"`
-	Amount         uint64                               `json:"amount"`
-	Fees           uint64                               `json:"fees"`
-	PaymentID      []byte                               `json:"payment_id"`
-	Proof          string                               `json:"proof"`
-	Status         byte                                 `json:"status"`
-	Unlock_Time    uint64                               `json:"unlock_time"`
-	Time           time.Time                            `json:"time"`
-	EWData         string                               `json:"ewdata"`        // encrypted wallet balance at that point in time
-	Secret_TX_Key  string                               `json:"secret_tx_key"` // can be used to prove if available
-	Details        structures.Outgoing_Transfer_Details `json:"details"`       // actual details if available
-}
-
 // add a entry in the suitable place
 // this is always single threaded
-func (w *Wallet_Memory) InsertReplace(e Entry) {
+func (w *Wallet_Memory) InsertReplace(scid crypto.Hash, e rpc.Entry) {
+	var entries []rpc.Entry
+	if _, ok := w.account.EntriesNative[scid]; ok {
+		entries = w.account.EntriesNative[scid]
+	} else {
 
-	i := sort.Search(len(w.account.Entries), func(j int) bool {
-		return w.account.Entries[j].TopoHeight >= e.TopoHeight && w.account.Entries[j].TransactionPos >= e.TransactionPos
+	}
+
+	i := sort.Search(len(entries), func(j int) bool {
+		return entries[j].TopoHeight >= e.TopoHeight && entries[j].TransactionPos >= e.TransactionPos && entries[j].Pos >= e.Pos
 	})
 
 	// entry already exists, we are probably rescanning/overwiting, delete anything afterwards
-	if i < len(w.account.Entries) && w.account.Entries[i].TopoHeight == e.TopoHeight && w.account.Entries[i].TransactionPos == e.TransactionPos {
-		w.account.Entries = w.account.Entries[:i]
+	if i < len(entries) && entries[i].TopoHeight == e.TopoHeight && entries[i].TransactionPos == e.TransactionPos && entries[i].Pos == e.Pos {
+		entries = entries[:i]
 		// x is present at data[i]
 	} else {
 		// x is not present in data,
 		// but i is the index where it would be inserted.
 	}
-	w.account.Entries = append(w.account.Entries, e)
+	entries = append(entries, e)
 
+	if w.account.EntriesNative == nil {
+		w.account.EntriesNative = map[crypto.Hash][]rpc.Entry{}
+	}
+	w.account.EntriesNative[scid] = entries
 }
 
 // generate keys from using random numbers
@@ -171,25 +152,27 @@ func (w *Wallet_Memory) GetSeedinLanguage(lang string) (str string) {
 	return mnemonics.Key_To_Words(w.account.Keys.Secret.BigInt(), lang)
 }
 
-func (account *Account) GetAddress() (addr address.Address) {
-	addr.PublicKey = account.Keys.Public
+func (account *Account) GetAddress() (addr rpc.Address) {
+	addr.PublicKey = new(crypto.Point).Set(account.Keys.Public)
 	return
 }
 
 // convert a user account to address
-func (w *Wallet_Memory) GetAddress() (addr address.Address) {
+func (w *Wallet_Memory) GetAddress() (addr rpc.Address) {
 	addr = w.account.GetAddress()
 	addr.Mainnet = w.account.mainnet
 	return addr
 }
 
 // get a random integrated address
-func (w *Wallet_Memory) GetRandomIAddress8() (addr address.Address) {
+func (w *Wallet_Memory) GetRandomIAddress8() (addr rpc.Address) {
 	addr = w.GetAddress()
 
 	// setup random 8 bytes of payment ID, it must be from non-deterministic RNG namely crypto random
-	addr.PaymentID = make([]byte, 8, 8)
-	rand.Read(addr.PaymentID[:])
+	var dstport [8]byte
+	rand.Read(dstport[:])
+
+	addr.Arguments = rpc.Arguments{{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, binary.BigEndian.Uint64(dstport[:])}}
 
 	return
 }
@@ -214,48 +197,64 @@ func (w *Wallet_Memory) Get_Balance() (mature_balance uint64, locked_balance uin
 //TODO currently we do not track POOL at all any where ( except while building tx)
 // if payment_id is true, only entries with payment ids are returned
 // min_height/max height represent topoheight
-func (w *Wallet_Memory) Show_Transfers(available bool, in bool, out bool, pool bool, failed bool, payment_id bool, min_height, max_height uint64) (entries []Entry) {
+func (w *Wallet_Memory) Show_Transfers(coinbase bool, in bool, out bool, min_height, max_height uint64, sender, receiver string, dstport, srcport uint64) []rpc.Entry {
+	w.Lock()
+	defer w.Unlock()
 
-	// dero_first_block_time := time.Unix(1512432000, 0) //Tuesday, December 5, 2017 12:00:00 AM
+	var entries []rpc.Entry
 
 	if max_height == 0 {
-		max_height = 50000000000
+		max_height = 5000000000000
 	}
 
-	for _, e := range w.account.Entries {
+	var zerohash crypto.Hash
+	all_entries := w.account.EntriesNative[zerohash]
+	if all_entries == nil || len(all_entries) < 1 {
+		return entries
+	}
+	for _, e := range all_entries {
 		if e.Height >= min_height && e.Height <= max_height {
-			if in && (e.Incoming || e.Coinbase) {
-
-				if payment_id && len(e.PaymentID) >= 8 {
-					entries = append(entries, e)
-				} else {
-					entries = append(entries, e)
-				}
+			if coinbase && e.Coinbase {
+				entries = append(entries, e)
+				continue
+			}
+			if in && e.Incoming && !e.Coinbase {
+				entries = append(entries, e)
 				continue
 			}
 			if out && !(e.Incoming || e.Coinbase) {
-				if payment_id && len(e.PaymentID) >= 8 {
-					entries = append(entries, e)
-				} else {
-					entries = append(entries, e)
-				}
+				entries = append(entries, e)
 				continue
 			}
 		}
 	}
 
-	return
+	//we have filtered by coinbase,in,out,min_height,max_height
+	// now we must filter by sernder receiver
+
+	return entries
 
 }
 
 // gets all the payments  done to specific payment ID and filtered by specific block height
-// we do need better structures
-func (w *Wallet_Memory) Get_Payments_Payment_ID(payid []byte, min_height uint64) (entries []Entry) {
-	for _, e := range w.account.Entries {
-		if e.Height >= min_height {
-			if bytes.Compare(payid, e.PaymentID[:]) == 0 {
-				entries = append(entries, e)
-			}
+// we do need better rpc
+func (w *Wallet_Memory) Get_Payments_Payment_ID(dst_port uint64, min_height uint64) (entries []rpc.Entry) {
+	return w.Get_Payments_DestinationPort(dst_port, min_height)
+}
+
+// gets all the payments  done to specific payment ID and filtered by specific block height
+// we do need better rpc
+func (w *Wallet_Memory) Get_Payments_DestinationPort(port uint64, min_height uint64) (entries []rpc.Entry) {
+
+	var zerohash crypto.Hash
+	all_entries := w.account.EntriesNative[zerohash]
+	if all_entries == nil || len(all_entries) < 1 {
+		return
+	}
+
+	for _, e := range all_entries {
+		if e.Height >= min_height && e.DestinationPort == port {
+			entries = append(entries, e)
 		}
 	}
 
@@ -265,9 +264,15 @@ func (w *Wallet_Memory) Get_Payments_Payment_ID(payid []byte, min_height uint64)
 
 // return all payments within a tx there can be only 1 entry
 // NOTE: what about multiple payments
-func (w *Wallet_Memory) Get_Payments_TXID(txid []byte) (entry Entry) {
-	for _, e := range w.account.Entries {
-		if bytes.Compare(txid, e.TXID[:]) == 0 {
+func (w *Wallet_Memory) Get_Payments_TXID(txid string) (entry rpc.Entry) {
+	var zerohash crypto.Hash
+	all_entries := w.account.EntriesNative[zerohash]
+	if all_entries == nil || len(all_entries) < 1 {
+		return
+	}
+
+	for _, e := range all_entries {
+		if txid == e.TXID {
 			return e
 		}
 	}
@@ -277,8 +282,14 @@ func (w *Wallet_Memory) Get_Payments_TXID(txid []byte) (entry Entry) {
 
 // delete most of the data and prepare for rescan
 func (w *Wallet_Memory) Clean() {
-	w.account.Entries = w.account.Entries[:0]
+	//w.account.Entries = w.account.Entries[:0]
+
+	for k := range w.account.EntriesNative {
+		delete(w.account.EntriesNative, k)
+	}
+	w.account.RingMembers = map[string]int64{}
 	w.account.Balance_Result.Data = ""
+	w.account.Registered = false
 }
 
 // return height of wallet
@@ -298,6 +309,10 @@ func (w *Wallet_Memory) Get_Daemon_Height() uint64 {
 // return topoheight of darmon
 func (w *Wallet_Memory) Get_Daemon_TopoHeight() int64 {
 	return w.Daemon_TopoHeight
+}
+
+func (w *Wallet_Memory) IsRegistered() bool {
+	return w.account.Registered
 }
 
 func (w *Wallet_Memory) Get_Registration_TopoHeight() int64 {
@@ -344,6 +359,7 @@ func (w *Wallet_Memory) SetOnlineMode() bool {
 
 	if current_mode != true { // trigger subroutine if previous mode was offline
 		go w.sync_loop() // start sync subroutine
+		go w.pool_loop() // start wallet pool
 	}
 	return current_mode
 }
@@ -351,7 +367,7 @@ func (w *Wallet_Memory) SetOnlineMode() bool {
 // by default a wallet opens in Offline Mode
 // however, It can be made online by calling this
 func (w *Wallet_Memory) SetRingSize(ringsize int) int {
-	defer w.Save_Wallet() // save wallet
+	defer w.save_if_disk() // save wallet
 
 	if ringsize >= 2 && ringsize <= 128 { //reasonable limits for mixin, atleastt for now, network should bump it to 13 on next HF
 
@@ -373,8 +389,8 @@ func (w *Wallet_Memory) GetRingSize() int {
 
 // sets a fee multiplier
 func (w *Wallet_Memory) SetFeeMultiplier(x float32) float32 {
-	defer w.Save_Wallet() // save wallet
-	if x < 1.0 {          // fee cannot be less than 1.0, base fees
+	defer w.save_if_disk() // save wallet
+	if x < 1.0 {           // fee cannot be less than 1.0, base fees
 		w.account.FeesMultiplier = 2.0
 	} else {
 		w.account.FeesMultiplier = x
@@ -401,7 +417,7 @@ func (w *Wallet_Memory) getfees(txfee uint64) uint64 {
 
 // Ability to change seed lanaguage
 func (w *Wallet_Memory) SetSeedLanguage(language string) string {
-	defer w.Save_Wallet() // save wallet
+	defer w.save_if_disk() // save wallet
 
 	language_list := mnemonics.Language_List()
 	for i := range language_list {
@@ -456,12 +472,29 @@ func (w *Wallet_Memory) sign() (c, s *big.Int) {
 }
 
 // retrieve  secret key for any tx we may have created
-func (w *Wallet_Memory) GetTXKey(txhash crypto.Hash) string {
-	for _, e := range w.account.Entries {
+func (w *Wallet_Memory) GetTXKey(txhash string) string {
+
+	/*for _, e := range w.account.Entries {
 		if !e.Coinbase && !e.Incoming && e.TXID == txhash {
 			return e.Proof
 		}
-	}
+	}*/
 
 	return ""
+}
+
+// never do any division operation on money due to floating point issues
+// newbies, see type the next in python interpretor "3.33-3.13"
+//
+func FormatMoney(amount uint64) string {
+	return FormatMoneyPrecision(amount, 5) // default is 5 precision after floating point
+}
+
+// format money with specific precision
+func FormatMoneyPrecision(amount uint64, precision int) string {
+	hard_coded_decimals := new(big.Float).SetInt64(100000)
+	float_amount, _, _ := big.ParseFloat(fmt.Sprintf("%d", amount), 10, 0, big.ToZero)
+	result := new(big.Float)
+	result.Quo(float_amount, hard_coded_decimals)
+	return result.Text('f', precision) // 5 is display precision after floating point
 }

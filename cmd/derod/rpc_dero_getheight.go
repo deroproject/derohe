@@ -17,14 +17,10 @@
 package main
 
 import "context"
+import "github.com/deroproject/derohe/rpc"
 
-//import	"log"
-//import 	"net/http"
-
-import "github.com/deroproject/derohe/structures"
-
-func (DERO_RPC_APIS) GetHeight(ctx context.Context) structures.Daemon_GetHeight_Result {
-	return structures.Daemon_GetHeight_Result{
+func (DERO_RPC_APIS) GetHeight(ctx context.Context) rpc.Daemon_GetHeight_Result {
+	return rpc.Daemon_GetHeight_Result{
 		Height:       uint64(chain.Get_Height()),
 		StableHeight: chain.Get_Stable_Height(),
 		TopoHeight:   chain.Load_TOPO_HEIGHT(),

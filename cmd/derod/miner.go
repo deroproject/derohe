@@ -63,9 +63,9 @@ import "sync/atomic"
 import "encoding/binary"
 
 import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/blockchain"
 import "github.com/deroproject/derohe/transaction"
 
@@ -76,38 +76,41 @@ var counter uint64 = 0 // used to track speeds of current miner
 var mining bool // whether system is mining
 
 // request block chain template, see if the tip changes, then continously mine
-func start_miner(chain *blockchain.Blockchain, addr *address.Address, tx *transaction.Transaction, threads int) {
+func start_miner(chain *blockchain.Blockchain, addr *rpc.Address, tx *transaction.Transaction, threads int) {
 
-	mining = true
-	counter = 0
 	//tip_counter := 0
 
-	for {
-		//time.Sleep(50 * time.Millisecond)
+	for { // once started keep generating blocks after every 10 secs
+		mining = true
+		counter = 0
+		for {
+			//time.Sleep(50 * time.Millisecond)
 
-		if !mining {
-			break
+			if !mining {
+				break
+			}
+
+			if chain.MINING_BLOCK == true {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+
+			cbl, bl := chain.Create_new_miner_block(*addr, tx)
+
+			difficulty := chain.Get_Difficulty_At_Tips(bl.Tips)
+
+			//globals.Logger.Infof("Difficulty of new block is %s", difficulty.String())
+			// calculate difficulty once
+			// update job from chain
+			wg := sync.WaitGroup{}
+			wg.Add(threads) // add total number of tx as work
+
+			for i := 0; i < threads; i++ {
+				go generate_valid_PoW(chain, 0, cbl, cbl.Bl, difficulty, &wg) // work should be complete in approx 100 ms, on a 12 cpu system, this would add cost of launching 12 g routine per second
+			}
+			wg.Wait()
 		}
-
-		if chain.MINING_BLOCK == true {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-
-		cbl, bl := chain.Create_new_miner_block(*addr, tx)
-
-		difficulty := chain.Get_Difficulty_At_Tips(bl.Tips)
-
-		//globals.Logger.Infof("Difficulty of new block is %s", difficulty.String())
-		// calculate difficulty once
-		// update job from chain
-		wg := sync.WaitGroup{}
-		wg.Add(threads) // add total number of tx as work
-
-		for i := 0; i < threads; i++ {
-			go generate_valid_PoW(chain, 0, cbl, cbl.Bl, difficulty, &wg) // work should be complete in approx 100 ms, on a 12 cpu system, this would add cost of launching 12 g routine per second
-		}
-		wg.Wait()
+		time.Sleep(10 * time.Second)
 	}
 
 	// g
@@ -150,7 +153,7 @@ func generate_valid_PoW(chain *blockchain.Blockchain, hf_version uint64, cbl *bl
 
 			if _, ok := chain.Add_Complete_Block(cbl); ok {
 				globals.Logger.Infof("Block %s successfully accepted diff %s", bl.GetHash(), current_difficulty.String())
-				//chain.P2P_Block_Relayer(cbl, 0) // broadcast block to network ASAP
+				chain.P2P_Block_Relayer(cbl, 0) // broadcast block to network ASAP
 
 				mining = false //  this line enables single block mining in 1 go
 

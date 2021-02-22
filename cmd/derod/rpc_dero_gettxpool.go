@@ -18,10 +18,9 @@ package main
 
 import "fmt"
 import "context"
+import "github.com/deroproject/derohe/rpc"
 
-import "github.com/deroproject/derohe/structures"
-
-func (DERO_RPC_APIS) GetTxPool(ctx context.Context) (result structures.GetTxPool_Result) {
+func (DERO_RPC_APIS) GetTxPool(ctx context.Context) (result rpc.GetTxPool_Result) {
 	result.Status = "OK"
 
 	pool_list := chain.Mempool.Mempool_List_TX()

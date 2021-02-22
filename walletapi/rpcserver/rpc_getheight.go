@@ -19,16 +19,16 @@ package rpcserver
 import "fmt"
 import "context"
 import "runtime/debug"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) GetHeight(ctx context.Context) (result structures.GetHeight_Result, err error) {
+func (w *WALLET_RPC_APIS) GetHeight(ctx context.Context) (result rpc.GetHeight_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
 		}
 	}()
 
-	return structures.GetHeight_Result{
+	return rpc.GetHeight_Result{
 		Height: w.wallet.Get_Height(),
 	}, nil
 }

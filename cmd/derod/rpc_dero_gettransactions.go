@@ -22,15 +22,14 @@ import "encoding/hex"
 import "runtime/debug"
 
 //import "github.com/romana/rlog"
-//import "github.com/vmihailenco/msgpack"
-
-import "github.com/deroproject/derohe/crypto"
-
-//import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/config"
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/transaction"
+import "github.com/deroproject/derohe/blockchain"
+import "github.com/deroproject/graviton"
 
-func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p structures.GetTransaction_Params) (result structures.GetTransaction_Result, err error) {
+func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rpc.GetTransaction_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -48,7 +47,7 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p structures.GetTransac
 
 			// logger.Debugf("checking tx in pool %+v", tx);
 			if tx != nil { // found the tx in the mempool
-				var related structures.Tx_Related_Info
+				var related rpc.Tx_Related_Info
 
 				related.Block_Height = -1 // not mined
 				related.In_pool = true
@@ -63,8 +62,11 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p structures.GetTransac
 		{ // check if tx is from  blockchain
 			var tx transaction.Transaction
 			var tx_bytes []byte
-			if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(hash); err != nil {
-				return
+			if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(hash); err != nil { // if tx not found return empty rpc
+				var related rpc.Tx_Related_Info
+				result.Txs_as_hex = append(result.Txs_as_hex, "") // a not found tx will return ""
+				result.Txs = append(result.Txs, related)
+				continue
 			} else {
 
 				//fmt.Printf("txhash %s loaded %d bytes\n", hash, len(tx_bytes))
@@ -75,7 +77,7 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p structures.GetTransac
 				}
 
 				if err == nil {
-					var related structures.Tx_Related_Info
+					var related rpc.Tx_Related_Info
 
 					// check whether tx is orphan
 
@@ -100,8 +102,69 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p structures.GetTransac
 					if valid {
 						related.ValidBlock = valid_blid.String()
 						// topo height at which it was mined
-						related.Block_Height = int64(chain.Load_Block_Topological_order(valid_blid))
+						topo_height := int64(chain.Load_Block_Topological_order(valid_blid))
+						related.Block_Height = topo_height
 
+						if tx.TransactionType != transaction.REGISTRATION {
+							// we must now fill in compressed ring members
+							if toporecord, err := chain.Store.Topo_store.Read(topo_height); err == nil {
+								if ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version); err == nil {
+
+									if tx.TransactionType == transaction.SC_TX {
+										scid := tx.GetHash()
+										if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) && rpc.SC_INSTALL == rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64)) {
+											if sc_meta_tree, err := ss.GetTree(config.SC_META); err == nil {
+												var meta_bytes []byte
+												if meta_bytes, err = sc_meta_tree.Get(blockchain.SC_Meta_Key(scid)); err == nil {
+													var meta blockchain.SC_META_DATA // the meta contains the link to the SC bytes
+													if err = meta.UnmarshalBinary(meta_bytes); err == nil {
+														related.Balance = meta.Balance
+													}
+												}
+											}
+											if sc_data_tree, err := ss.GetTree(string(scid[:])); err == nil {
+												var code_bytes []byte
+												if code_bytes, err = sc_data_tree.Get(blockchain.SC_Code_Key(scid)); err == nil {
+													related.Code = string(code_bytes)
+
+												}
+
+											}
+
+										}
+									}
+
+									for t := range tx.Payloads {
+										var ring [][]byte
+
+										var tree *graviton.Tree
+
+										if tx.Payloads[t].SCID.IsZero() {
+											tree, err = ss.GetTree(config.BALANCE_TREE)
+
+										} else {
+											tree, err = ss.GetTree(string(tx.Payloads[t].SCID[:]))
+										}
+
+										if err != nil {
+											fmt.Printf("no such SC %s\n", tx.Payloads[t].SCID)
+										}
+
+										for j := 0; j < int(tx.Payloads[t].Statement.RingSize); j++ {
+											key_pointer := tx.Payloads[t].Statement.Publickeylist_pointers[j*int(tx.Payloads[t].Statement.Bytes_per_publickey) : (j+1)*int(tx.Payloads[t].Statement.Bytes_per_publickey)]
+											_, key_compressed, _, err := tree.GetKeyValueFromHash(key_pointer)
+											if err == nil {
+												ring = append(ring, key_compressed)
+											} else { // we should some how report error
+												fmt.Printf("Error expanding member for txid %s t %d err %s key_compressed %x\n", hash, t, err, key_compressed)
+											}
+										}
+										related.Ring = append(related.Ring, ring)
+									}
+
+								}
+							}
+						}
 					}
 					for i := range invalid_blid {
 						related.InvalidBlock = append(related.InvalidBlock, invalid_blid[i].String())
@@ -125,6 +188,6 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p structures.GetTransac
 	result.Status = "OK"
 	err = nil
 
-	//logger.Debugf("result %+v\n", result);
+	logger.Debugf("result %+v\n", result)
 	return
 }

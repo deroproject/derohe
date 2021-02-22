@@ -23,15 +23,15 @@ import "runtime/debug"
 //import	"log"
 //import 	"net/http"
 
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) GetAddress(ctx context.Context) (result structures.GetAddress_Result, err error) {
+func (w *WALLET_RPC_APIS) GetAddress(ctx context.Context) (result rpc.GetAddress_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
 		}
 	}()
-	return structures.GetAddress_Result{
+	return rpc.GetAddress_Result{
 		Address: w.wallet.GetAddress().String(),
 	}, nil
 }

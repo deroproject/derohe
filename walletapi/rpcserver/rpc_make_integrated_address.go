@@ -18,45 +18,42 @@ package rpcserver
 
 import "fmt"
 import "context"
-import "encoding/hex"
 import "runtime/debug"
 
 //import	"log"
 //import 	"net/http"
 
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) MakeIntegratedAddress(ctx context.Context, p structures.Make_Integrated_Address_Params) (result structures.Make_Integrated_Address_Result, err error) {
+func (w *WALLET_RPC_APIS) MakeIntegratedAddress(ctx context.Context, p rpc.Make_Integrated_Address_Params) (result rpc.Make_Integrated_Address_Result, err error) {
+
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
 		}
 	}()
 
-	var payment_id []byte
-	if p.Payment_id != "" {
-		payid, err := hex.DecodeString(p.Payment_id)
-		if err != nil {
-			return result, fmt.Errorf("%s could NOT be hex decoded err %s", p.Payment_id, err)
-		}
+	var addr *rpc.Address
 
-		if len(payid) != 8 {
-			return result, fmt.Errorf("%s not 16  hex bytes", p.Payment_id)
+	if p.Address != "" {
+		if addr, err = rpc.NewAddress(p.Address); err != nil {
+			return
 		}
-		payment_id = payid
+	} else {
+		addrp := w.wallet.GetAddress()
+		addr = &addrp
 	}
 
-	switch len(payment_id) {
-	case 8:
-		addr := w.wallet.GetRandomIAddress8()
-		copy(addr.PaymentID, payment_id)
-		result.Integrated_Address = addr.String()
-		result.Payment_id = hex.EncodeToString(payment_id)
-	default:
-		addr := w.wallet.GetRandomIAddress8()
-		result.Integrated_Address = addr.String() // default return 8 byte encrypted payment ids
-		result.Payment_id = hex.EncodeToString(addr.PaymentID)
+	addr.Arguments = p.Payload_RPC
+
+	// try encoding address
+	_, err = addr.MarshalText()
+	if err != nil {
+		return
 	}
+
+	result.Integrated_Address = addr.String()
+	result.Payload_RPC = p.Payload_RPC
 
 	return result, nil
 }

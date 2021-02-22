@@ -30,7 +30,7 @@ import log "github.com/sirupsen/logrus"
 
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 // this is only used for sorting and nothing else
 type TX_Sorting_struct struct {
@@ -125,7 +125,7 @@ func (obj *regpool_object) UnmarshalJSON(data []byte) error {
 	err = obj.Tx.DeserializeHeader(tx_bytes)
 
 	if err == nil {
-		obj.FEEperBYTE = obj.Tx.Statement.Fees / obj.Size
+		obj.FEEperBYTE = 0
 	}
 	return err
 }

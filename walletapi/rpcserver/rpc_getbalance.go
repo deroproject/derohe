@@ -19,9 +19,9 @@ package rpcserver
 import "fmt"
 import "context"
 import "runtime/debug"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) GetBalance(ctx context.Context) (result structures.GetBalance_Result, err error) {
+func (w *WALLET_RPC_APIS) GetBalance(ctx context.Context) (result rpc.GetBalance_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -29,7 +29,7 @@ func (w *WALLET_RPC_APIS) GetBalance(ctx context.Context) (result structures.Get
 	}()
 
 	mature, locked := w.wallet.Get_Balance()
-	return structures.GetBalance_Result{
+	return rpc.GetBalance_Result{
 		Balance:          mature + locked,
 		Unlocked_Balance: mature,
 	}, nil

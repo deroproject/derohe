@@ -20,14 +20,12 @@ import "fmt"
 import "context"
 import "encoding/hex"
 import "runtime/debug"
-
 import "github.com/romana/rlog"
-
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/transaction"
 
 //NOTE: finally we have shifted to json api
-func (DERO_RPC_APIS) SendRawTransaction(ctx context.Context, p structures.SendRawTransaction_Params) (result structures.SendRawTransaction_Result, err error) {
+func (DERO_RPC_APIS) SendRawTransaction(ctx context.Context, p rpc.SendRawTransaction_Params) (result rpc.SendRawTransaction_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -61,15 +59,12 @@ func (DERO_RPC_APIS) SendRawTransaction(ctx context.Context, p structures.SendRa
 
 	rlog.Debugf("Incoming TXID %s from RPC Server", tx.GetHash())
 	// lets try to add it to pool
-	success := chain.Add_TX_To_Pool(&tx)
 
-	if success {
+	if err = chain.Add_TX_To_Pool(&tx); err == nil {
 		result.Status = "OK"
-		err = nil
 		rlog.Debugf("Incoming TXID %s from RPC Server successfully accepted by MEMPOOL", tx.GetHash())
 	} else {
-
-		err = fmt.Errorf("Transaction %s rejected by daemon, check daemon msgs", tx.GetHash())
+		err = fmt.Errorf("Transaction %s rejected by daemon err '%s'", tx.GetHash(), err)
 		rlog.Warnf("Incoming TXID %s from RPC Server rejected by POOL", tx.GetHash())
 	}
 	return

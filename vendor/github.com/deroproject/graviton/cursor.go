@@ -10,7 +10,8 @@ type Cursor struct {
 	tree *Tree
 
 	node_path []*inner
-	left      []bool
+	left      []bool // it basically represents the path as bools
+
 }
 
 // get Cursor which is used as an iterator that can traverse over all key/value pairs in a tree in hash sorted order.

@@ -18,50 +18,17 @@ package rpcserver
 
 import "fmt"
 import "context"
-import "encoding/hex"
 import "runtime/debug"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) GetTransfers(ctx context.Context, p structures.Get_Transfers_Params) (result structures.Get_Transfers_Result, err error) {
+func (w *WALLET_RPC_APIS) GetTransfers(ctx context.Context, p rpc.Get_Transfers_Params) (result rpc.Get_Transfers_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
 		}
 	}()
 
-	//entries := h.r.w.Show_Transfers(p.In, p.In,p.Out,p.Failed, p.Pool,p.Min_Height,p.Max_Height)
-	in_entries := w.wallet.Show_Transfers(p.In, p.In, false, false, false, false, p.Min_Height, p.Max_Height)
-	out_entries := w.wallet.Show_Transfers(false, false, p.Out, false, false, false, p.Min_Height, p.Max_Height)
-	for j := range in_entries {
-		result.In = append(result.In, structures.Transfer_Details{TXID: in_entries[j].TXID.String(),
-			Payment_ID:  hex.EncodeToString(in_entries[j].PaymentID),
-			Height:      in_entries[j].Height,
-			Amount:      in_entries[j].Amount,
-			Unlock_time: in_entries[j].Unlock_Time,
-			Type:        "in",
-		})
-
-	}
-
-	for j := range out_entries {
-		transfer := structures.Transfer_Details{TXID: out_entries[j].TXID.String(),
-			Payment_ID:  hex.EncodeToString(out_entries[j].PaymentID),
-			Height:      out_entries[j].Height,
-			Amount:      out_entries[j].Amount,
-			Unlock_time: out_entries[j].Unlock_Time,
-			Type:        "out",
-		}
-
-		for i := range out_entries[j].Details.Daddress {
-			transfer.Destinations = append(transfer.Destinations,
-				structures.Destination{
-					Address: out_entries[j].Details.Daddress[i],
-					Amount:  out_entries[j].Details.Amount[i],
-				})
-		}
-		result.Out = append(result.Out, transfer)
-
-	}
+	result.Entries = w.wallet.Show_Transfers(p.Coinbase, p.In, p.Out, p.Min_Height, p.Max_Height, p.Sender, p.Receiver, p.DestinationPort, p.SourcePort)
 
 	return result, nil
 }

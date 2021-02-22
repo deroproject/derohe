@@ -21,9 +21,9 @@ package main
 import "fmt"
 import "context"
 import "runtime/debug"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
-func (DERO_RPC_APIS) GetLastBlockHeader(ctx context.Context) (result structures.GetLastBlockHeader_Result, err error) {
+func (DERO_RPC_APIS) GetLastBlockHeader(ctx context.Context) (result rpc.GetLastBlockHeader_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -35,7 +35,7 @@ func (DERO_RPC_APIS) GetLastBlockHeader(ctx context.Context) (result structures.
 		return
 	}
 
-	return structures.GetLastBlockHeader_Result{
+	return rpc.GetLastBlockHeader_Result{
 		Block_Header: block_header,
 		Status:       "OK",
 	}, nil

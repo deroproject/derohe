@@ -19,6 +19,7 @@ package p2p
 //import "os"
 import "fmt"
 import "net"
+import "net/rpc"
 import "time"
 import "sort"
 import "strings"
@@ -59,6 +60,8 @@ var nonbanlist []string // any ips in this list will never be banned
 // Initialize P2P subsystem
 func P2P_Init(params map[string]interface{}) error {
 	logger = globals.Logger.WithFields(log.Fields{"com": "P2P"}) // all components must use this logger
+
+	// register_handlers()
 
 	GetPeerID() // Initialize peer id once
 
@@ -110,6 +113,7 @@ func P2P_Init(params map[string]interface{}) error {
 	go P2P_engine()           // start outgoing engine
 	go syncroniser()          // start sync engine
 	go clean_up_propagation() // clean up propagation map
+	go ping_loop()            // keep pinging
 	logger.Infof("P2P started")
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
 	return nil
@@ -201,7 +205,7 @@ func connect_with_endpoint(endpoint string, sync_node bool) {
 
 	// check whether are already connected to this address if yes, return
 	if IsAddressConnected(remote_ip.String()) {
-		return
+		return //nil, fmt.Errorf("Already connected")
 	}
 
 	// since we may be connecting through socks, grab the remote ip for our purpose rightnow
@@ -212,7 +216,7 @@ func connect_with_endpoint(endpoint string, sync_node bool) {
 	if err != nil {
 		rlog.Warnf("Dial failed err %s", err.Error())
 		Peer_SetFail(remote_ip.String()) // update peer list as we see
-		return
+		return                           //nil, fmt.Errorf("Dial failed err %s", err.Error())
 	}
 
 	tcpc := conn.(*net.TCPConn)
@@ -230,9 +234,9 @@ func connect_with_endpoint(endpoint string, sync_node bool) {
 	// TODO we need to choose fastest cipher here ( so both clients/servers are not loaded)
 	conn = tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
 
-	// success is setup after handshake is done
-	rlog.Debugf("Connection established to %s", remote_ip)
-	Handle_Connection(conn, remote_ip, false, sync_node) // handle  connection
+	process_connection(conn, remote_ip, false, sync_node)
+
+	//Handle_Connection(conn, remote_ip, false, sync_node) // handle  connection
 }
 
 // maintains a persistant connection to endpoint
@@ -379,11 +383,47 @@ func P2P_Server_v2() {
 			tcpc.SetLinger(0) // discard any pending data
 
 			tlsconn := tls.Server(conn, tlsconfig)
-			go Handle_Connection(tlsconn, raddr, true, false) // handle connection in a different go routine
-
-			//go Handle_Connection(conn, raddr, true, false) // handle connection in a different go routine
+			go process_connection(tlsconn, raddr, true, false) // handle connection in a different go routine
 		}
 	}
+
+}
+
+func process_connection(conn net.Conn, remote_addr *net.TCPAddr, incoming, sync_node bool) {
+	defer globals.Recover()
+
+	var rconn *RPC_Connection
+	var err error
+	if incoming {
+		rconn, err = wait_stream_creation_server_side(conn) // do server side processing
+	} else {
+		rconn, err = stream_creation_client_side(conn) // do client side processing
+	}
+	if err == nil {
+
+		var RPCSERVER = rpc.NewServer()
+		c := &Connection{RConn: rconn, Addr: remote_addr, State: HANDSHAKE_PENDING, Incoming: incoming, SyncNode: sync_node}
+		RPCSERVER.RegisterName("Peer", c) // register the handlers
+
+		if incoming {
+			c.logger = logger.WithFields(log.Fields{"RIP": remote_addr.String(), "DIR": "INC"})
+		} else {
+			c.logger = logger.WithFields(log.Fields{"RIP": remote_addr.String(), "DIR": "OUT"})
+		}
+		go func() {
+			defer globals.Recover()
+			//RPCSERVER.ServeConn(rconn.ServerConn)                      // start single threaded rpc server with GOB encoding
+			RPCSERVER.ServeCodec(NewCBORServerCodec(rconn.ServerConn)) // use CBOR encoding on rpc
+		}()
+
+		c.dispatch_test_handshake()
+
+		<-rconn.Session.CloseChan()
+		Connection_Delete(c)
+		//fmt.Printf("closing connection status err: %s\n",err)
+	}
+	conn.Close()
+
 }
 
 // shutdown the p2p component
@@ -456,3 +496,29 @@ func generate_random_tls_cert() tls.Certificate {
 	}
 	return tlsCert
 }
+
+/*
+// register all the handlers
+func register_handlers(){
+    arpc.DefaultHandler.Handle("/handshake",Handshake_Handler)
+    arpc.DefaultHandler.Handle("/active",func (ctx *arpc.Context) { // set the connection active
+    if c,ok := ctx.Client.Get("connection");ok {
+        connection := c.(*Connection)
+        atomic.StoreUint32(&connection.State, ACTIVE)
+       }} )
+
+    arpc.DefaultHandler.HandleConnected(OnConnected_Handler) // all incoming connections will first processed here
+arpc.DefaultHandler.HandleDisconnected(OnDisconnected_Handler) // all disconnected
+}
+
+
+
+// triggers when new clients connect and
+func OnConnected_Handler(c *arpc.Client){
+    dispatch_test_handshake(c, c.Conn.RemoteAddr().(*net.TCPAddr) ,true,false) // client connected we must handshake
+}
+
+func OnDisconnected_Handler(c *arpc.Client){
+    c.Stop()
+}
+*/

@@ -35,7 +35,7 @@ type storefs struct {
 func (s *storefs) ReadBlock(h [32]byte) ([]byte, error) {
 	var dummy [32]byte
 	if h == dummy {
-		panic("empty block")
+		return nil, fmt.Errorf("empty block")
 	}
 
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))

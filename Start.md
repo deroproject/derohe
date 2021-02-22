@@ -2,7 +2,7 @@
 
         DERO is written in golang and very easy to install both from source and binary.
 Installation From Source:  
-    Install Golang, minimum Golang 1.10.3 required.
+    Install Golang, minimum Golang 1.15 required.
     In go workspace: go get -u github.com/deroproject/derohe/...
     Check go workspace bin folder for binaries.
     For example on Linux machine following binaries will be created:

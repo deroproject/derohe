@@ -1,389 +1,556 @@
-// Package jsonrpc provides an jsonrpc 2.0 client that sends jsonrpc requests and receives jsonrpc responses using http.
+// Package jsonrpc provides a JSON-RPC 2.0 client that sends JSON-RPC requests and receives JSON-RPC responses using HTTP.
 package jsonrpc
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
-	"sync"
 )
 
-// RPCRequest represents a jsonrpc request object.
+const (
+	jsonrpcVersion = "2.0"
+)
+
+// RPCClient sends JSON-RPC requests over HTTP to the provided JSON-RPC backend.
+//
+// RPCClient is created using the factory function NewClient().
+type RPCClient interface {
+	// Call is used to send a JSON-RPC request to the server endpoint.
+	//
+	// The spec states, that params can only be an array or an object, no primitive values.
+	// So there are a few simple rules to notice:
+	//
+	// 1. no params: params field is omitted. e.g. Call("getinfo")
+	//
+	// 2. single params primitive value: value is wrapped in array. e.g. Call("getByID", 1423)
+	//
+	// 3. single params value array or object: value is unchanged. e.g. Call("storePerson", &Person{Name: "Alex"})
+	//
+	// 4. multiple params values: always wrapped in array. e.g. Call("setDetails", "Alex, 35, "Germany", true)
+	//
+	// Examples:
+	//   Call("getinfo") -> {"method": "getinfo"}
+	//   Call("getPersonId", 123) -> {"method": "getPersonId", "params": [123]}
+	//   Call("setName", "Alex") -> {"method": "setName", "params": ["Alex"]}
+	//   Call("setMale", true) -> {"method": "setMale", "params": [true]}
+	//   Call("setNumbers", []int{1, 2, 3}) -> {"method": "setNumbers", "params": [1, 2, 3]}
+	//   Call("setNumbers", 1, 2, 3) -> {"method": "setNumbers", "params": [1, 2, 3]}
+	//   Call("savePerson", &Person{Name: "Alex", Age: 35}) -> {"method": "savePerson", "params": {"name": "Alex", "age": 35}}
+	//   Call("setPersonDetails", "Alex", 35, "Germany") -> {"method": "setPersonDetails", "params": ["Alex", 35, "Germany"}}
+	//
+	// for more information, see the examples or the unit tests
+	Call(method string, params ...interface{}) (*RPCResponse, error)
+
+	// CallRaw is like Call() but without magic in the requests.Params field.
+	// The RPCRequest object is sent exactly as you provide it.
+	// See docs: NewRequest, RPCRequest, Params()
+	//
+	// It is recommended to first consider Call() and CallFor()
+	CallRaw(request *RPCRequest) (*RPCResponse, error)
+
+	// CallFor is a very handy function to send a JSON-RPC request to the server endpoint
+	// and directly specify an object to store the response.
+	//
+	// out: will store the unmarshaled object, if request was successful.
+	// should always be provided by references. can be nil even on success.
+	// the behaviour is the same as expected from json.Unmarshal()
+	//
+	// method and params: see Call() function
+	//
+	// if the request was not successful (network, http error) or the rpc response returns an error,
+	// an error is returned. if it was an JSON-RPC error it can be casted
+	// to *RPCError.
+	//
+	CallFor(out interface{}, method string, params ...interface{}) error
+
+	// CallBatch invokes a list of RPCRequests in a single batch request.
+	//
+	// Most convenient is to use the following form:
+	// CallBatch(RPCRequests{
+	//   NewRequest("myMethod1", 1, 2, 3),
+	//   NewRequest("myMethod2", "Test"),
+	// })
+	//
+	// You can create the []*RPCRequest array yourself, but it is not recommended and you should notice the following:
+	// - field Params is sent as provided, so Params: 2 forms an invalid json (correct would be Params: []int{2})
+	// - you can use the helper function Params(1, 2, 3) to use the same format as in Call()
+	// - field JSONRPC is overwritten and set to value: "2.0"
+	// - field ID is overwritten and set incrementally and maps to the array position (e.g. requests[5].ID == 5)
+	//
+	//
+	// Returns RPCResponses that is of type []*RPCResponse
+	// - note that a list of RPCResponses can be received unordered so it can happen that: responses[i] != responses[i].ID
+	// - RPCPersponses is enriched with helper functions e.g.: responses.HasError() returns  true if one of the responses holds an RPCError
+	CallBatch(requests RPCRequests) (RPCResponses, error)
+
+	// CallBatchRaw invokes a list of RPCRequests in a single batch request.
+	// It sends the RPCRequests parameter is it passed (no magic, no id autoincrement).
+	//
+	// Consider to use CallBatch() instead except you have some good reason not to.
+	//
+	// CallBatchRaw(RPCRequests{
+	//   &RPCRequest{
+	//     ID: 123,            // this won't be replaced in CallBatchRaw
+	//     JSONRPC: "wrong",   // this won't be replaced in CallBatchRaw
+	//     Method: "myMethod1",
+	//     Params: []int{1},   // there is no magic, be sure to only use array or object
+	//   },
+	//   &RPCRequest{
+	//     ID: 612,
+	//     JSONRPC: "2.0",
+	//     Method: "myMethod2",
+	//     Params: Params("Alex", 35, true), // you can use helper function Params() (see doc)
+	//   },
+	// })
+	//
+	// Returns RPCResponses that is of type []*RPCResponse
+	// - note that a list of RPCResponses can be received unordered
+	// - the id's must be mapped against the id's you provided
+	// - RPCPersponses is enriched with helper functions e.g.: responses.HasError() returns  true if one of the responses holds an RPCError
+	CallBatchRaw(requests RPCRequests) (RPCResponses, error)
+}
+
+// RPCRequest represents a JSON-RPC request object.
+//
+// Method: string containing the method to be invoked
+//
+// Params: can be nil. if not must be an json array or object
+//
+// ID: may always set to 1 for single requests. Should be unique for every request in one batch request.
+//
+// JSONRPC: must always be set to "2.0" for JSON-RPC version 2.0
 //
 // See: http://www.jsonrpc.org/specification#request_object
-type RPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params,omitempty"`
-	ID      uint        `json:"id"`
-}
-
-// RPCNotification represents a jsonrpc notification object.
-// A notification object omits the id field since there will be no server response.
 //
-// See: http://www.jsonrpc.org/specification#notification
-type RPCNotification struct {
-	JSONRPC string      `json:"jsonrpc"`
+// Most of the time you shouldn't create the RPCRequest object yourself.
+// The following functions do that for you:
+// Call(), CallFor(), NewRequest()
+//
+// If you want to create it yourself (e.g. in batch or CallRaw()), consider using Params().
+// Params() is a helper function that uses the same parameter syntax as Call().
+//
+// e.g. to manually create an RPCRequest object:
+// request := &RPCRequest{
+//   Method: "myMethod",
+//   Params: Params("Alex", 35, true),
+// }
+//
+// If you know what you are doing you can omit the Params() call to avoid some reflection but potentially create incorrect rpc requests:
+//request := &RPCRequest{
+//   Method: "myMethod",
+//   Params: 2, <-- invalid since a single primitive value must be wrapped in an array --> no magic without Params()
+// }
+//
+// correct:
+// request := &RPCRequest{
+//   Method: "myMethod",
+//   Params: []int{2}, <-- invalid since a single primitive value must be wrapped in an array
+// }
+type RPCRequest struct {
 	Method  string      `json:"method"`
 	Params  interface{} `json:"params,omitempty"`
+	ID      int         `json:"id"`
+	JSONRPC string      `json:"jsonrpc"`
 }
 
-// RPCResponse represents a jsonrpc response object.
-// If no rpc specific error occurred Error field is nil.
+// NewRequest returns a new RPCRequest that can be created using the same convenient parameter syntax as Call()
+//
+// e.g. NewRequest("myMethod", "Alex", 35, true)
+func NewRequest(method string, params ...interface{}) *RPCRequest {
+	request := &RPCRequest{
+		Method:  method,
+		Params:  Params(params...),
+		JSONRPC: jsonrpcVersion,
+	}
+
+	return request
+}
+
+// RPCResponse represents a JSON-RPC response object.
+//
+// Result: holds the result of the rpc call if no error occurred, nil otherwise. can be nil even on success.
+//
+// Error: holds an RPCError object if an error occurred. must be nil on success.
+//
+// ID: may always be 0 for single requests. is unique for each request in a batch call (see CallBatch())
+//
+// JSONRPC: must always be set to "2.0" for JSON-RPC version 2.0
 //
 // See: http://www.jsonrpc.org/specification#response_object
 type RPCResponse struct {
 	JSONRPC string      `json:"jsonrpc"`
 	Result  interface{} `json:"result,omitempty"`
 	Error   *RPCError   `json:"error,omitempty"`
-	ID      uint        `json:"id"`
+	ID      int         `json:"id"`
 }
 
-// BatchResponse a list of jsonrpc response objects as a result of a batch request
+// RPCError represents a JSON-RPC error object if an RPC error occurred.
 //
-// if you are interested in the response of a specific request use: GetResponseOf(request)
-type BatchResponse struct {
-	rpcResponses []RPCResponse
-}
-
-// RPCError represents a jsonrpc error object if an rpc error occurred.
+// Code: holds the error code
+//
+// Message: holds a short error message
+//
+// Data: holds additional error data, may be nil
 //
 // See: http://www.jsonrpc.org/specification#error_object
 type RPCError struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
-	Data    interface{} `json:"data"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
+// Error function is provided to be used as error object.
 func (e *RPCError) Error() string {
-	return strconv.Itoa(e.Code) + ": " + e.Message
+	return strconv.Itoa(e.Code) + ":" + e.Message
 }
 
-// RPCClient sends jsonrpc requests over http to the provided rpc backend.
-// RPCClient is created using the factory function NewRPCClient().
-type RPCClient struct {
-	endpoint        string
-	httpClient      *http.Client
-	customHeaders   map[string]string
-	autoIncrementID bool
-	nextID          uint
-	idMutex         sync.Mutex
-}
-
-// NewRPCClient returns a new RPCClient instance with default configuration (no custom headers, default http.Client, autoincrement ids).
-// Endpoint is the rpc-service url to which the rpc requests are sent.
-func NewRPCClient(endpoint string) *RPCClient {
-	return &RPCClient{
-		endpoint:        endpoint,
-		httpClient:      http.DefaultClient,
-		autoIncrementID: true,
-		nextID:          0,
-		customHeaders:   make(map[string]string),
-	}
-}
-
-// NewRPCRequestObject creates and returns a raw RPCRequest structure.
-// It is mainly used when building batch requests. For single requests use RPCClient.Call().
-// RPCRequest struct can also be created directly, but this function sets the ID and the jsonrpc field to the correct values.
-func (client *RPCClient) NewRPCRequestObject(method string, params ...interface{}) *RPCRequest {
-	client.idMutex.Lock()
-	rpcRequest := RPCRequest{
-		ID:      client.nextID,
-		JSONRPC: "2.0",
-		Method:  method,
-		Params:  params,
-	}
-	if client.autoIncrementID == true {
-		client.nextID++
-	}
-	client.idMutex.Unlock()
-
-	if len(params) == 0 {
-		rpcRequest.Params = nil
-	}
-
-	return &rpcRequest
-}
-
-// NewRPCNotificationObject creates and returns a raw RPCNotification structure.
-// It is mainly used when building batch requests. For single notifications use RPCClient.Notification().
-// NewRPCNotificationObject struct can also be created directly, but this function sets the ID and the jsonrpc field to the correct values.
-func (client *RPCClient) NewRPCNotificationObject(method string, params ...interface{}) *RPCNotification {
-	rpcNotification := RPCNotification{
-		JSONRPC: "2.0",
-		Method:  method,
-		Params:  params,
-	}
-
-	if len(params) == 0 {
-		rpcNotification.Params = nil
-	}
-
-	return &rpcNotification
-}
-
-// Call sends an jsonrpc request over http to the rpc-service url that was provided on client creation.
+// HTTPError represents a error that occurred on HTTP level.
 //
-// If something went wrong on the network / http level or if json parsing failed it returns an error.
+// An error of type HTTPError is returned when a HTTP error occurred (status code)
+// and the body could not be parsed to a valid RPCResponse object that holds a RPCError.
 //
-// If something went wrong on the rpc-service / protocol level the Error field of the returned RPCResponse is set
-// and contains information about the error.
-//
-// If the request was successful the Error field is nil and the Result field of the RPCRespnse struct contains the rpc result.
-func (client *RPCClient) Call(method string, params ...interface{}) (*RPCResponse, error) {
-	// Ensure that params are nil and will be omitted from JSON if not specified.
-	var p interface{}
-	if len(params) != 0 {
-		p = params
-	}
-	httpRequest, err := client.newRequest(false, method, p)
-	if err != nil {
-		return nil, err
-	}
-	return client.doCall(httpRequest)
+// Otherwise a RPCResponse object is returned with a RPCError field that is not nil.
+type HTTPError struct {
+	Code int
+	err  error
 }
 
-// CallNamed sends an jsonrpc request over http to the rpc-service url that was provided on client creation.
-// This differs from Call() by sending named, rather than positional, arguments.
-//
-// If something went wrong on the network / http level or if json parsing failed it returns an error.
-//
-// If something went wrong on the rpc-service / protocol level the Error field of the returned RPCResponse is set
-// and contains information about the error.
-//
-// If the request was successful the Error field is nil and the Result field of the RPCRespnse struct contains the rpc result.
-func (client *RPCClient) CallNamed(method string, params map[string]interface{}) (*RPCResponse, error) {
-	httpRequest, err := client.newRequest(false, method, params)
-	if err != nil {
-		return nil, err
-	}
-	return client.doCall(httpRequest)
+// Error function is provided to be used as error object.
+func (e *HTTPError) Error() string {
+	return e.err.Error()
 }
 
-func (client *RPCClient) doCall(req *http.Request) (*RPCResponse, error) {
-	httpResponse, err := client.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer httpResponse.Body.Close()
-
-	rpcResponse := RPCResponse{}
-	decoder := json.NewDecoder(httpResponse.Body)
-	decoder.UseNumber()
-	err = decoder.Decode(&rpcResponse)
-	if err != nil {
-		return nil, err
-	}
-
-	return &rpcResponse, nil
+type rpcClient struct {
+	endpoint      string
+	httpClient    *http.Client
+	customHeaders map[string]string
 }
 
-// Notification sends a jsonrpc request to the rpc-service. The difference to Call() is that this request does not expect a response.
-// The ID field of the request is omitted.
-func (client *RPCClient) Notification(method string, params ...interface{}) error {
-	if len(params) == 0 {
-		params = nil
-	}
-	httpRequest, err := client.newRequest(true, method, params)
-	if err != nil {
-		return err
+// RPCClientOpts can be provided to NewClientWithOpts() to change configuration of RPCClient.
+//
+// HTTPClient: provide a custom http.Client (e.g. to set a proxy, or tls options)
+//
+// CustomHeaders: provide custom headers, e.g. to set BasicAuth
+type RPCClientOpts struct {
+	HTTPClient    *http.Client
+	CustomHeaders map[string]string
+}
+
+// RPCResponses is of type []*RPCResponse.
+// This type is used to provide helper functions on the result list
+type RPCResponses []*RPCResponse
+
+// AsMap returns the responses as map with response id as key.
+func (res RPCResponses) AsMap() map[int]*RPCResponse {
+	resMap := make(map[int]*RPCResponse, 0)
+	for _, r := range res {
+		resMap[r.ID] = r
 	}
 
-	httpResponse, err := client.httpClient.Do(httpRequest)
-	if err != nil {
-		return err
+	return resMap
+}
+
+// GetByID returns the response object of the given id, nil if it does not exist.
+func (res RPCResponses) GetByID(id int) *RPCResponse {
+	for _, r := range res {
+		if r.ID == id {
+			return r
+		}
 	}
-	defer httpResponse.Body.Close()
+
 	return nil
 }
 
-// Batch sends a jsonrpc batch request to the rpc-service.
-// The parameter is a list of requests the could be one of:
-//	RPCRequest
-//	RPCNotification.
+// HasError returns true if one of the response objects has Error field != nil
+func (res RPCResponses) HasError() bool {
+	for _, res := range res {
+		if res.Error != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// RPCRequests is of type []*RPCRequest.
+// This type is used to provide helper functions on the request list
+type RPCRequests []*RPCRequest
+
+// NewClient returns a new RPCClient instance with default configuration.
 //
-// The batch requests returns a list of RPCResponse structs.
-func (client *RPCClient) Batch(requests ...interface{}) (*BatchResponse, error) {
-	for _, r := range requests {
-		switch r := r.(type) {
-		default:
-			return nil, fmt.Errorf("Invalid parameter: %s", r)
-		case *RPCRequest:
-		case *RPCNotification:
+// endpoint: JSON-RPC service URL to which JSON-RPC requests are sent.
+func NewClient(endpoint string) RPCClient {
+	return NewClientWithOpts(endpoint, nil)
+}
+
+// NewClientWithOpts returns a new RPCClient instance with custom configuration.
+//
+// endpoint: JSON-RPC service URL to which JSON-RPC requests are sent.
+//
+// opts: RPCClientOpts provide custom configuration
+func NewClientWithOpts(endpoint string, opts *RPCClientOpts) RPCClient {
+	rpcClient := &rpcClient{
+		endpoint:      endpoint,
+		httpClient:    &http.Client{},
+		customHeaders: make(map[string]string),
+	}
+
+	if opts == nil {
+		return rpcClient
+	}
+
+	if opts.HTTPClient != nil {
+		rpcClient.httpClient = opts.HTTPClient
+	}
+
+	if opts.CustomHeaders != nil {
+		for k, v := range opts.CustomHeaders {
+			rpcClient.customHeaders[k] = v
 		}
 	}
 
-	httpRequest, err := client.newBatchRequest(requests...)
+	return rpcClient
+}
+
+func (client *rpcClient) Call(method string, params ...interface{}) (*RPCResponse, error) {
+
+	request := &RPCRequest{
+		Method:  method,
+		Params:  Params(params...),
+		JSONRPC: jsonrpcVersion,
+	}
+
+	return client.doCall(request)
+}
+
+func (client *rpcClient) CallRaw(request *RPCRequest) (*RPCResponse, error) {
+
+	return client.doCall(request)
+}
+
+func (client *rpcClient) CallFor(out interface{}, method string, params ...interface{}) error {
+	rpcResponse, err := client.Call(method, params...)
+	if err != nil {
+		return err
+	}
+
+	if rpcResponse.Error != nil {
+		return rpcResponse.Error
+	}
+
+	return rpcResponse.GetObject(out)
+}
+
+func (client *rpcClient) CallBatch(requests RPCRequests) (RPCResponses, error) {
+	if len(requests) == 0 {
+		return nil, errors.New("empty request list")
+	}
+
+	for i, req := range requests {
+		req.ID = i
+		req.JSONRPC = jsonrpcVersion
+	}
+
+	return client.doBatchCall(requests)
+}
+
+func (client *rpcClient) CallBatchRaw(requests RPCRequests) (RPCResponses, error) {
+	if len(requests) == 0 {
+		return nil, errors.New("empty request list")
+	}
+
+	return client.doBatchCall(requests)
+}
+
+func (client *rpcClient) newRequest(req interface{}) (*http.Request, error) {
+
+	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 
-	httpResponse, err := client.httpClient.Do(httpRequest)
+	request, err := http.NewRequest("POST", client.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
+	}
+
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+
+	// set default headers first, so that even content type and accept can be overwritten
+	for k, v := range client.customHeaders {
+		request.Header.Set(k, v)
+	}
+
+	return request, nil
+}
+
+func (client *rpcClient) doCall(RPCRequest *RPCRequest) (*RPCResponse, error) {
+
+	httpRequest, err := client.newRequest(RPCRequest)
+	if err != nil {
+		return nil, fmt.Errorf("rpc call %v() on %v: %v", RPCRequest.Method, client.endpoint, err.Error())
+	}
+	httpResponse, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, fmt.Errorf("rpc call %v() on %v: %v", RPCRequest.Method, httpRequest.URL.String(), err.Error())
 	}
 	defer httpResponse.Body.Close()
 
-	rpcResponses := []RPCResponse{}
+	var rpcResponse *RPCResponse
 	decoder := json.NewDecoder(httpResponse.Body)
+	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
-	err = decoder.Decode(&rpcResponses)
+	err = decoder.Decode(&rpcResponse)
+
+	// parsing error
 	if err != nil {
-		return nil, err
-	}
-
-	return &BatchResponse{rpcResponses: rpcResponses}, nil
-}
-
-// SetAutoIncrementID if set to true, the id field of an rpcjson request will be incremented automatically
-func (client *RPCClient) SetAutoIncrementID(flag bool) {
-	client.autoIncrementID = flag
-}
-
-// SetNextID can be used to manually set the next id / reset the id.
-func (client *RPCClient) SetNextID(id uint) {
-	client.idMutex.Lock()
-	client.nextID = id
-	client.idMutex.Unlock()
-}
-
-// SetCustomHeader is used to set a custom header for each rpc request.
-// You could for example set the Authorization Bearer here.
-func (client *RPCClient) SetCustomHeader(key string, value string) {
-	client.customHeaders[key] = value
-}
-
-// UnsetCustomHeader is used to removes a custom header that was added before.
-func (client *RPCClient) UnsetCustomHeader(key string) {
-	delete(client.customHeaders, key)
-}
-
-// SetBasicAuth is a helper function that sets the header for the given basic authentication credentials.
-// To reset / disable authentication just set username or password to an empty string value.
-func (client *RPCClient) SetBasicAuth(username string, password string) {
-	if username == "" || password == "" {
-		delete(client.customHeaders, "Authorization")
-		return
-	}
-	auth := username + ":" + password
-	client.customHeaders["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(auth))
-}
-
-// SetHTTPClient can be used to set a custom http.Client.
-// This can be useful for example if you want to customize the http.Client behaviour (e.g. proxy settings)
-func (client *RPCClient) SetHTTPClient(httpClient *http.Client) {
-	if httpClient == nil {
-		panic("httpClient cannot be nil")
-	}
-	client.httpClient = httpClient
-}
-
-func (client *RPCClient) newRequest(notification bool, method string, params interface{}) (*http.Request, error) {
-	// TODO: easier way to remove ID from RPCRequest without extra struct
-	var rpcRequest interface{}
-	if notification {
-		rpcNotification := RPCNotification{
-			JSONRPC: "2.0",
-			Method:  method,
-			Params:  params,
+		// if we have some http error, return it
+		if httpResponse.StatusCode >= 400 {
+			return nil, &HTTPError{
+				Code: httpResponse.StatusCode,
+				err:  fmt.Errorf("rpc call %v() on %v status code: %v. could not decode body to rpc response: %v", RPCRequest.Method, httpRequest.URL.String(), httpResponse.StatusCode, err.Error()),
+			}
 		}
-		rpcRequest = rpcNotification
-	} else {
-		client.idMutex.Lock()
-		request := RPCRequest{
-			ID:      client.nextID,
-			JSONRPC: "2.0",
-			Method:  method,
-			Params:  params,
+		return nil, fmt.Errorf("rpc call %v() on %v status code: %v. could not decode body to rpc response: %v", RPCRequest.Method, httpRequest.URL.String(), httpResponse.StatusCode, err.Error())
+	}
+
+	// response body empty
+	if rpcResponse == nil {
+		// if we have some http error, return it
+		if httpResponse.StatusCode >= 400 {
+			return nil, &HTTPError{
+				Code: httpResponse.StatusCode,
+				err:  fmt.Errorf("rpc call %v() on %v status code: %v. rpc response missing", RPCRequest.Method, httpRequest.URL.String(), httpResponse.StatusCode),
+			}
 		}
-		if client.autoIncrementID == true {
-			client.nextID++
+		return nil, fmt.Errorf("rpc call %v() on %v status code: %v. rpc response missing", RPCRequest.Method, httpRequest.URL.String(), httpResponse.StatusCode)
+	}
+
+	return rpcResponse, nil
+}
+
+func (client *rpcClient) doBatchCall(rpcRequest []*RPCRequest) ([]*RPCResponse, error) {
+	httpRequest, err := client.newRequest(rpcRequest)
+	if err != nil {
+		return nil, fmt.Errorf("rpc batch call on %v: %v", client.endpoint, err.Error())
+	}
+	httpResponse, err := client.httpClient.Do(httpRequest)
+	if err != nil {
+		return nil, fmt.Errorf("rpc batch call on %v: %v", httpRequest.URL.String(), err.Error())
+	}
+	defer httpResponse.Body.Close()
+
+	var rpcResponse RPCResponses
+	decoder := json.NewDecoder(httpResponse.Body)
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	err = decoder.Decode(&rpcResponse)
+
+	// parsing error
+	if err != nil {
+		// if we have some http error, return it
+		if httpResponse.StatusCode >= 400 {
+			return nil, &HTTPError{
+				Code: httpResponse.StatusCode,
+				err:  fmt.Errorf("rpc batch call on %v status code: %v. could not decode body to rpc response: %v", httpRequest.URL.String(), httpResponse.StatusCode, err.Error()),
+			}
 		}
-		client.idMutex.Unlock()
-		rpcRequest = request
+		return nil, fmt.Errorf("rpc batch call on %v status code: %v. could not decode body to rpc response: %v", httpRequest.URL.String(), httpResponse.StatusCode, err.Error())
 	}
 
-	body, err := json.Marshal(rpcRequest)
-	if err != nil {
-		return nil, err
+	// response body empty
+	if rpcResponse == nil || len(rpcResponse) == 0 {
+		// if we have some http error, return it
+		if httpResponse.StatusCode >= 400 {
+			return nil, &HTTPError{
+				Code: httpResponse.StatusCode,
+				err:  fmt.Errorf("rpc batch call on %v status code: %v. rpc response missing", httpRequest.URL.String(), httpResponse.StatusCode),
+			}
+		}
+		return nil, fmt.Errorf("rpc batch call on %v status code: %v. rpc response missing", httpRequest.URL.String(), httpResponse.StatusCode)
 	}
 
-	request, err := http.NewRequest("POST", client.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-
-	for k, v := range client.customHeaders {
-		request.Header.Add(k, v)
-	}
-
-	request.Header.Add("Content-Type", "application/json")
-	request.Header.Add("Accept", "application/json")
-
-	return request, nil
+	return rpcResponse, nil
 }
 
-func (client *RPCClient) newBatchRequest(requests ...interface{}) (*http.Request, error) {
+// Params is a helper function that uses the same parameter syntax as Call().
+// But you should consider to always use NewRequest() instead.
+//
+// e.g. to manually create an RPCRequest object:
+// request := &RPCRequest{
+//   Method: "myMethod",
+//   Params: Params("Alex", 35, true),
+// }
+//
+// same with new request:
+// request := NewRequest("myMethod", "Alex", 35, true)
+//
+// If you know what you are doing you can omit the Params() call but potentially create incorrect rpc requests:
+// request := &RPCRequest{
+//   Method: "myMethod",
+//   Params: 2, <-- invalid since a single primitive value must be wrapped in an array --> no magic without Params()
+// }
+//
+// correct:
+// request := &RPCRequest{
+//   Method: "myMethod",
+//   Params: []int{2}, <-- valid since a single primitive value must be wrapped in an array
+// }
+func Params(params ...interface{}) interface{} {
+	var finalParams interface{}
 
-	body, err := json.Marshal(requests)
-	if err != nil {
-		return nil, err
+	// if params was nil skip this and p stays nil
+	if params != nil {
+		switch len(params) {
+		case 0: // no parameters were provided, do nothing so finalParam is nil and will be omitted
+		case 1: // one param was provided, use it directly as is, or wrap primitive types in array
+			if params[0] != nil {
+				var typeOf reflect.Type
+
+				// traverse until nil or not a pointer type
+				for typeOf = reflect.TypeOf(params[0]); typeOf != nil && typeOf.Kind() == reflect.Ptr; typeOf = typeOf.Elem() {
+				}
+
+				if typeOf != nil {
+					// now check if we can directly marshal the type or if it must be wrapped in an array
+					switch typeOf.Kind() {
+					// for these types we just do nothing, since value of p is already unwrapped from the array params
+					case reflect.Struct:
+						finalParams = params[0]
+					case reflect.Array:
+						finalParams = params[0]
+					case reflect.Slice:
+						finalParams = params[0]
+					case reflect.Interface:
+						finalParams = params[0]
+					case reflect.Map:
+						finalParams = params[0]
+					default: // everything else must stay in an array (int, string, etc)
+						finalParams = params
+					}
+				}
+			} else {
+				finalParams = params
+			}
+		default: // if more than one parameter was provided it should be treated as an array
+			finalParams = params
+		}
 	}
 
-	request, err := http.NewRequest("POST", client.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-
-	for k, v := range client.customHeaders {
-		request.Header.Add(k, v)
-	}
-
-	request.Header.Add("Content-Type", "application/json")
-	request.Header.Add("Accept", "application/json")
-
-	return request, nil
+	return finalParams
 }
 
-// UpdateRequestID updates the ID of an RPCRequest structure.
-//
-// This is used if a request is sent another time and the request should get an updated id.
-//
-// This does only make sense when used on with Batch() since Call() and Notififcation() do update the id automatically.
-func (client *RPCClient) UpdateRequestID(rpcRequest *RPCRequest) {
-	if rpcRequest == nil {
-		return
-	}
-	client.idMutex.Lock()
-	defer client.idMutex.Unlock()
-	rpcRequest.ID = client.nextID
-	if client.autoIncrementID == true {
-		client.nextID++
-	}
-}
-
-// GetInt converts the rpc response to an int and returns it.
-//
-// This is a convenient function. Int could be 32 or 64 bit, depending on the architecture the code is running on.
-// For a deterministic result use GetInt64().
+// GetInt converts the rpc response to an int64 and returns it.
 //
 // If result was not an integer an error is returned.
-func (rpcResponse *RPCResponse) GetInt() (int, error) {
-	i, err := rpcResponse.GetInt64()
-	return int(i), err
-}
-
-// GetInt64 converts the rpc response to an int64 and returns it.
-//
-// If result was not an integer an error is returned.
-func (rpcResponse *RPCResponse) GetInt64() (int64, error) {
-	val, ok := rpcResponse.Result.(json.Number)
+func (RPCResponse *RPCResponse) GetInt() (int64, error) {
+	val, ok := RPCResponse.Result.(json.Number)
 	if !ok {
-		return 0, fmt.Errorf("could not parse int64 from %s", rpcResponse.Result)
+		return 0, fmt.Errorf("could not parse int64 from %s", RPCResponse.Result)
 	}
 
 	i, err := val.Int64()
@@ -394,13 +561,13 @@ func (rpcResponse *RPCResponse) GetInt64() (int64, error) {
 	return i, nil
 }
 
-// GetFloat64 converts the rpc response to an float64 and returns it.
+// GetFloat converts the rpc response to float64 and returns it.
 //
 // If result was not an float64 an error is returned.
-func (rpcResponse *RPCResponse) GetFloat64() (float64, error) {
-	val, ok := rpcResponse.Result.(json.Number)
+func (RPCResponse *RPCResponse) GetFloat() (float64, error) {
+	val, ok := RPCResponse.Result.(json.Number)
 	if !ok {
-		return 0, fmt.Errorf("could not parse float64 from %s", rpcResponse.Result)
+		return 0, fmt.Errorf("could not parse float64 from %s", RPCResponse.Result)
 	}
 
 	f, err := val.Float64()
@@ -414,10 +581,10 @@ func (rpcResponse *RPCResponse) GetFloat64() (float64, error) {
 // GetBool converts the rpc response to a bool and returns it.
 //
 // If result was not a bool an error is returned.
-func (rpcResponse *RPCResponse) GetBool() (bool, error) {
-	val, ok := rpcResponse.Result.(bool)
+func (RPCResponse *RPCResponse) GetBool() (bool, error) {
+	val, ok := RPCResponse.Result.(bool)
 	if !ok {
-		return false, fmt.Errorf("could not parse bool from %s", rpcResponse.Result)
+		return false, fmt.Errorf("could not parse bool from %s", RPCResponse.Result)
 	}
 
 	return val, nil
@@ -426,27 +593,20 @@ func (rpcResponse *RPCResponse) GetBool() (bool, error) {
 // GetString converts the rpc response to a string and returns it.
 //
 // If result was not a string an error is returned.
-func (rpcResponse *RPCResponse) GetString() (string, error) {
-	val, ok := rpcResponse.Result.(string)
+func (RPCResponse *RPCResponse) GetString() (string, error) {
+	val, ok := RPCResponse.Result.(string)
 	if !ok {
-		return "", fmt.Errorf("could not parse string from %s", rpcResponse.Result)
+		return "", fmt.Errorf("could not parse string from %s", RPCResponse.Result)
 	}
 
 	return val, nil
 }
 
-// GetObject converts the rpc response to an object (e.g. a struct) and returns it.
-// The parameter should be a structure that can hold the data of the response object.
+// GetObject converts the rpc response to an arbitrary type.
 //
-// For example if the following json return value is expected: {"name": "alex", age: 33, "country": "Germany"}
-// the struct should look like
-//  type Person struct {
-//    Name string
-//    Age int
-//    Country string
-//  }
-func (rpcResponse *RPCResponse) GetObject(toType interface{}) error {
-	js, err := json.Marshal(rpcResponse.Result)
+// The function works as you would expect it from json.Unmarshal()
+func (RPCResponse *RPCResponse) GetObject(toType interface{}) error {
+	js, err := json.Marshal(RPCResponse.Result)
 	if err != nil {
 		return err
 	}
@@ -457,20 +617,4 @@ func (rpcResponse *RPCResponse) GetObject(toType interface{}) error {
 	}
 
 	return nil
-}
-
-// GetResponseOf returns the rpc response of the corresponding request by matching the id.
-//
-// For this method to work, autoincrementID should be set to true (default).
-func (batchResponse *BatchResponse) GetResponseOf(request *RPCRequest) (*RPCResponse, error) {
-	if request == nil {
-		return nil, errors.New("parameter cannot be nil")
-	}
-	for _, elem := range batchResponse.rpcResponses {
-		if elem.ID == request.ID {
-			return &elem, nil
-		}
-	}
-
-	return nil, fmt.Errorf("element with id %d not found", request.ID)
 }

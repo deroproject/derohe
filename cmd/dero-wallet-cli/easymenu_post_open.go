@@ -17,17 +17,22 @@
 package main
 
 import "io"
-import "os"
+
+import "time"
 import "fmt"
-import "io/ioutil"
+
+//import "io/ioutil"
 import "strings"
-import "path/filepath"
-import "encoding/hex"
+
+//import "path/filepath"
+//import "encoding/hex"
 
 import "github.com/chzyer/readline"
 
+import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/address"
+
+//import "github.com/deroproject/derohe/address"
 
 //import "github.com/deroproject/derohe/walletapi"
 import "github.com/deroproject/derohe/transaction"
@@ -42,12 +47,12 @@ func display_easymenu_post_open_command(l *readline.Instance) {
 
 	io.WriteString(w, "\t\033[1m3\033[0m\tDisplay Keys (hex)\n")
 
-	if !is_registered(wallet) {
+	if !wallet.IsRegistered() {
 		io.WriteString(w, "\t\033[1m4\033[0m\tAccount registration to blockchain (registration has no fee requirement and is precondition to use the account)\n")
 		io.WriteString(w, "\n")
 		io.WriteString(w, "\n")
 	} else { // hide some commands, if view only wallet
-		io.WriteString(w, "\n")
+		io.WriteString(w, "\t\033[1m4\033[0m\tDisplay wallet pool\n")
 		io.WriteString(w, "\t\033[1m5\033[0m\tTransfer (send  DERO) To Another Wallet\n")
 		//io.WriteString(w, "\t\033[1m6\033[0m\tCreate Transaction in offline mode\n")
 		io.WriteString(w, "\n")
@@ -55,7 +60,7 @@ func display_easymenu_post_open_command(l *readline.Instance) {
 
 	io.WriteString(w, "\t\033[1m7\033[0m\tChange wallet password\n")
 	io.WriteString(w, "\t\033[1m8\033[0m\tClose Wallet\n")
-	if is_registered(wallet) {
+	if wallet.IsRegistered() {
 		io.WriteString(w, "\t\033[1m12\033[0m\tTransfer all balance (send  DERO) To Another Wallet\n")
 		io.WriteString(w, "\t\033[1m13\033[0m\tShow transaction history\n")
 		io.WriteString(w, "\t\033[1m14\033[0m\tRescan transaction history\n")
@@ -90,7 +95,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 	case "1":
 		fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+"\n", wallet.GetAddress())
 
-		if !is_registered(wallet) {
+		if !wallet.IsRegistered() {
 			reg_tx := wallet.GetRegistrationTX()
 			fmt.Fprintf(l.Stderr(), "Registration TX : "+color_green+"%x"+color_white+"\n", reg_tx.Serialize())
 		}
@@ -118,28 +123,34 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 	case "4": // Registration
 
-		if !ValidateCurrentPassword(l, wallet) {
-			globals.Logger.Warnf("Invalid password")
-			PressAnyKey(l, wallet)
-			break
-		}
+		if !wallet.IsRegistered() {
 
-		//if valid_registration_or_display_error(l, wallet) {
-		//	globals.Logger.Warnf("This wallet address is already registered.")
-		//	break
-		//}
-		fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.This is a pre-condition for using the online chain.It will take few seconds to register/", wallet.GetAddress())
+			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.This is a pre-condition for using the online chain.It will take few seconds to register.\n", wallet.GetAddress())
 
-		reg_tx := wallet.GetRegistrationTX()
-
+			reg_tx := wallet.GetRegistrationTX()
 
 			// at this point we must send the registration transaction
 
-			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.Pls wait till the account is registered.", wallet.GetAddress())
+			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.Pls wait till the account is registered.\n", wallet.GetAddress())
 
-			wallet.SendTransaction(reg_tx)
+			fmt.Printf("sending registration tx err %s\n", wallet.SendTransaction(reg_tx))
+		} else {
+			pool := wallet.GetPool()
+			fmt.Fprintf(l.Stderr(), "Wallet pool has %d pending/in-progress transactions.\n", len(pool))
+			fmt.Fprintf(l.Stderr(), "%5s %9s %8s %64s %s  %s\n", "No.", "Amount", "TH", "TXID", "Destination", "Status")
+			for i := range pool {
+				var txid, status string
+				if len(pool[i].Tries) > 0 {
+					try := pool[i].Tries[len(pool[i].Tries)-1]
+					txid = try.TXID.String()
+					status = try.Status
+				} else {
+					status = "Will Dispatch in next block"
+				}
+				fmt.Fprintf(l.Stderr(), "%5d %9s %8d  %64s %s %s\n", i, "-"+globals.FormatMoney(pool[i].Amount()), pool[i].Trigger_Height, txid, "Not implemented", status)
+			}
 
-		
+		}
 
 	case "6":
 		offline_tx = true
@@ -160,34 +171,129 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			break
 		}
 
-		amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter amount to transfer in DERO (max TODO .00004 hard coded): "))
+		var amount_to_transfer uint64
 
-		if amount_str == "" {
-			amount_str = ".00009"
+		var arguments = rpc.Arguments{
+			// { rpc.RPC_DESTINATION_PORT, rpc.DataUint64,uint64(0x1234567812345678)},
+			// { rpc.RPC_VALUE_TRANSFER, rpc.DataUint64,uint64(12345)},
+			// { rpc.RPC_EXPIRY , rpc.DataTime, time.Now().Add(time.Hour).UTC()},
+			// { rpc.RPC_COMMENT , rpc.DataString, "Purchase XYZ"},
 		}
-		amount_to_transfer, err := globals.ParseAmount(amount_str)
-		if err != nil {
-			globals.Logger.Warnf("Err :%s", err)
-			break // invalid amount provided, bail out
+		if a.IsIntegratedAddress() { // read everything from the address
+
+			if a.Arguments.Validate_Arguments() != nil {
+				globals.Logger.Warnf("Integrated Address  arguments could not be validated, err: %s", err)
+				break
+			}
+
+			if !a.Arguments.Has(rpc.RPC_DESTINATION_PORT, rpc.DataUint64) { // but only it is present
+				globals.Logger.Warnf("Integrated Address does not contain destination port.")
+				break
+			}
+
+			arguments = append(arguments, rpc.Argument{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
+			// arguments = append(arguments, rpc.Argument{"Comment", rpc.DataString, "holygrail of all data is now working if you can see this"})
+
+			if a.Arguments.Has(rpc.RPC_EXPIRY, rpc.DataTime) { // but only it is present
+
+				if a.Arguments.Value(rpc.RPC_EXPIRY, rpc.DataTime).(time.Time).Before(time.Now().UTC()) {
+					globals.Logger.Warnf("This address has expired on %s", a.Arguments.Value(rpc.RPC_EXPIRY, rpc.DataTime))
+					break
+				} else {
+					globals.Logger.Infof("This address will expire on %s", a.Arguments.Value(rpc.RPC_EXPIRY, rpc.DataTime))
+				}
+			}
+
+			globals.Logger.Infof("Destination port is integreted in address ID:%016x", a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64))
+
+			if a.Arguments.Has(rpc.RPC_COMMENT, rpc.DataString) { // but only it is present
+				globals.Logger.Infof("Integrated Message:%s", a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString))
+			}
 		}
 
-		var payment_id []byte
-		_ = payment_id
-		// if user provided an integrated address donot ask him payment id
-		if a.IsIntegratedAddress() {
-			globals.Logger.Infof("Payment ID is integreted in address ID:%x", a.PaymentID)
+		// arguments have been already validated
+		for _, arg := range a.Arguments {
+			if !(arg.Name == rpc.RPC_COMMENT || arg.Name == rpc.RPC_EXPIRY || arg.Name == rpc.RPC_DESTINATION_PORT || arg.Name == rpc.RPC_SOURCE_PORT || arg.Name == rpc.RPC_VALUE_TRANSFER) {
+				switch arg.DataType {
+				case rpc.DataString:
+					if v, err := ReadString(l, arg.Name, arg.Value.(string)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						globals.Logger.Warnf("%s could not be parsed (type %s),", arg.Name, arg.DataType)
+						return
+					}
+				case rpc.DataInt64:
+					if v, err := ReadInt64(l, arg.Name, arg.Value.(int64)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						globals.Logger.Warnf("%s could not be parsed (type %s),", arg.Name, arg.DataType)
+						return
+					}
+				case rpc.DataUint64:
+					if v, err := ReadUint64(l, arg.Name, arg.Value.(uint64)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						globals.Logger.Warnf("%s could not be parsed (type %s),", arg.Name, arg.DataType)
+						return
+					}
+				case rpc.DataFloat64:
+					if v, err := ReadFloat64(l, arg.Name, arg.Value.(float64)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						globals.Logger.Warnf("%s could not be parsed (type %s),", arg.Name, arg.DataType)
+						return
+					}
+				case rpc.DataTime:
+					globals.Logger.Warnf("time argument is currently not supported.")
+					break
+
+				}
+			}
+		}
+
+		if a.Arguments.Has(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64) { // but only it is present
+			globals.Logger.Infof("Transaction Value: %s", globals.FormatMoney(a.Arguments.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)))
+			amount_to_transfer = a.Arguments.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)
+		} else {
+
+			amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter amount to transfer in DERO (max TODO): "))
+
+			if amount_str == "" {
+				amount_str = ".00009"
+			}
+			amount_to_transfer, err = globals.ParseAmount(amount_str)
+			if err != nil {
+				globals.Logger.Warnf("Err :%s", err)
+				break // invalid amount provided, bail out
+			}
+		}
+
+		// if no arguments, use space by embedding a small comment
+		if len(arguments) == 0 { // allow user to enter Comment
+			if v, err := ReadString(l, "Comment", ""); err == nil {
+				arguments = append(arguments, rpc.Argument{"Comment", rpc.DataString, v})
+			} else {
+				globals.Logger.Warnf("%s could not be parsed (type %s),", "Comment", rpc.DataString)
+				return
+			}
+		}
+
+		if _, err := arguments.CheckPack(transaction.PAYLOAD0_LIMIT); err != nil {
+			globals.Logger.Warnf("Arguments packing err: %s,", err)
+			return
 		}
 
 		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
-			addr_list := []address.Address{*a}
-			amount_list := []uint64{amount_to_transfer} // transfer 50 dero, 2 dero
-			fees_per_kb := uint64(0)                    // fees  must be calculated by walletapi
-			tx, err := wallet.Transfer(addr_list, amount_list, 0, hex.EncodeToString(payment_id), fees_per_kb, 0, false)
+
+			//src_port := uint64(0xffffffffffffffff)
+
+			_, err := wallet.PoolTransfer([]rpc.Transfer{rpc.Transfer{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, rpc.Arguments{}) // empty SCDATA
+
 			if err != nil {
 				globals.Logger.Warnf("Error while building Transaction err %s\n", err)
 				break
 			}
-			build_relay_transaction(l, tx, err, offline_tx, amount_list)
+			//fmt.Printf("queued tx err %s\n")
 		}
 
 	case "12":
@@ -199,31 +305,34 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			break
 		}
 
-		// a , amount_to_transfer, err := collect_transfer_info(l,wallet)
-		fmt.Printf("dest address %s\n", "deroi1qxqqkmaz8nhv4q07w3cjyt84kmrqnuw4nprpqfl9xmmvtvwa7cdykxq5dph4ufnx5ndq4ltraf  (14686f5e2666a4da)  dero1qxqqkmaz8nhv4q07w3cjyt84kmrqnuw4nprpqfl9xmmvtvwa7cdykxqpfpaes")
-		a, err := ReadAddress(l)
-		if err != nil {
-			globals.Logger.Warnf("Err :%s", err)
-			break
-		}
-		// if user provided an integrated address donot ask him payment id
-		if a.IsIntegratedAddress() {
-			globals.Logger.Infof("Payment ID is integreted in address ID:%x", a.PaymentID)
-		}
+		globals.Logger.Warnf("Not supported err %s\n", err)
 
-		if ConfirmYesNoDefaultNo(l, "Confirm Transaction to send entire balance (y/N)") {
-
-			addr_list := []address.Address{*a}
-			amount_list := []uint64{0} // transfer 50 dero, 2 dero
-			fees_per_kb := uint64(0)   // fees  must be calculated by walletapi
-			tx, err := wallet.Transfer(addr_list, amount_list, 0, "", fees_per_kb, 0, true)
+		/*
+			// a , amount_to_transfer, err := collect_transfer_info(l,wallet)
+			fmt.Printf("dest address %s\n", "deroi1qxqqkmaz8nhv4q07w3cjyt84kmrqnuw4nprpqfl9xmmvtvwa7cdykxq5dph4ufnx5ndq4ltraf  (14686f5e2666a4da)  dero1qxqqkmaz8nhv4q07w3cjyt84kmrqnuw4nprpqfl9xmmvtvwa7cdykxqpfpaes")
+			a, err := ReadAddress(l)
 			if err != nil {
-				globals.Logger.Warnf("Error while building Transaction err %s\n", err)
+				globals.Logger.Warnf("Err :%s", err)
 				break
 			}
+			// if user provided an integrated address donot ask him payment id
+			if a.IsIntegratedAddress() {
+				globals.Logger.Infof("Payment ID is integreted in address ID:%x", a.PaymentID)
+			}
 
-			build_relay_transaction(l, tx, err, offline_tx, amount_list)
-		}
+			if ConfirmYesNoDefaultNo(l, "Confirm Transaction to send entire balance (y/N)") {
+
+				addr_list := []address.Address{*a}
+				amount_list := []uint64{0} // transfer 50 dero, 2 dero
+				fees_per_kb := uint64(0)   // fees  must be calculated by walletapi
+				uid, err := wallet.PoolTransfer(addr_list, amount_list, fees_per_kb, 0, true)
+				_ = uid
+				if err != nil {
+					globals.Logger.Warnf("Error while building Transaction err %s\n", err)
+					break
+				}
+			}
+		*/
 
 		//PressAnyKey(l, wallet) // wait for a key press
 
@@ -274,63 +383,4 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 	}
 	return
-}
-
-// handles the output after building tx, takes feedback, confirms or relays tx
-func build_relay_transaction(l *readline.Instance, tx *transaction.Transaction, err error, offline_tx bool, amount_list []uint64) {
-
-	if err != nil {
-		globals.Logger.Warnf("Error while building Transaction err %s\n", err)
-		return
-	}
-	amount := uint64(0)
-	for i := range amount_list {
-		amount += amount_list[i]
-	}
-	globals.Logger.Infof("Transfering total amount %s DERO", globals.FormatMoney(amount))
-
-	globals.Logger.Infof("fees %s DERO", globals.FormatMoney(tx.Statement.Fees))
-	globals.Logger.Infof("TX Size %0.1f KiB", float32(len(tx.Serialize()))/1024.0)
-
-	//if input_sum != (amount + change + tx.Fee()) {
-	//	panic(fmt.Sprintf("Inputs %d != outputs ( %d + %d + %d )", input_sum, amount, change, tx.RctSignature.Get_TX_Fee()))
-	//}
-
-	//if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
-	if true {
-
-		if offline_tx { // if its an offline tx, dump it to a file
-			cur_dir, err := os.Getwd()
-			if err != nil {
-				globals.Logger.Warnf("Cannot obtain current directory to save tx")
-				globals.Logger.Infof("Transaction discarded")
-				return
-			}
-			filename := filepath.Join(cur_dir, tx.GetHash().String()+".tx")
-			err = ioutil.WriteFile(filename, []byte(hex.EncodeToString(tx.Serialize())), 0600)
-			if err == nil {
-				if err == nil {
-					globals.Logger.Infof("Transaction saved successfully. txid = %s", tx.GetHash())
-					globals.Logger.Infof("Saved to %s", filename)
-				} else {
-					globals.Logger.Warnf("Error saving tx to %s, err %s", filename, err)
-				}
-			}
-
-		} else {
-
-			err = wallet.SendTransaction(tx) // relay tx to daemon/network
-			if err == nil {
-				globals.Logger.Infof("Transaction sent successfully. txid = %s", tx.GetHash())
-			} else {
-				globals.Logger.Warnf("Transaction sending failed txid = %s, err %s", tx.GetHash(), err)
-			}
-
-		}
-
-		PressAnyKey(l, wallet) // wait for a key press
-	} else {
-		globals.Logger.Infof("Transaction discarded")
-	}
-
 }

@@ -36,14 +36,13 @@ import "encoding/binary"
 //import "container/list"
 
 import "github.com/romana/rlog"
-import "github.com/vmihailenco/msgpack"
 import "github.com/dustin/go-humanize"
 import log "github.com/sirupsen/logrus"
 import "github.com/paulbellamy/ratecounter"
 import "github.com/prometheus/client_golang/prometheus"
 
 import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/transaction"
 
@@ -60,6 +59,7 @@ type Queued_Command struct {
 	Command uint64 // we are waiting for this response
 	BLID    []crypto.Hash
 	TXID    []crypto.Hash
+	Topos   []int64
 }
 
 // This structure is used to do book keeping for the connection and keeps other DATA related to peer
@@ -81,7 +81,6 @@ type Connection struct {
 	Addr              *net.TCPAddr      // endpoint on the other end
 	Port              uint32            // port advertised by other end as its server,if it's 0 server cannot accept connections
 	Peer_ID           uint64            // Remote peer id
-	Lowcpuram         bool              // whether the peer has low cpu ram
 	SyncNode          bool              // whether the peer has been added to command line as sync node
 	Top_Version       uint64            // current hard fork version supported by peer
 	TXpool_cache      map[uint64]uint32 // used for ultra blocks in miner mode,cache where we keep TX which have been broadcasted to this peer
@@ -96,10 +95,11 @@ type Connection struct {
 	Cumulative_Difficulty string       // cumulative difficulty of top block of peer, this is NOT required
 	CDIFF                 atomic.Value //*big.Int    // NOTE: this field is used internally and is the parsed from Cumulative_Difficulty
 
-	logger            *log.Entry // connection specific logger
-	logid             string     // formatted version of connection
-	Requested_Objects [][32]byte // currently unused as we sync up with a single peer at a time
-	Conn              net.Conn   // actual object to talk
+	logger            *log.Entry      // connection specific logger
+	logid             string          // formatted version of connection
+	Requested_Objects [][32]byte      // currently unused as we sync up with a single peer at a time
+	Conn              net.Conn        // actual object to talk
+	RConn             *RPC_Connection // object  for communication
 	//	Command_queue     *list.List               // New protocol is partly syncronous
 	Objects      chan Queued_Command      // contains all objects that are requested
 	SpeedIn      *ratecounter.RateCounter // average speed in last 60 seconds
@@ -107,7 +107,11 @@ type Connection struct {
 	request_time atomic.Value             //time.Time                // used to track latency
 	writelock    sync.Mutex               // used to Serialize writes
 
-	sync.Mutex // used only by connection go routine
+	Mutex sync.Mutex // used only by connection go routine
+}
+
+func (c *Connection) exit() {
+	c.RConn.Session.Close()
 
 }
 
@@ -226,7 +230,7 @@ func Connection_Add(c *Connection) {
 
 	if ip_count >= 8 || peer_id_count >= 4 {
 		rlog.Warnf("IP address %s (%d) Peer ID %d(%d) already has too many connections, exiting this connection", incoming_ip, ip_count, incoming_peer_id, peer_id_count)
-		c.Exit()
+		c.exit()
 		return
 	}
 
@@ -287,7 +291,7 @@ func Connection_Print() {
 
 		// skip pending  handshakes and skip ourselves
 		if atomic.LoadUint32(&clist[i].State) == HANDSHAKE_PENDING || GetPeerID() == clist[i].Peer_ID {
-			continue
+			//	continue
 		}
 
 		dir := "OUT"
@@ -322,11 +326,11 @@ func Connection_Print() {
 
 		if globals.Arguments["--debug"].(bool) == true {
 			hstring := fmt.Sprintf("%d/%d/%d", clist[i].StableHeight, clist[i].Height, clist[i].TopoHeight)
-			fmt.Printf("%-20s %16x %5d %7s %7s %23s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].IsConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:])
+			fmt.Printf("%-20s %16x %5d %7s %7s %23s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].isConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:])
 
 		} else {
 			hstring := fmt.Sprintf("%d/%d", clist[i].Height, clist[i].TopoHeight)
-			fmt.Printf("%-20s %16x %5d %7s %7s %17s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].IsConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:8])
+			fmt.Printf("%-20s %16x %5d %7s %7s %17s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), hstring, dir, clist[i].isConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:8])
 
 		}
 
@@ -375,7 +379,6 @@ func Disconnect_All() (Count uint64) {
 
 // this function return peer count which have successful handshake
 func Peer_Count() (Count uint64) {
-
 	connection_map.Range(func(k, value interface{}) bool {
 		v := value.(*Connection)
 		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && GetPeerID() != v.Peer_ID {
@@ -383,8 +386,35 @@ func Peer_Count() (Count uint64) {
 		}
 		return true
 	})
-
 	return
+}
+
+// this function has infinite loop to keep ping every few sec
+func ping_loop() {
+
+	for {
+		time.Sleep(5 * time.Second)
+		connection_map.Range(func(k, value interface{}) bool {
+			c := value.(*Connection)
+			if atomic.LoadUint32(&c.State) != HANDSHAKE_PENDING && GetPeerID() != c.Peer_ID {
+				go func() {
+					defer globals.Recover()
+					var dummy Dummy
+					fill_common(&dummy.Common) // fill common info
+
+					ctime := time.Now()
+					if err := c.RConn.Client.Call("Peer.Ping", dummy, &dummy); err != nil {
+						return
+					}
+					took := time.Now().Sub(ctime)
+					c.update(&dummy.Common)                      // update common information
+					atomic.StoreInt64(&c.Latency, int64(took/2)) // divide by 2 is for round-trip
+					c.update(&dummy.Common)                      // update common information
+				}()
+			}
+			return true
+		})
+	}
 }
 
 // this function returnw random connection which have successful handshake
@@ -430,30 +460,18 @@ func Peer_Direction_Count() (Incoming uint64, Outgoing uint64) {
 // this function is trigger from 2 points, one when we receive a unknown block which can be successfully added to chain
 // second from the blockchain which has to relay locally  mined blocks as soon as possible
 func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) { // if peerid is provided it is skipped
-	var request Notify_New_Objects_Struct
+	var cblock_serialized Complete_Block
 
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Warnf("Recovered while broadcasting Block, Stack trace below %+v", r)
-			logger.Warnf("Stack trace  \n%s", debug.Stack())
-		}
-	}()
+	defer globals.Recover()
 
 	/*if IsSyncing() { // if we are syncing, do NOT broadcast the block
 		return
 	}*/
 
-	fill_common(&request.Common) // fill common info
-	request.Command = V2_NOTIFY_NEW_BLOCK
-	request.CBlock.Block = cbl.Bl.Serialize()
+	cblock_serialized.Block = cbl.Bl.Serialize()
 
 	for i := range cbl.Txs {
-		request.CBlock.Txs = append(request.CBlock.Txs, cbl.Txs[i].Serialize())
-	}
-
-	serialized, err := msgpack.Marshal(&request)
-	if err != nil {
-		panic(err)
+		cblock_serialized.Txs = append(cblock_serialized.Txs, cbl.Txs[i].Serialize())
 	}
 
 	our_height := chain.Get_Height()
@@ -480,17 +498,13 @@ func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) { // if peerid is
 
 			count++
 			go func(connection *Connection) {
-				defer func() {
-					if r := recover(); r != nil {
-						rlog.Warnf("Recovered while handling connection, Stack trace below", r)
-						rlog.Warnf("Stack trace  \n%s", debug.Stack())
-					}
-				}()
-				if globals.Arguments["--lowcpuram"].(bool) == false && connection.TXpool_cache != nil { // everyone needs ultrac compact block if possible
-					var miner_specific_request Notify_New_Objects_Struct
-					miner_specific_request.Common = request.Common
-					miner_specific_request.Command = V2_NOTIFY_NEW_BLOCK
-					miner_specific_request.CBlock.Block = request.CBlock.Block
+				defer globals.Recover()
+
+				{ // everyone needs ultra compact block if possible
+					var peer_specific_block Objects
+
+					var cblock Complete_Block
+					cblock.Block = cblock_serialized.Block
 
 					sent := 0
 					skipped := 0
@@ -500,7 +514,7 @@ func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) { // if peerid is
 						// send only tx not found in cache
 
 						if _, ok := connection.TXpool_cache[binary.LittleEndian.Uint64(cbl.Bl.Tx_hashes[i][:])]; !ok {
-							miner_specific_request.CBlock.Txs = append(miner_specific_request.CBlock.Txs, request.CBlock.Txs[i])
+							cblock.Txs = append(cblock.Txs, cblock_serialized.Txs[i])
 							sent++
 
 						} else {
@@ -511,31 +525,28 @@ func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) { // if peerid is
 					connection.TXpool_cache_lock.RUnlock()
 
 					connection.logger.Debugf("Sending ultra block to peer total %d tx skipped %d sent %d", len(cbl.Bl.Tx_hashes), skipped, sent)
-
-					serialized_miner_specific, err := msgpack.Marshal(&miner_specific_request)
-					if err != nil {
-						panic(err)
+					peer_specific_block.CBlocks = append(peer_specific_block.CBlocks, cblock)
+					var dummy Dummy
+					fill_common(&peer_specific_block.Common) // fill common info
+					if err := connection.RConn.Client.Call("Peer.NotifyBlock", peer_specific_block, &dummy); err != nil {
+						return
 					}
-					connection.Send_Message(serialized_miner_specific) // miners need ultra compact blocks
+					connection.update(&dummy.Common) // update common information
 
-				} else {
-					connection.logger.Debugf("Sending full block to peer")
-
-					connection.Send_Message(serialized) // non miners need full blocks
 				}
 			}(v)
 		}
 
 	}
 
-	rlog.Infof("Broadcasted block %s to %d peers", cbl.Bl.GetHash(), count)
+	//rlog.Infof("Broadcasted block %s to %d peers", cbl.Bl.GetHash(), count)
 
 }
 
 // broadcast a new transaction, return to how many peers the transaction has been broadcasted
 // this function is trigger from 2 points, one when we receive a unknown tx
 // second from the mempool which may want to relay local ot soon going to expire transactions
-func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int) {
+func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int32) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -544,18 +555,11 @@ func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int
 		}
 	}()
 
-	var request Object_Request_Struct
+	var request ObjectList
 	fill_common_skip_topoheight(&request.Common) // fill common info, but skip topo height
-	request.Command = V2_NOTIFY_INVENTORY
-
 	txhash := tx.GetHash()
 
 	request.Tx_list = append(request.Tx_list, txhash)
-
-	serialized, err := msgpack.Marshal(&request)
-	if err != nil {
-		panic(err)
-	}
 
 	our_height := chain.Get_Height()
 
@@ -579,7 +583,6 @@ func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int
 				continue
 			}
 
-			relayed_count++
 			go func(connection *Connection) {
 				defer func() {
 					if r := recover(); r != nil {
@@ -591,26 +594,34 @@ func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int
 				resend := true
 				// disable cache if not possible due to options
 				// assuming the peer is good, he would like to obtain the tx ASAP
-				if globals.Arguments["--lowcpuram"].(bool) == false && connection.TXpool_cache != nil {
-					connection.TXpool_cache_lock.Lock()
-					if _, ok := connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])]; !ok {
-						connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])] = uint32(time.Now().Unix())
-						resend = true
-					} else {
-						resend = false
-					}
-					connection.TXpool_cache_lock.Unlock()
+
+				connection.TXpool_cache_lock.Lock()
+				if _, ok := connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])]; !ok {
+					connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])] = uint32(time.Now().Unix())
+					resend = true
+				} else {
+					resend = false
 				}
+				connection.TXpool_cache_lock.Unlock()
 
 				if resend {
-					connection.Send_Message(serialized) // send the bytes
+					var dummy Dummy
+					fill_common(&dummy.Common) // fill common info
+					if err := connection.RConn.Client.Call("Peer.NotifyINV", request, &dummy); err != nil {
+						return
+					}
+					connection.update(&dummy.Common) // update common information
+
+					atomic.AddInt32(&relayed_count, 1)
 				}
 
 			}(v)
 		}
 
 	}
-	//rlog.Infof("Broadcasted tx %s to %d peers", txhash, relayed_count)
+	if relayed_count > 0 {
+		rlog.Debugf("Broadcasted tx %s to %d peers", txhash, relayed_count)
+	}
 	return
 }
 
@@ -620,7 +631,7 @@ func Broadcast_Tx(tx *transaction.Transaction, PeerID uint64) (relayed_count int
 // if objects response are queued, we are syncing
 // if even one of the connection is syncing, then we are syncronising
 // returns a number how many blocks are queued
-func (connection *Connection) IsConnectionSyncing() (count int) {
+func (connection *Connection) isConnectionSyncing() (count int) {
 	//connection.Lock()
 	//defer connection.Unlock()
 
@@ -632,7 +643,7 @@ func (connection *Connection) IsConnectionSyncing() (count int) {
 	// so we can try some other connection
 	if len(connection.Objects) > 0 {
 		if time.Now().Unix() >= (13 + atomic.LoadInt64(&connection.LastObjectRequestTime)) {
-			connection.Exit()
+			connection.exit()
 			return 0
 		}
 	}
@@ -684,7 +695,16 @@ func trigger_sync() {
 				connection.logger.Debugf("We need to resync with the peer height %d", connection.Height)
 				//connection.Unlock()
 				// set mode to syncronising
-				connection.Send_ChainRequest()
+
+				if chain.Sync {
+					//fmt.Printf("chain send chain request disabled\n")
+					connection.sync_chain()
+					connection.logger.Debugf("sync done ")
+
+				} else { // we need a state only sync, bootstrap without history but verified chain
+					connection.bootstrap_chain()
+					chain.Sync = true
+				}
 				break
 			}
 		}
@@ -700,7 +720,7 @@ func IsSyncing() (result bool) {
 	syncing := false
 	connection_map.Range(func(k, value interface{}) bool {
 		v := value.(*Connection)
-		if v.IsConnectionSyncing() != 0 {
+		if v.isConnectionSyncing() != 0 {
 			syncing = true
 			return false
 		}
@@ -724,5 +744,4 @@ func syncroniser() {
 		}
 
 	}
-
 }

@@ -20,10 +20,9 @@ import "fmt"
 import "context"
 import "encoding/hex"
 import "runtime/debug"
+import "github.com/deroproject/derohe/rpc"
 
-import "github.com/deroproject/derohe/structures"
-
-func (DERO_RPC_APIS) SubmitBlock(ctx context.Context, block_data [2]string) (result structures.SubmitBlock_Result, err error) {
+func (DERO_RPC_APIS) SubmitBlock(ctx context.Context, block_data [2]string) (result rpc.SubmitBlock_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -47,7 +46,7 @@ func (DERO_RPC_APIS) SubmitBlock(ctx context.Context, block_data [2]string) (res
 
 	if sresult {
 		logger.Infof("Submitted block %s accepted", blid)
-		return structures.SubmitBlock_Result{
+		return rpc.SubmitBlock_Result{
 			BLID:   blid.String(),
 			Status: "OK",
 		}, nil
@@ -59,7 +58,7 @@ func (DERO_RPC_APIS) SubmitBlock(ctx context.Context, block_data [2]string) (res
 	}
 
 	logger.Infof("Submitting block rejected err %s", err)
-	return structures.SubmitBlock_Result{
+	return rpc.SubmitBlock_Result{
 		Status: "REJECTED",
 	}, nil
 

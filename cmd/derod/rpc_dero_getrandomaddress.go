@@ -17,18 +17,16 @@
 package main
 
 import "fmt"
-
 import "context"
 import "runtime/debug"
-
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/address"
-import "github.com/deroproject/derohe/structures"
-import "github.com/deroproject/derohe/blockchain"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/rpc"
 
-func (DERO_RPC_APIS) GetRandomAddress(ctx context.Context) (result structures.GetRandomAddress_Result, err error) {
+//import "github.com/deroproject/derohe/blockchain"
+
+func (DERO_RPC_APIS) GetRandomAddress(ctx context.Context, p rpc.GetRandomAddress_Params) (result rpc.GetRandomAddress_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -54,7 +52,12 @@ func (DERO_RPC_APIS) GetRandomAddress(ctx context.Context) (result structures.Ge
 			panic(err)
 		}
 
-		balance_tree, err := ss.GetTree(blockchain.BALANCE_TREE)
+		treename := config.BALANCE_TREE
+		if p.SCID.IsZero() {
+			treename = string(p.SCID[:])
+		}
+
+		balance_tree, err := ss.GetTree(treename)
 		if err != nil {
 			panic(err)
 		}
@@ -70,10 +73,10 @@ func (DERO_RPC_APIS) GetRandomAddress(ctx context.Context) (result structures.Ge
 
 			var acckey crypto.Point
 			if err := acckey.DecodeCompressed(k[:]); err != nil {
-				panic(err)
+				continue
 			}
 
-			addr := address.NewAddressFromKeys(&acckey)
+			addr := rpc.NewAddressFromKeys(&acckey)
 			addr.Mainnet = true
 			if globals.Config.Name != config.Mainnet.Name { // anything other than mainnet is testnet at this point in time
 				addr.Mainnet = false

@@ -21,10 +21,11 @@ import "bytes"
 import "math/big"
 import "encoding/binary"
 
-//import "github.com/romana/rlog"
+import "github.com/romana/rlog"
 
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/crypto/bn256"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
+import "github.com/deroproject/derohe/rpc"
 
 type TransactionType uint64
 
@@ -34,7 +35,6 @@ const (
 	COINBASE                            // normal coinbase tx  ( if miner address is already registered)
 	NORMAL                              // one to one TX with ring members
 	BURN_TX                             // if user burns an amount to control inflation
-	MULTIUSER_TX                        // multi-user transaction
 	SC_TX                               // smart contract transaction
 
 )
@@ -51,33 +51,126 @@ func (t TransactionType) String() string {
 		return "NORMAL"
 	case BURN_TX:
 		return "BURN"
-	case MULTIUSER_TX:
-		return "MULTIUSER_TX"
 	case SC_TX:
-		return "SMARTCONTRACT_TX"
+		return "SC"
 
 	default:
 		return "unknown transaction type"
 	}
 }
 
+const PAYLOAD_LIMIT = 1 + 144 // entire payload header is mandatorily encrypted
+// sender position in ring representation in a byte, uptp 256 ring
+// 144 byte payload  ( to implement specific functionality such as delivery of keys etc), user dependent encryption
+const PAYLOAD0_LIMIT = 144 // 1 byte has been reserved for sender position in ring representation in a byte, uptp 256 ring
+
+const ENCRYPTED_DEFAULT_PAYLOAD_CBOR = byte(0)
+
 // the core transaction
+// in our design, tx cam be sent by 1 wallet, but SC part/gas can be signed by any other user, but this is not implemented
 type Transaction_Prefix struct {
 	Version         uint64          `json:"version"`
 	TransactionType TransactionType `json:"version"`
-	Value           uint64          `json:"value"` // represnets premine, value for SC, BURN amount
-	Amounts         []uint64        // open amounts for multi user tx
+	Value           uint64          `json:"value"`         // represents value for premine, SC, BURN transactions
 	MinerAddress    [33]byte        `json:"miner_address"` // miner address  // 33 bytes also used for registration
 	C               [32]byte        `json:"c"`             // used for registration
 	S               [32]byte        `json:"s"`             // used for registration
 	Height          uint64          `json:"height"`        // height at the state, used to cross-check state
-	PaymentID       [8]byte         `json:"paymentid"`     // hardcoded 8 bytes
+	SCDATA          rpc.Arguments   `json:"scdata"`        // all SC related data is provided here, an SC tx uses all the fields
+}
+
+type AssetPayload struct {
+	SCID      crypto.Hash // which asset, it's zero for main asset
+	BurnValue uint64      `json:"value"` // represents value for premine, SC, BURN transactions
+
+	RPCType    byte   // its unencrypted  and is by default 0 for almost all txs
+	RPCPayload []byte // rpc payload encryption depends on RPCType
+
+	// sender position in ring representation in a byte, uptp 256 ring
+	// 144 byte payload  ( to implement specific functionality such as delivery of keys etc), user dependent encryption
+	Statement crypto.Statement // note statement containts fees
+	Proof     *crypto.Proof
+}
+
+// marshal asset
+/*
+func (a AssetPayload) MarshalHeader() ([]byte, error) {
+
+	return writer.Bytes(), nil
+}
+*/
+
+func (a AssetPayload) MarshalHeaderStatement() ([]byte, error) {
+	var writer bytes.Buffer
+	var buffer_backing [binary.MaxVarintLen64]byte
+	buf := buffer_backing[:]
+	_ = buf
+
+	n := binary.PutUvarint(buf, a.BurnValue)
+	writer.Write(buf[:n])
+
+	writer.Write(a.SCID[:])
+
+	writer.WriteByte(a.RPCType) // payload type byte
+	writer.Write(a.RPCPayload)  // src Id is always payload limit bytes
+
+	if len(a.RPCPayload) != PAYLOAD_LIMIT {
+		return nil, fmt.Errorf("RPCPayload should be %d bytes, but have %d bytes", PAYLOAD_LIMIT, len(a.RPCPayload))
+	}
+
+	a.Statement.Serialize(&writer)
+	//if  err != nil {
+	//	return nil,err
+	//}
+
+	return writer.Bytes(), nil
+}
+
+func (a *AssetPayload) UnmarshalHeaderStatement(r *bytes.Reader) (err error) {
+	if a.BurnValue, err = binary.ReadUvarint(r); err != nil {
+		return err
+	}
+	if _, err = r.Read(a.SCID[:]); err != nil {
+		return err
+	}
+	if a.RPCType, err = r.ReadByte(); err != nil {
+		return err
+	}
+
+	a.RPCPayload = make([]byte, PAYLOAD_LIMIT, PAYLOAD_LIMIT)
+	if _, err = r.Read(a.RPCPayload[:]); err != nil {
+		return err
+	}
+
+	if err = a.Statement.Deserialize(r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (a AssetPayload) MarshalProofs() ([]byte, error) {
+	var writer bytes.Buffer
+	a.Proof.Serialize(&writer)
+
+	return writer.Bytes(), nil
+}
+
+func (a *AssetPayload) UnmarshalProofs(r *bytes.Reader) (err error) {
+	a.Proof = &crypto.Proof{}
+
+	if err = a.Proof.Deserialize(r, crypto.GetPowerof2(len(a.Statement.Publickeylist_pointers)/int(a.Statement.Bytes_per_publickey))); err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 type Transaction struct {
 	Transaction_Prefix // same as Transaction_Prefix
-	Statement          crypto.Statement
-	Proof              *crypto.Proof
+
+	Payloads []AssetPayload // each transaction can have a number os payloads
 }
 
 // this excludes the proof part, so it can pruned
@@ -89,7 +182,6 @@ func (tx *Transaction) GetHash() (result crypto.Hash) {
 		panic("Transaction version unknown")
 
 	}
-
 	return
 }
 
@@ -104,6 +196,16 @@ func (tx *Transaction) IsRegistration() (result bool) {
 
 func (tx *Transaction) IsPremine() (result bool) {
 	return tx.TransactionType == PREMINE
+}
+
+func (tx *Transaction) Fees() (fees uint64) {
+	var zero_scid [32]byte
+	for i := range tx.Payloads {
+		if zero_scid == tx.Payloads[i].SCID {
+			fees += tx.Payloads[i].Statement.Fees
+		}
+	}
+	return fees
 }
 
 func (tx *Transaction) IsRegistrationValid() (result bool) {
@@ -152,24 +254,27 @@ func (tx *Transaction) DeserializeHeader(buf []byte) (err error) {
 	tx.TransactionType = TransactionType(tmp_uint64)
 
 	switch tx.TransactionType {
-	case PREMINE:
+	case PREMINE, REGISTRATION, COINBASE, BURN_TX, NORMAL, SC_TX:
+	default:
+		panic("unknown transaction type")
+	}
+
+	if tx.TransactionType == PREMINE || tx.TransactionType == BURN_TX || tx.TransactionType == SC_TX {
 		tx.Value, done = binary.Uvarint(buf)
 		if done <= 0 {
 			return fmt.Errorf("Invalid Premine value  in Transaction\n")
 		}
 		buf = buf[done:]
+	}
+
+	if tx.TransactionType == PREMINE || tx.TransactionType == COINBASE || tx.TransactionType == REGISTRATION || tx.TransactionType == SC_TX {
 		if 33 != copy(tx.MinerAddress[:], buf[:]) {
 			return fmt.Errorf("Invalid Miner Address in Transaction\n")
 		}
 		buf = buf[33:]
-		goto done
+	}
 
-	case REGISTRATION:
-		if 33 != copy(tx.MinerAddress[:], buf[:33]) {
-			return fmt.Errorf("Invalid Miner Address in Transaction\n")
-		}
-		buf = buf[33:]
-
+	if tx.TransactionType == REGISTRATION || tx.TransactionType == SC_TX {
 		if 32 != copy(tx.C[:], buf[:32]) {
 			return fmt.Errorf("Invalid C in Transaction\n")
 		}
@@ -179,68 +284,67 @@ func (tx *Transaction) DeserializeHeader(buf []byte) (err error) {
 			return fmt.Errorf("Invalid S in Transaction\n")
 		}
 		buf = buf[32:]
+	}
 
-		goto done
-
-	case COINBASE:
-		if 33 != copy(tx.MinerAddress[:], buf[:]) {
-			return fmt.Errorf("Invalid Miner Address in Transaction\n")
-		}
-		buf = buf[33:]
-		goto done
-
-	case NORMAL: // parse height and root hash
+	if tx.TransactionType == BURN_TX || tx.TransactionType == NORMAL || tx.TransactionType == SC_TX {
+		// parse height and root hash
 		tx.Height, done = binary.Uvarint(buf)
 		if done <= 0 {
 			return fmt.Errorf("Invalid Height value  in Transaction\n")
 		}
 		buf = buf[done:]
 
-		if len(buf) < 8 {
-			return fmt.Errorf("Invalid payment id value  in Transaction\n")
+		var asset_count uint64
+		asset_count, done = binary.Uvarint(buf)
+		if done <= 0 || asset_count < 1 {
+			return fmt.Errorf("Invalid asset_count  in Transaction\n")
 		}
-		copy(tx.PaymentID[:], buf[:8])
-		buf = buf[8:]
+		buf = buf[done:]
 
-		tx.Proof = &crypto.Proof{}
+		for i := uint64(0); i < asset_count; i++ {
+			var a AssetPayload
 
-		r = bytes.NewReader(buf[:])
-
-		tx.Statement.Deserialize(r)
-
-		statement_size := len(buf) - r.Len()
-		//	fmt.Printf("tx Statement size  deserialing %d\n", statement_size)
-
-		//	fmt.Printf("tx Proof size  %d\n", len(buf) - statement_size)
-
-		buf = buf[statement_size:]
-		r = bytes.NewReader(buf[:])
-
-		if err := tx.Proof.Deserialize(r, crypto.GetPowerof2(len(tx.Statement.Publickeylist_compressed))); err != nil {
-			fmt.Printf("error deserialing proof err %s", err)
-			return err
+			r = bytes.NewReader(buf[:])
+			if err = a.UnmarshalHeaderStatement(r); err != nil {
+				panic(err)
+			}
+			tx.Payloads = append(tx.Payloads, a)
+			buf = buf[len(buf)-r.Len():]
 		}
 
-		//	fmt.Printf("tx Proof size deserialed %d  bytes remaining %d \n", len(buf) - r.Len(), r.Len())
-
-		if r.Len() != 0 {
-			return fmt.Errorf("Extra unknown data in Transaction, extrabytes %d\n", r.Len())
-		}
-
-	case BURN_TX:
-		panic("TODO")
-	case MULTIUSER_TX:
-		panic("TODO")
-	case SC_TX:
-		panic("TODO")
-
-	default:
-		panic("unknown transaction type")
 	}
 
-done:
-	if len(buf) != 0 {
-		//return fmt.Errorf("Extra unknown data in Transaction\n")
+	if tx.TransactionType == SC_TX {
+		var sc_len uint64
+		sc_len, done = binary.Uvarint(buf)
+		if done <= 0 {
+			return fmt.Errorf("Invalid sc length  in Transaction\n")
+		}
+		buf = buf[done:]
+		if sc_len > uint64(len(buf)) { // we are are crossing tx_boundary
+			return fmt.Errorf("SC len out of possible range")
+		}
+		if err := tx.SCDATA.UnmarshalBinary(buf[:sc_len]); err != nil {
+			return err
+		}
+		buf = buf[sc_len:]
+	}
+
+	if tx.TransactionType == BURN_TX || tx.TransactionType == NORMAL || tx.TransactionType == SC_TX {
+
+		for i := range tx.Payloads {
+			tx.Payloads[i].Proof = &crypto.Proof{}
+
+			r = bytes.NewReader(buf[:])
+			if err = tx.Payloads[i].UnmarshalProofs(r); err != nil {
+				panic(err)
+			}
+			buf = buf[len(buf)-r.Len():]
+		}
+	}
+
+	if len(buf) != 0 && (tx.TransactionType == PREMINE || tx.TransactionType == REGISTRATION || tx.TransactionType == COINBASE) { // these tx are complete
+		//return fmt.Errorf("Extra unknown data in Transaction, extrabytes %d\n", r.Len())
 	}
 
 	//rlog.Tracef(8, "TX deserialized %+v\n", tx)
@@ -265,41 +369,53 @@ func (tx *Transaction) SerializeHeader() []byte {
 	n := binary.PutUvarint(buf, tx.Version)
 	serialised_header.Write(buf[:n])
 
+	switch tx.TransactionType {
+	case PREMINE, REGISTRATION, COINBASE, BURN_TX, NORMAL, SC_TX:
+	default:
+		panic("unknown transaction type")
+	}
+
 	n = binary.PutUvarint(buf, uint64(tx.TransactionType))
 	serialised_header.Write(buf[:n])
 
-	switch tx.TransactionType {
-	case PREMINE:
+	if tx.TransactionType == PREMINE || tx.TransactionType == BURN_TX || tx.TransactionType == SC_TX {
 		n := binary.PutUvarint(buf, tx.Value)
 		serialised_header.Write(buf[:n])
+	}
+	if tx.TransactionType == PREMINE || tx.TransactionType == COINBASE || tx.TransactionType == REGISTRATION || tx.TransactionType == SC_TX {
 		serialised_header.Write(tx.MinerAddress[:])
-		return serialised_header.Bytes()
-
-	case REGISTRATION:
-		serialised_header.Write(tx.MinerAddress[:])
+	}
+	if tx.TransactionType == REGISTRATION || tx.TransactionType == SC_TX {
 		serialised_header.Write(tx.C[:])
 		serialised_header.Write(tx.S[:])
-		return serialised_header.Bytes()
+	}
 
-	case COINBASE:
-		serialised_header.Write(tx.MinerAddress[:])
-		return serialised_header.Bytes()
-
-	case NORMAL:
+	if tx.TransactionType == BURN_TX || tx.TransactionType == NORMAL || tx.TransactionType == SC_TX {
 		n = binary.PutUvarint(buf, uint64(tx.Height))
 		serialised_header.Write(buf[:n])
-		serialised_header.Write(tx.PaymentID[:8]) // payment Id is always 8 bytes
-		return serialised_header.Bytes()
 
-	case BURN_TX:
-		panic("TODO")
-	case MULTIUSER_TX:
-		panic("TODO")
-	case SC_TX:
-		panic("TODO")
+		n = binary.PutUvarint(buf, uint64(len(tx.Payloads)))
+		serialised_header.Write(buf[:n])
 
-	default:
-		panic("unknown transaction type")
+		for _, p := range tx.Payloads {
+			if pheader_bytes, err := p.MarshalHeaderStatement(); err == nil {
+				serialised_header.Write(pheader_bytes)
+			} else {
+				panic(err)
+			}
+		}
+
+	}
+
+	if tx.TransactionType == SC_TX {
+		if data, err := tx.SCDATA.MarshalBinary(); err != nil {
+			rlog.Warnf("err marshalling SC data %s\n", err)
+			panic(err)
+		} else {
+			n = binary.PutUvarint(buf, uint64(len(data)))
+			serialised_header.Write(buf[:n])
+			serialised_header.Write(data)
+		}
 	}
 
 	return serialised_header.Bytes()
@@ -307,27 +423,16 @@ func (tx *Transaction) SerializeHeader() []byte {
 
 // serialize entire transaction include signature
 func (tx *Transaction) Serialize() []byte {
-
 	var serialised bytes.Buffer
-
 	header_bytes := tx.SerializeHeader()
-	//base_bytes := tx.RctSignature.SerializeBase()
-	//prunable := tx.RctSignature.SerializePrunable()
 	serialised.Write(header_bytes)
-	if tx.Proof != nil {
-
-		//	done_bytes := serialised.Len()
-
-		tx.Statement.Serialize(&serialised)
-		//	statement_size := serialised.Len() - done_bytes
-		//	fmt.Printf("tx statement_size serializing  %d\n", statement_size)
-
-		//done_bytes =serialised.Len()
-		tx.Proof.Serialize(&serialised)
-
-		//	fmt.Printf("tx Proof serialised size %d\n", serialised.Len() - done_bytes)
+	for _, p := range tx.Payloads {
+		if pheader_bytes, err := p.MarshalProofs(); err == nil {
+			serialised.Write(pheader_bytes)
+		} else {
+			panic(err)
+		}
 	}
-
 	return serialised.Bytes() //buf
 
 }
@@ -339,10 +444,9 @@ func (tx *Transaction) SerializeCoreStatement() []byte {
 	serialised.Write(header_bytes)
 
 	switch tx.TransactionType {
-	case PREMINE, REGISTRATION, COINBASE:
-	case NORMAL, BURN_TX, MULTIUSER_TX, SC_TX:
-		tx.Statement.Serialize(&serialised)
-
+	case PREMINE, COINBASE:
+	case REGISTRATION:
+	case NORMAL, BURN_TX, SC_TX:
 	default:
 		panic("unknown transaction type")
 	}

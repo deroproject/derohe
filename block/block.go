@@ -24,10 +24,10 @@ import "runtime/debug"
 import "encoding/hex"
 import "encoding/binary"
 
-import "github.com/ebfe/keccak"
+import "golang.org/x/crypto/sha3"
 import "github.com/romana/rlog"
 
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derosuite/config"
 import "github.com/deroproject/derohe/astrobwt"
@@ -65,7 +65,7 @@ func (bl *Block) GetHash() (hash crypto.Hash) {
 	long_header := bl.GetBlockWork()
 
 	// keccak hash of this above blob, gives the block id
-	return crypto.Keccak256(long_header)
+	return sha3.Sum256(long_header)
 }
 
 // converts a block, into a getwork style work, ready for either submitting the block
@@ -78,7 +78,7 @@ func (bl *Block) GetBlockWork() []byte {
 	buf = append(buf, []byte{byte(bl.Major_Version), byte(bl.Minor_Version), 0, 0, 0, 0, 0}...) // 0 first 7 bytes are version in little endia format
 
 	binary.LittleEndian.PutUint32(buf[2:6], uint32(bl.Timestamp))
-	header_hash := crypto.Keccak256(bl.getserializedheaderforwork()) // 0 + 7
+	header_hash := sha3.Sum256(bl.getserializedheaderforwork()) // 0 + 7
 
 	buf = append(buf, header_hash[:]...) // 0 + 7 + 32  = 39
 
@@ -251,7 +251,7 @@ func (bl *Block) GetTipsHash() (result crypto.Hash) {
 	 }*/
 
 	// add all the remaining hashes
-	h := keccak.New256()
+	h := sha3.New256()
 	for i := range bl.Tips {
 		h.Write(bl.Tips[i][:])
 	}
@@ -263,7 +263,7 @@ func (bl *Block) GetTipsHash() (result crypto.Hash) {
 // get block transactions
 // we have discarded the merkle tree and have shifted to a plain version
 func (bl *Block) GetTXSHash() (result crypto.Hash) {
-	h := keccak.New256()
+	h := sha3.New256()
 	for i := range bl.Tx_hashes {
 		h.Write(bl.Tx_hashes[i][:])
 	}

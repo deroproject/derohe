@@ -17,7 +17,7 @@
 package config
 
 import "github.com/satori/go.uuid"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 // all global configuration variables are picked from here
 
@@ -28,27 +28,12 @@ import "github.com/deroproject/derohe/crypto"
 // since most mining nodes will be running in datacenter, 3 secs  blocks c
 const BLOCK_TIME = uint64(18)
 
-// we are ignoring leap seconds from calculations
-
-// coin emiision related settings
-const COIN_MONEY_SUPPLY = uint64(18446744073709551615) // 2^64-1
-const COIN_EMISSION_SPEED_FACTOR = uint64(20)
-const COIN_DIFFICULTY_TARGET = uint64(120)                 // this is a feeder to emission formula
-const COIN_FINAL_SUBSIDY_PER_MINUTE = uint64(300000000000) // 0.3 DERO per minute = 157680 per year roughly
-
-// these are used to configure mainnet hard fork
-const HARDFORK_1_END = int64(1)
-
-//const HARDFORK_1_TOTAL_SUPPLY = uint64(2000000000000000000 ) // this is used to mark total supply
-// till 95532 (includind)  4739519967524007940
-// 95543   4739807553788105597
-// 95549   4739964392976757069
-// 95550   4739990536584241377
-const MAINNET_HARDFORK_1_TOTAL_SUPPLY = uint64(4739990536584241377)
-
-const TESTNET_HARDFORK_1_TOTAL_SUPPLY = uint64(4319584000000000000)
-
-const MAX_CHAIN_HEIGHT = uint64(2147483648) // 2^31
+// note we are keeping the tree name small for disk savings, since they will be stored n times (atleast or archival nodes)
+// this is used by graviton
+const BALANCE_TREE = "B" // keeps main balance
+const SC_META = "M"      // keeps all SCs balance, their state, their OWNER, their data tree top hash is stored here
+// one are open SCs, which provide i/o privacy
+// one are private SCs which are truly private, in which no one has visibility of io or functionality
 
 // 1.25 MB block every 12 secs is equal to roughly 75 TX per second
 // if we consider side blocks, TPS increase to > 100 TPS
@@ -65,8 +50,8 @@ const MAX_MIXIN = 128 // <= 128,  mixin will be accepted
 // ATLANTIS FEE calculation constants are here
 const FEE_PER_KB = uint64(1000000000) // .001 dero per kb
 
-const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(10 * BLOCK_TIME) // atlantis mainnet botstrapped at 200 MH/s
-const MAINNET_MINIMUM_DIFFICULTY = uint64(10 * BLOCK_TIME)   // 5 KH/s
+const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(800 * BLOCK_TIME) // atlantis mainnet botstrapped at 200 MH/s
+const MAINNET_MINIMUM_DIFFICULTY = uint64(800 * BLOCK_TIME)   // 5 KH/s
 
 // testnet bootstraps at 1 MH
 //const  TESTNET_BOOTSTRAP_DIFFICULTY = uint64(1000*1000*BLOCK_TIME)
@@ -79,6 +64,9 @@ const TESTNET_MINIMUM_DIFFICULTY = uint64(800 * BLOCK_TIME)   // 800 H
 // gives immense scalability,
 const STABLE_LIMIT = int64(8)
 
+// reward percent that is shared between miners/dev
+const DEVSHARE = uint64(600) // it's out of 10000,  600*100/10000 = 6%,  3% dev, 3% foundation
+
 // we can have number of chains running for testing reasons
 type CHAIN_CONFIG struct {
 	Name       string
@@ -88,6 +76,8 @@ type CHAIN_CONFIG struct {
 	RPC_Default_Port        int
 	Wallet_RPC_Default_Port int
 
+	Dev_Address string // to which address the dev's share of fees must go
+
 	Genesis_Nonce uint32
 
 	Genesis_Block_Hash crypto.Hash
@@ -96,7 +86,7 @@ type CHAIN_CONFIG struct {
 }
 
 var Mainnet = CHAIN_CONFIG{Name: "mainnet",
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x44, 0x0}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x45, 0x0}),
 	P2P_Default_Port:        10101,
 	RPC_Default_Port:        10102,
 	Wallet_RPC_Default_Port: 10103,
@@ -110,10 +100,11 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 		"8fff7f" + // PREMINE_VALUE
 		"a01f9bcc1208dee302769931ad378a4c0c4b2c21b0cfb3e752607e12d2b6fa6425", // miners public key
 
+	Dev_Address: "deto1qxsplx7vzgydacczw6vnrtfh3fxqcjevyxcvlvl82fs8uykjkmaxgfgulfha5",
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x24, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x25, 0x00, 0x00, 0x00}),
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
 	Wallet_RPC_Default_Port: 40403,
@@ -127,6 +118,7 @@ var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 b
 		"8fff7f" + // PREMINE_VALUE
 		"a01f9bcc1208dee302769931ad378a4c0c4b2c21b0cfb3e752607e12d2b6fa6425", // miners public key
 
+	Dev_Address: "deto1qxsplx7vzgydacczw6vnrtfh3fxqcjevyxcvlvl82fs8uykjkmaxgfgulfha5",
 }
 
 // mainnet has a remote daemon node, which can be used be default, if user provides a  --remote flag

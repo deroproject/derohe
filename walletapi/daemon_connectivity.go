@@ -35,7 +35,7 @@ import "github.com/romana/rlog"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/structures"
+import "github.com/deroproject/derohe/rpc"
 
 import "github.com/deroproject/derohe/glue/rwc"
 
@@ -114,7 +114,7 @@ func Connect(endpoint string) (err error) {
 	}
 	//fmt.Println(result)
 
-	var info structures.GetInfo_Result
+	var info rpc.GetInfo_Result
 	// Issue a call with a response.
 	if err = rpc_client.Call("DERO.GetInfo", nil, &info); err != nil {
 		rlog.Warnf("DERO.GetInfo Call failed: %v", err)

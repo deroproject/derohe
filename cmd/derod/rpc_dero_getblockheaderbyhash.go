@@ -19,14 +19,10 @@ package main
 import "fmt"
 import "context"
 import "runtime/debug"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/rpc"
 
-//import	"log"
-//import 	"net/http"
-
-import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/structures"
-
-func (DERO_RPC_APIS) GetBlockHeaderByHash(ctx context.Context, p structures.GetBlockHeaderByHash_Params) (result structures.GetBlockHeaderByHash_Result, err error) {
+func (DERO_RPC_APIS) GetBlockHeaderByHash(ctx context.Context, p rpc.GetBlockHeaderByHash_Params) (result rpc.GetBlockHeaderByHash_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -34,7 +30,7 @@ func (DERO_RPC_APIS) GetBlockHeaderByHash(ctx context.Context, p structures.GetB
 	}()
 	hash := crypto.HashHexToHash(p.Hash)
 	if block_header, err := chain.GetBlockHeader(hash); err == nil { // if err return err
-		return structures.GetBlockHeaderByHash_Result{ // return success
+		return rpc.GetBlockHeaderByHash_Result{ // return success
 			Block_Header: block_header,
 			Status:       "OK",
 		}, nil

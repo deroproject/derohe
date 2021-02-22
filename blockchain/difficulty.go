@@ -23,7 +23,7 @@ import "math/big"
 
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/globals"
 
 var (

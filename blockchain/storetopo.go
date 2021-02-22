@@ -23,7 +23,7 @@ import "path/filepath"
 import "encoding/binary"
 
 import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/crypto"
 
 type TopoRecord struct {
 	BLOCK_ID      [32]byte
@@ -161,8 +161,7 @@ func (s *storetopofs) LocatePruneTopo() int64 {
 
 	prune_topo--
 
-	// fmt.Printf("pruned topo %d\n",prune_topo)
-
+	pruned_till = prune_topo
 	return prune_topo
 }
 
@@ -208,7 +207,7 @@ func (s *storetopofs) binarySearchHeight(targetheight int64) (blids []crypto.Has
 		}
 	}
 
-	for i, count := midIndex, 0; i <= total_records && count < 100; i, count = i+1, count+1 {
+	for i, count := midIndex, 0; i < total_records && count < 100; i, count = i+1, count+1 {
 		record, _ := s.Read(i)
 		if record.Height == targetheight {
 			blids = append(blids, record.BLOCK_ID)

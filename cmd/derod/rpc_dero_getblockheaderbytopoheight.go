@@ -19,13 +19,9 @@ package main
 import "fmt"
 import "context"
 import "runtime/debug"
+import "github.com/deroproject/derohe/rpc"
 
-//import	"log"
-//import 	"net/http"
-//import "github.com/deroproject/derosuite/crypto"
-import "github.com/deroproject/derohe/structures"
-
-func (DERO_RPC_APIS) GetBlockHeaderByTopoHeight(ctx context.Context, p structures.GetBlockHeaderByTopoHeight_Params) (result structures.GetBlockHeaderByHeight_Result, err error) {
+func (DERO_RPC_APIS) GetBlockHeaderByTopoHeight(ctx context.Context, p rpc.GetBlockHeaderByTopoHeight_Params) (result rpc.GetBlockHeaderByHeight_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -51,7 +47,7 @@ func (DERO_RPC_APIS) GetBlockHeaderByTopoHeight(ctx context.Context, p structure
 		return
 	}
 
-	return structures.GetBlockHeaderByHeight_Result{ // return success
+	return rpc.GetBlockHeaderByHeight_Result{ // return success
 		Block_Header: block_header,
 		Status:       "OK",
 	}, nil

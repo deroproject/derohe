@@ -18,16 +18,16 @@ package rpcserver
 
 import "fmt"
 import "context"
-import "encoding/hex"
 import "runtime/debug"
 
 //import	"log"
 //import 	"net/http"
 
-import "github.com/deroproject/derohe/structures"
-import "github.com/deroproject/derohe/address"
+import "github.com/deroproject/derohe/rpc"
 
-func (w *WALLET_RPC_APIS) SplitIntegratedAddress(ctx context.Context, p structures.Split_Integrated_Address_Params) (result structures.Split_Integrated_Address_Result, err error) {
+//import "github.com/deroproject/derohe/rpc"
+
+func (w *WALLET_RPC_APIS) SplitIntegratedAddress(ctx context.Context, p rpc.Split_Integrated_Address_Params) (result rpc.Split_Integrated_Address_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -38,7 +38,7 @@ func (w *WALLET_RPC_APIS) SplitIntegratedAddress(ctx context.Context, p structur
 		return result, fmt.Errorf("Could not find integrated address as parameter")
 	}
 
-	addr, err := address.NewAddress(p.Integrated_Address)
+	addr, err := rpc.NewAddress(p.Integrated_Address)
 	if err != nil {
 		return result, fmt.Errorf("Error parsing integrated address err %s", err)
 	}
@@ -50,12 +50,7 @@ func (w *WALLET_RPC_APIS) SplitIntegratedAddress(ctx context.Context, p structur
 	if !addr.IsIntegratedAddress() {
 		return result, fmt.Errorf("address %s is NOT an integrated address", addr.String())
 	}
-
-	payment_id := addr.PaymentID
-
-	addr.PaymentID = addr.PaymentID[:0]
-
-	result.Standard_Address = addr.String()
-	result.Payment_id = hex.EncodeToString(payment_id)
+	result.Address = addr.BaseAddress().String()
+	result.Payload_RPC = addr.Arguments
 	return result, nil
 }
