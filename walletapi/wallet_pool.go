@@ -228,11 +228,11 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 				try.Status = "TX in Mempool"
 				continue
 			} else if tx_result.Txs[0].ValidBlock != "" { // if the result is valid in one of the blocks
-				try.Status = fmt.Sprintf("Mined in %s (%d confirmations)", tx_result.Txs[0].ValidBlock, info.Height-tx_result.Txs[0].Block_Height)
+				try.Status = fmt.Sprintf("Mined in %s (%d confirmations)", tx_result.Txs[0].ValidBlock, info.TopoHeight-tx_result.Txs[0].Block_Height)
 				if try.Height < (info.StableHeight + 1) { // successful confirmation
 					w.account.PoolHistory = append(w.account.PoolHistory, w.account.Pool[i])
-					w.account.Pool = append(w.account.Pool[:i], w.account.Pool[i+1:]...)
 					rlog.Infof("tx %s confirmed successfully  at stableheight %d  height %d trigger_height %d\n", try.TXID.String(), info.StableHeight, try.Height, w.account.Pool[i].Trigger_Height)
+					w.account.Pool = append(w.account.Pool[:i], w.account.Pool[i+1:]...)
 					i-- // so another element at same place gets used
 
 				}
