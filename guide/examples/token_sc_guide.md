@@ -2,7 +2,8 @@
 
 **Notes:**  
 1] All wallet Addressess need to be registerd first with SC before they need to interact with. This condition will be removed in future.  
-2] Requirement of detoAnyRandomAddressFromExplorer during SC invocation will be removed in future. 
+2] Requirement of detoAnyRandomAddressFromExplorer during SC invocation will be removed in future.  
+3] **burn** is equal to deposit if SCID is defined else DERO/token will dissappear/burn from network forever. burn will renamed to something more meaningful. This can be proved with cryptographic proof.  
 
 
 **Download** Dero Stargate testnet [source](https://git.dero.io/DeroProject/derosuite_stargate) and [binaries](https://git.dero.io/DeroProject/Dero_Stargate_testnet_binaries).
