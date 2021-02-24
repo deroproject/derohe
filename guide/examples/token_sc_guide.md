@@ -6,7 +6,7 @@
 3] **burn** is equal to deposit if SCID is defined else DERO/token will dissappear/burn from network forever. burn will renamed to something more meaningful. This can be proved with cryptographic proof.  
 
 
-**Download** Dero Stargate testnet [source](https://git.dero.io/DeroProject/derosuite_stargate) and [binaries](https://git.dero.io/DeroProject/Dero_Stargate_testnet_binaries).
+**Download** Dero Stargate testnet [source](https://github.com/deroproject/derohe) and [binaries](https://github.com/deroproject/derohe/releases).
 
 **Start Dero daemon in testnet mode.**
 ```
