@@ -1,7 +1,7 @@
 ## Dero Stargate DVM Smart Contracts guide to install and test various function of private token Smart Contract.
 
 
-**All wallet Address need to be registerd first with SC they need to interact with. This condition will be removed in future.**  
+**All wallet Addressess need to be registerd first with SC before they need to interact with. This condition will be removed in future.**  
 
 
 **Download** Dero Stargate testnet [source](https://git.dero.io/DeroProject/derosuite_stargate) and [binaries](https://git.dero.io/DeroProject/Dero_Stargate_testnet_binaries).
