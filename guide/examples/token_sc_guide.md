@@ -58,49 +58,65 @@ curl http://127.0.0.1:40402/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get
 ```
 
 
-**Examples of various private token Smart Contract functions**  
-
-**Eg: To send private tokens from one wallet to another wallet, this does not involve SC**
+**Examples of various private Smart Contract Token functions**  
+**To send private tokens from one wallet to another wallet, this does not involve SC**
 ```
 curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1qxsqqnk4zargp7hyr7euk29mxkwfna9999mpylh3hy2zp9xkg5hmcvg4xagvj","scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40"}] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  Destination/Receiver wallet should be registered first to that SC before receiving any transactions related to this SC. This pre-registration requirement of any wallet with SC will be removed in future. To register any wallet with SC make any deposit to that SC once.
+**NOTE:**  Destination/Receiver wallet should be registered first to that SC before receiving any transactions related to this SC. This pre-registration requirement of any wallet with SC will be removed in future. To register any wallet with SC make any deposit to that SC once.  
 
-**Eg: Convert DERO to tokens**
+
+
+
+**Convert DERO to Tokens**
 ```
 curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_dero_deposit":200000,"scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"IssueTOKENX"}] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/4ce2ed84a9f9c8480493aafe963bb2aee7ae36dd4f1906eebce592891e1ee4ac) 2 DERO is swapped to 2 TOKENX. For swap ratio look into Smart Contract code.  
+**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40) 2 DERO is swapped to 2 TOKENX. For swap ratio look into Smart Contract code.  
 
 
-**Convert tokens to DERO**
+
+
+**Convert Tokens to DERO**
 ```
 curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_token_deposit":200000,"scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ConvertTOKENX"}] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/4ce2ed84a9f9c8480493aafe963bb2aee7ae36dd4f1906eebce592891e1ee4ac) 2 TOKENX is swapped to 2 DERO. For swap ratio look into Smart Contract code.   
-Currently these show as coinbase rewards.
+**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40) 2 TOKENX is swapped to 2 DERO. For swap ratio look into Smart Contract code.   
+Currently these show as coinbase rewards.  
 
 
-**Eg: To withdraw balance only for smart contract owner**
+
+
+**Eg: To withdraw DERO balance from Smart Contract**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":1,"destination":"detoAnyRandomAddressFromExplorer"}],"scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"Withdraw"}, {"name":"amount","datatype":"U","value":2 }] }}' -H 'Content-Type: application/json'
-```
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"Withdraw"}, {"name":"amount","datatype":"U","value":100000 }] }}' -H 'Content-Type: application/json'
+```  
+**NOTE:**  From [above SC](https://testnetexplorer.dero.io/tx/69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40) 1 DERO will be transferred from SC to wallet. Only owner of Smart Contract can initate the above command. SC must have that balance.  
+
+
+
+
 
 **Eg: To transfer ownership of smart contract to new address/owner**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":1,"destination":"detoAnyRandomAddressFromExplorer"}],"scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"TransferOwnership"}, {"name":"newowner","datatype":"S","value":"detoAddressForOwnershipReceiver" }] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"TransferOwnership"}, {"name":"newowner","datatype":"S","value":"detoAddressForOwnershipReceiver" }] }}' -H 'Content-Type: application/json'
+```  
 
-```
+
+
 
 **Eg: To claim ownership of smart contract**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":1,"destination":"detoAnyRandomAddressFromExplorer"}],"scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ClaimOwnership"}] }}' -H 'Content-Type: application/json'
-```
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ClaimOwnership"}] }}' -H 'Content-Type: application/json'
+```    
+
+
+
 
 
 **Eg: To update smart contract code**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":1,"destination":"detoAnyRandomAddressFromExplorer"}],"scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"UpdateCode"}, {"name":"code","datatype":"S","value":"new code should be placed here" }] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"UpdateCode"}, {"name":"code","datatype":"S","value":"new code should be placed here" }] }}' -H 'Content-Type: application/json'
+```   
+**NOTE:**  Please use this command carefully. Try this command several times on testnet before issuing on maiinet to update SC code.  
 
-
-```
