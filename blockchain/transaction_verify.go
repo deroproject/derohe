@@ -28,6 +28,7 @@ import "github.com/romana/rlog"
 
 import "sync"
 import "runtime/debug"
+import "golang.org/x/xerrors"
 import "github.com/deroproject/graviton"
 
 //import "github.com/romana/rlog"
@@ -277,6 +278,18 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 		for i := 0; i < int(tx.Payloads[t].Statement.RingSize); i++ {
 			key_pointer := tx.Payloads[t].Statement.Publickeylist_pointers[i*int(tx.Payloads[t].Statement.Bytes_per_publickey) : (i+1)*int(tx.Payloads[t].Statement.Bytes_per_publickey)]
 			_, key_compressed, balance_serialized, err := tree.GetKeyValueFromHash(key_pointer)
+
+			// if destination address could be found be found in main balance tree, assume its zero balance
+			needs_init := false
+			if err != nil && !tx.Payloads[t].SCID.IsZero() {
+				if xerrors.Is(err, graviton.ErrNotFound) { // if the address is not found, lookup in main tree
+					_, key_compressed, _, err = balance_tree.GetKeyValueFromHash(key_pointer)
+					if err != nil {
+						return fmt.Errorf("balance not obtained err %s\n", err)
+					}
+					needs_init = true
+				}
+			}
 			if err != nil {
 				return fmt.Errorf("balance not obtained err %s\n", err)
 			}
@@ -291,6 +304,11 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 				}
 				tx.Payloads[t].Statement.Publickeylist_compressed = append(tx.Payloads[t].Statement.Publickeylist_compressed, pcopy)
 				tx.Payloads[t].Statement.Publickeylist = append(tx.Payloads[t].Statement.Publickeylist, &p)
+
+				if needs_init {
+					balance := crypto.ConstructElGamal(&p, crypto.ElGamal_BASE_G) // init zero balance
+					balance_serialized = balance.Serialize()
+				}
 			}
 
 			var ll, rr bn256.G1

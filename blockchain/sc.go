@@ -73,6 +73,10 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 	defer func() {
 		// safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
+
+			if err == nil {
+				err = fmt.Errorf("Stack trace  \n%s", debug.Stack())
+			}
 			logger.Warnf("Recovered while rewinding chain, Stack trace below block_hash ")
 			logger.Warnf("Stack trace  \n%s", debug.Stack())
 		}
@@ -115,13 +119,15 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 
 	balance, sc_parsed, found := chain.ReadSC(w_sc_tree, data_tree, scid)
 	if !found {
-		fmt.Printf("SC not found\n")
+		rlog.Warnf("SC not found %s", scid)
+		err = fmt.Errorf("SC not found %s", scid)
 		return
 	}
 	// if we found the SC in parsed form, check whether entrypoint is found
 	function, ok := sc_parsed.Functions[entrypoint]
 	if !ok {
 		rlog.Warnf("stored SC  does not contain entrypoint '%s' scid %s \n", entrypoint, scid)
+		err = fmt.Errorf("stored SC  does not contain entrypoint '%s' scid %s \n", entrypoint, scid)
 		return
 	}
 	_ = function

@@ -158,11 +158,13 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon() {
 			previous := w.account.Balance_Result.Data
 			var scid crypto.Hash
 			if _, _, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
-				if w.account.Balance_Result.Data != previous || (len(w.account.EntriesNative[scid]) >= 1 && strings.ToLower(w.account.Balance_Result.Data) != strings.ToLower(w.account.EntriesNative[scid][len(w.account.EntriesNative[scid])-1].EWData)) {
+				if w.account.Balance_Result.Data != previous /*|| (len(w.account.EntriesNative[scid]) >= 1 && strings.ToLower(w.account.Balance_Result.Data) != strings.ToLower(w.account.EntriesNative[scid][len(w.account.EntriesNative[scid])-1].EWData)) */ {
 					w.DecodeEncryptedBalance() // try to decode balance
 
 					w.SyncHistory(scid) // also update statement
 					w.save_if_disk()    // save wallet
+				} else {
+					w.save_if_disk() // save wallet
 				}
 			} else {
 				rlog.Infof("getbalance err %s", err)
@@ -266,6 +268,24 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 
 		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errormsg.ErrAccountUnregistered.Error())) && accountaddr == w.GetAddress().String() && scid.IsZero() {
 			w.Error = errormsg.ErrAccountUnregistered
+		}
+
+		//fmt.Printf("will return errr now \n")
+
+		// all SCID users are considered registered and their balance is assumed zero
+
+		if !scid.IsZero() {
+			if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errormsg.ErrAccountUnregistered.Error())) {
+				if addr, err1 := rpc.NewAddress(accountaddr); err1 != nil {
+					err = err1
+					return
+				} else {
+					e = crypto.ConstructElGamal(addr.PublicKey.G1(), crypto.ElGamal_BASE_G) // init zero balance
+					bits = 128
+					err = nil
+					return
+				}
+			}
 		}
 		return
 	}

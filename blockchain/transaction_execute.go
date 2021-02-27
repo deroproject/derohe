@@ -25,6 +25,7 @@ import "golang.org/x/xerrors"
 import "github.com/romana/rlog"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
@@ -134,16 +135,33 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 			}
 			for i := 0; i < int(tx.Payloads[t].Statement.RingSize); i++ {
 				key_pointer := tx.Payloads[t].Statement.Publickeylist_pointers[i*int(tx.Payloads[t].Statement.Bytes_per_publickey) : (i+1)*int(tx.Payloads[t].Statement.Bytes_per_publickey)]
-				if _, key_compressed, balance_serialized, err := tree.GetKeyValueFromHash(key_pointer); err == nil {
+				_, key_compressed, balance_serialized, err := tree.GetKeyValueFromHash(key_pointer)
 
-					balance := new(crypto.ElGamal).Deserialize(balance_serialized)
-					echanges := crypto.ConstructElGamal(tx.Payloads[t].Statement.C[i], tx.Payloads[t].Statement.D)
+				if err != nil && !tx.Payloads[t].SCID.IsZero() {
+					if xerrors.Is(err, graviton.ErrNotFound) { // if the address is not found, lookup in main tree
+						_, key_compressed, _, err = balance_tree.GetKeyValueFromHash(key_pointer)
+						if err == nil {
+							var p bn256.G1
+							if err = p.DecodeCompressed(key_compressed[:]); err != nil {
+								panic(fmt.Errorf("key %d could not be decompressed", i))
+							}
 
-					balance = balance.Add(echanges)               // homomorphic addition of changes
-					tree.Put(key_compressed, balance.Serialize()) // reserialize and store
-				} else {
-					panic(err) // if balance could not be obtained panic ( we can never reach here, otherwise how tx got verified)
+							balance := crypto.ConstructElGamal(&p, crypto.ElGamal_BASE_G) // init zero balance
+							balance_serialized = balance.Serialize()
+						}
+
+					}
 				}
+				if err != nil {
+					panic(fmt.Errorf("balance not obtained err %s\n", err))
+				}
+
+				balance := new(crypto.ElGamal).Deserialize(balance_serialized)
+				echanges := crypto.ConstructElGamal(tx.Payloads[t].Statement.C[i], tx.Payloads[t].Statement.D)
+
+				balance = balance.Add(echanges)               // homomorphic addition of changes
+				tree.Put(key_compressed, balance.Serialize()) // reserialize and store
+
 			}
 		}
 

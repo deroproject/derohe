@@ -188,6 +188,6 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p rpc.GetTransaction_Pa
 	result.Status = "OK"
 	err = nil
 
-	logger.Debugf("result %+v\n", result)
+	//logger.Debugf("result %+v\n", result)
 	return
 }

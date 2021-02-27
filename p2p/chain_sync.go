@@ -16,7 +16,7 @@
 
 package p2p
 
-import "fmt"
+//import "fmt"
 
 //import "net"
 import "time"
@@ -71,7 +71,7 @@ try_again:
 	request.TopoHeights = append(request.TopoHeights, 0)
 	fill_common(&request.Common) // fill common info
 	if err := connection.RConn.Client.Call("Peer.Chain", request, &response); err != nil {
-		fmt.Printf("Call failed  Peer.Chain : %v \n", err)
+		rlog.Debugf("Call failed  Peer.Chain : %v \n", err)
 		return
 	}
 	// we have a response, see if its valid and try to add to get the blocks
@@ -117,7 +117,7 @@ try_again:
 				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
 				fill_common(&orequest.Common)
 				if err := connection.RConn.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {
-					fmt.Printf("Call faileda Peer.GetObject: %v\n", err)
+					rlog.Debugf("Call faileda Peer.GetObject: %v\n", err)
 					return
 				} else { // process the response
 					if err = connection.process_object_response(oresponse); err != nil {
