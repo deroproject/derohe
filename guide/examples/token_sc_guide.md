@@ -32,10 +32,6 @@ Connect to explorer using browser on localhost:8080
 [https://testnetexplorer.dero.io/ ](https://testnetexplorer.dero.io/)
 
 
-**To send DERO to multiple users in one transaction**
-```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1ADDRESS1"},{"amount":300000,"destination":"deto1ADDRESS12}] }}' -H 'Content-Type: application/json'
-```
 
 **DERO has 2 types of SCs, public and private.**
 1. Public SCs are public with all data/code/exchanges are public.
