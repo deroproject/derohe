@@ -1,7 +1,5 @@
 ## Dero Stargate DVM Smart Contracts guide to install and test various function of private token Smart Contract.
 
-**Notes:**  
-1] All wallet Addressess need to be registerd first with SC before they need to interact with. This condition will be removed in future.  
 
 
 **Download** Dero Stargate testnet [source](https://github.com/deroproject/derohe) and [binaries](https://github.com/deroproject/derohe/releases).
@@ -57,27 +55,25 @@ curl http://127.0.0.1:40402/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get
 **Examples of various private Smart Contract Token functions**  
 **To send private tokens from one wallet to another wallet, this does not involve SC**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1qxsqqnk4zargp7hyr7euk29mxkwfna9999mpylh3hy2zp9xkg5hmcvg4xagvj","scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40"}] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1qxsqqnk4zargp7hyr7euk29mxkwfna9999mpylh3hy2zp9xkg5hmcvg4xagvj","scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7"}] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  Destination/Receiver wallet should be registered first to that SC before receiving any transactions related to this SC. This pre-registration requirement of any wallet with SC will be removed in future. To register any wallet with SC make any deposit to that SC once.  
-
 
 
 
 **Convert DERO to Tokens**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_dero_deposit":200000,"scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"IssueTOKENX"}] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_dero_deposit":200000,"scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"IssueTOKENX"}] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40) 2 DERO is swapped to 2 TOKENX. For swap ratio look into Smart Contract code.  
+**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7) 2 DERO is swapped to 2 TOKENX. For swap ratio look into Smart Contract code.  
 
 
 
 
 **Convert Tokens to DERO**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_token_deposit":200000,"scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ConvertTOKENX"}] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_token_deposit":200000,"scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ConvertTOKENX"}] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40) 2 TOKENX is swapped to 2 DERO. For swap ratio look into Smart Contract code.   
+**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7) 2 TOKENX is swapped to 2 DERO. For swap ratio look into Smart Contract code.   
 Currently these show as coinbase rewards.  
 
 
@@ -85,9 +81,9 @@ Currently these show as coinbase rewards.
 
 **Eg: To withdraw DERO balance from Smart Contract**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"Withdraw"}, {"name":"amount","datatype":"U","value":100000 }] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"Withdraw"}, {"name":"amount","datatype":"U","value":100000 }] }}' -H 'Content-Type: application/json'
 ```  
-**NOTE:**  From [above SC](https://testnetexplorer.dero.io/tx/69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40) 1 DERO will be transferred from SC to wallet. Only owner of Smart Contract can initate the above command. SC must have that balance.  
+**NOTE:**  From [above SC](https://testnetexplorer.dero.io/tx/6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7) 1 DERO will be transferred from SC to wallet. Only owner of Smart Contract can initate the above command. SC must have that balance.  
 
 
 
@@ -95,7 +91,7 @@ curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"sci
 
 **Eg: To transfer ownership of smart contract to new address/owner**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"TransferOwnership"}, {"name":"newowner","datatype":"S","value":"detoAddressForOwnershipReceiver" }] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{ "scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"TransferOwnership"}, {"name":"newowner","datatype":"S","value":"detoAddressForOwnershipReceiver" }] }}' -H 'Content-Type: application/json'
 ```  
 
 
