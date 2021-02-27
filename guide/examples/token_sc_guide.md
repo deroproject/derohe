@@ -48,14 +48,14 @@ balance SCID
 
 **Download SC Code,check SC balance and variables from chain**
 ```
-curl http://127.0.0.1:40402/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"getsc","params":{ "scid":"YourSCID" , "code":true}}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40402/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"getsc","params":{ "scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7" , "code":true}}' -H 'Content-Type: application/json'
 ```
 
 
 **Examples of various private Smart Contract Token functions**  
 **To send private tokens from one wallet to another wallet, this does not involve SC**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1qxsqqnk4zargp7hyr7euk29mxkwfna9999mpylh3hy2zp9xkg5hmcvg4xagvj","scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7"}] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1qxsz7v707t8mla4mslptlf6w7zkgrukvg5wfna0tha48yfjcahwh64qxnus7f","scid":"6c7f9f802a36a90346cb04a9ac1783766c798cdeecd89be7a1f5bf92efdfdef7"}] }}' -H 'Content-Type: application/json'
 ```  
 
 
