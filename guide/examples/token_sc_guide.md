@@ -2,8 +2,6 @@
 
 **Notes:**  
 1] All wallet Addressess need to be registerd first with SC before they need to interact with. This condition will be removed in future.  
-2] Requirement of detoAnyRandomAddressFromExplorer during SC invocation will be removed in future.  
-3] **burn** is equal to deposit if SCID is defined else DERO/token will dissappear/burn from network forever. burn will renamed to something more meaningful. This can be proved with cryptographic proof.  
 
 
 **Download** Dero Stargate testnet [source](https://github.com/deroproject/derohe) and [binaries](https://github.com/deroproject/derohe/releases).
@@ -60,26 +58,28 @@ curl http://127.0.0.1:40402/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"get
 ```
 
 
-**Examples of various private token Smart Contract functions**
+**Examples of various private token Smart Contract functions**  
+
 **Eg: To send private tokens from one wallet to another wallet, this does not involve SC**
-**Eg: this also showcases to send multiple assets( DERO and other tokens on DERO Network) within a single transaction**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":1,"destination":"DEROReceiverWalletAddress"},{"amount":1,"destination":"TokenReceiverWalletAddress","scid": "SCIDofToken" }] }}' -H 'Content-Type: application/json'
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{ "transfers":[{"amount":100000,"destination":"deto1qxsqqnk4zargp7hyr7euk29mxkwfna9999mpylh3hy2zp9xkg5hmcvg4xagvj","scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40"}] }}' -H 'Content-Type: application/json'
+```  
+**NOTE:**  Destination/Receiver wallet should be registered first to that SC before receiving any transactions related to this SC. This pre-registration requirement of any wallet with SC will be removed in future. To register any wallet with SC make any deposit to that SC once.
+
+**Eg: Convert DERO to tokens**
 ```
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_dero_deposit":200000,"scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"IssueTOKENX"}] }}' -H 'Content-Type: application/json'
+```  
+**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/4ce2ed84a9f9c8480493aafe963bb2aee7ae36dd4f1906eebce592891e1ee4ac) 2 DERO is swapped to 2 TOKENX. For swap ratio look into Smart Contract code.  
 
 
-**Eg: Convert DERO to tokens 1:1 swap, we are swapping 44 DERO atomic units(DERI) to get some tokens**
+**Convert tokens to DERO**
 ```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{"transfers":[{"amount":1,"destination":"detoAnyRandomAddressFromExplorer", "burn":44}],"scid":"aacaa7bb2388d06e523e5bc0783e4e131738270641406c12978155ba033373af", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"IssueTOKENX"}] }}' -H 'Content-Type: application/json'
-```
+curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"scinvoke","params":{"sc_token_deposit":200000,"scid":"69e3168d69630d54f6ee93e06fc954d7e31cb28fb5bf77a9e4ee2e2928e66c40", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ConvertTOKENX"}] }}' -H 'Content-Type: application/json'
+```  
+**NOTE:**  In [above SC](https://testnetexplorer.dero.io/tx/4ce2ed84a9f9c8480493aafe963bb2aee7ae36dd4f1906eebce592891e1ee4ac) 2 TOKENX is swapped to 2 DERO. For swap ratio look into Smart Contract code.   
+Currently these show as coinbase rewards.
 
-
-**Convert tokens to DERO 1:1 swap, we are swapping 9 token atomic units to get 9 DERO atomic units**
-**This tx shows transferring tokens natively, no dero fees etc, this is under evaluation,**  
-**Currently these show as coinbase rewards **
-```
-curl http://127.0.0.1:40403/json_rpc -d '{"jsonrpc":"2.0","id":"0","method":"transfer","params":{"transfers":[{"scid":"SCID", "amount":1,"destination":"detoAnyRandomAddressFromExplorer", "burn":9}],"scid":"YourSCID", "sc_rpc":[{"name":"entrypoint","datatype":"S","value":"ConvertTOKENX"}] }}' -H 'Content-Type: application/json'
-```
 
 **Eg: To withdraw balance only for smart contract owner**
 ```
