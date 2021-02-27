@@ -34,8 +34,8 @@ func (connection *Connection) GetObject(request ObjectList, response *Objects) e
 	for i := range request.Block_list { // find the block
 		var cbl Complete_Block
 		bl, err := chain.Load_BL_FROM_ID(request.Block_list[i])
-		if err != nil{
-		return err
+		if err != nil {
+			return err
 		}
 		cbl.Block = bl.Serialize()
 		for j := range bl.Tx_hashes {

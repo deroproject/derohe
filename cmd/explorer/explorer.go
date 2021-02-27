@@ -289,7 +289,7 @@ type txinfo struct {
 }
 
 type Asset struct {
-	SCID      crypto.Hash
+	SCID      string
 	Fees      string
 	Burn      string
 	Ring      []string
@@ -561,9 +561,14 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 
 		for t := range tx.Payloads {
 			var a Asset
-			a.SCID = tx.Payloads[t].SCID
+			a.SCID = tx.Payloads[t].SCID.String()
 			a.Fees = fmt.Sprintf("%.05f", float64(tx.Payloads[t].Statement.Fees)/100000)
 			a.Burn = fmt.Sprintf("%.05f", float64(tx.Payloads[t].BurnValue)/100000)
+
+			if len(tx_result.Txs[0].Ring) == 0 {
+				continue
+			}
+
 			a.Ring_size = len(tx_result.Txs[0].Ring[t])
 
 			for i := range tx_result.Txs[0].Ring[t] {
@@ -772,7 +777,7 @@ func show_page(w http.ResponseWriter, page int) {
 
 	}
 
-	fmt.Printf("page %+v\n", data)
+	//fmt.Printf("page %+v\n", data)
 
 	err = t.ExecuteTemplate(w, "main", data)
 	if err != nil {

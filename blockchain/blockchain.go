@@ -530,7 +530,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		// always check whether the coin base tx is okay
 		if bl.Height != 0 {
 			if err = chain.Verify_Transaction_Coinbase(cbl, &bl.Miner_TX); err != nil { // if miner address is not registered give error
-				block_logger.Warnf("Error verifying coinbase tx, err :'%s'", err)
+				//block_logger.Warnf("Error verifying coinbase tx, err :'%s'", err)
 				return err, false
 			}
 		}

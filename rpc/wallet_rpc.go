@@ -206,6 +206,15 @@ type (
 )
 
 type (
+	SC_Invoke_Params struct {
+		SC_ID            string    `json:"scid"`
+		SC_RPC           Arguments `json:"sc_rpc"`
+		SC_DERO_Deposit  uint64    `json:"sc_dero_deposit"`
+		SC_TOKEN_Deposit uint64    `json:"sc_token_deposit"`
+	}
+)
+
+type (
 	Get_Transfers_Params struct {
 		Coinbase        bool   `json:"coinbase"`
 		In              bool   `json:"in"`

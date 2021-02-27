@@ -82,7 +82,7 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(cbl.Bl.Height - 1))
 	// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
 	if len(topos) < 1 {
-		return fmt.Errorf("could not find previous height blocks")
+		return fmt.Errorf("could not find previous height blocks %d", cbl.Bl.Height-1)
 	}
 
 	var balance_tree *graviton.Tree

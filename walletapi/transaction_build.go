@@ -113,10 +113,12 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap map[stri
 		asset.SCID = transfers[t].SCID
 		asset.BurnValue = transfers[t].Burn
 
-		fees := uint64(1)
+		fees := uint64(0)
 		value := transfers[t].Amount
 		burn_value := transfers[t].Burn
-
+		if asset.SCID.IsZero() && (value+burn_value) == 0 {
+			fees = 1
+		}
 		for i := range publickeylist { // setup commitments
 			var x bn256.G1
 			switch {

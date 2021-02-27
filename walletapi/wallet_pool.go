@@ -79,6 +79,9 @@ func (w Wallet_Pool_Entry) DeepCopy() (r Wallet_Pool_Entry) {
 func (w Wallet_Pool_Entry) Amount() (v uint64) {
 	for i := range w.Transfers {
 		v += w.Transfers[i].Amount
+		if w.Transfers[i].SCID.IsZero() {
+			v += w.Transfers[i].Burn
+		}
 	}
 
 	return v
@@ -127,13 +130,16 @@ func (w *Wallet_Memory) PoolTransfer(transfers []rpc.Transfer, scdata rpc.Argume
 }
 
 // total which is pending to be sent
+// what about SCID, how to show their balance
 func (w *Wallet_Memory) PoolBalance() (balance uint64) {
 	w.account.Lock()
 	defer w.account.Unlock()
 
 	for i := range w.account.Pool {
 		for j := range w.account.Pool[i].Transfers {
-			balance += w.account.Pool[i].Transfers[j].Amount //+ w.account.Pool[i].Burn
+			if w.account.Pool[i].Transfers[j].SCID.IsZero() {
+				balance += w.account.Pool[i].Transfers[j].Amount + w.account.Pool[i].Transfers[j].Burn
+			}
 		}
 	}
 	return

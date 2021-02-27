@@ -53,7 +53,7 @@ func (DERO_RPC_APIS) GetRandomAddress(ctx context.Context, p rpc.GetRandomAddres
 		}
 
 		treename := config.BALANCE_TREE
-		if p.SCID.IsZero() {
+		if !p.SCID.IsZero() {
 			treename = string(p.SCID[:])
 		}
 

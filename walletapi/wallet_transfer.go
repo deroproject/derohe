@@ -111,8 +111,36 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 		return
 	}
 
-	for i := range transfers {
-		if _, err = rpc.NewAddress(transfers[i].Destination); err != nil {
+	for t := range transfers {
+		saddress := transfers[t].Destination
+
+		if saddress == "" { // user skipped destination
+			if transfers[t].SCID.IsZero() {
+				err = fmt.Errorf("Main Destination cannot be empty")
+				return
+			}
+
+			// we will try 5 times, to get a random ring ring member other than us, if ok, we move ahead
+			for i := 0; i < 5; i++ {
+				for _, k := range w.random_ring_members(transfers[t].SCID) {
+
+					//fmt.Printf("%d ring %d '%s'\n",i,j,k)
+					if k != w.GetAddress().String() {
+						saddress = k
+						transfers[t].Destination = k
+						i = 1000 // break outer loop also
+						break
+					}
+				}
+			}
+		}
+
+		if saddress == "" {
+			err = fmt.Errorf("could not obtain random ring member for scid %s", transfers[t].SCID)
+			return
+		}
+		if _, err = rpc.NewAddress(saddress); err != nil {
+			fmt.Printf("err processing address '%s' err '%s'\n", saddress, err)
 			return
 		}
 	}
@@ -174,6 +202,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 		var dest_e *crypto.ElGamal
 		bits_needed[1], dest_e, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, addr.String())
 		if err != nil {
+			fmt.Printf(" t %d unregistered1 '%s' %s\n", t, addr, err)
 			return
 		} else {
 			emap[string(transfers[t].SCID.String())][addr.PublicKey.G1().String()] = dest_e.Serialize()

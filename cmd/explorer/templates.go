@@ -365,8 +365,26 @@ var tx_template string = `{{define "tx"}}
                 </table>
 
              {{range $ii, $ee := .info.Assets}} 
-                 <H5>SCID: {{$ee.SCID}}   {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} Burned {{$ee.Burn}}</H5>
+                {{if eq $ee.SCID "0000000000000000000000000000000000000000000000000000000000000000" }}
+                 <H5>DERO : {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} 
 
+                 {{if eq $.info.TransactionType "SC"}}
+                        Deposited to SC {{$ee.Burn}}
+                    {{else}}
+                        Burned {{$ee.Burn}}
+                 {{end}}
+
+                 </H5>
+
+                 {{else}}
+                    <H5>SCID: {{$ee.SCID}}   {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} {{if eq $.info.TransactionType "SC"}}
+                        Deposited Tokens to SC {{$ee.Burn}}
+                    {{else}}
+                        Burned {{$ee.Burn}}
+                 {{end}}
+
+                 </H5>
+                 {{end}}
                  <div class="center">
                   <table class="center">
                       <tr>

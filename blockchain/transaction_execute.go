@@ -200,89 +200,92 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 		}
 	}()
 
-	if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) { // but only it is present
-		action_code := rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64))
+	if !tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) { //  tx doesn't have sc action
+		//err = fmt.Errorf("no scid provided")
+		return tx.Fees(), nil
+	}
 
-		switch action_code {
-		case rpc.SC_INSTALL: // request to install an SC
-			if !tx.SCDATA.Has(rpc.SCCODE, rpc.DataString) { // but only it is present
-				break
-			}
-			sc_code := tx.SCDATA.Value(rpc.SCCODE, rpc.DataString).(string)
-			if sc_code == "" { // no code provided nothing to do
-				err = fmt.Errorf("no code provided")
-				break
-			}
+	action_code := rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64))
 
-			// check whether sc can be parsed
-			//var sc_parsed dvm.SmartContract
-			pos := ""
-			var sc dvm.SmartContract
+	switch action_code {
+	case rpc.SC_INSTALL: // request to install an SC
+		if !tx.SCDATA.Has(rpc.SCCODE, rpc.DataString) { // but only it is present
+			break
+		}
+		sc_code := tx.SCDATA.Value(rpc.SCCODE, rpc.DataString).(string)
+		if sc_code == "" { // no code provided nothing to do
+			err = fmt.Errorf("no code provided")
+			break
+		}
 
-			sc, pos, err = dvm.ParseSmartContract(sc_code)
-			if err != nil {
-				rlog.Warnf("error Parsing sc txid %s err %s pos %s\n", txhash, err, pos)
-				break
-			}
+		// check whether sc can be parsed
+		//var sc_parsed dvm.SmartContract
+		pos := ""
+		var sc dvm.SmartContract
 
-			meta := SC_META_DATA{Balance: tx.Value}
+		sc, pos, err = dvm.ParseSmartContract(sc_code)
+		if err != nil {
+			rlog.Warnf("error Parsing sc txid %s err %s pos %s\n", txhash, err, pos)
+			break
+		}
 
-			if _, ok := sc.Functions["InitializePrivate"]; ok {
-				meta.Type = 1
-			}
-			if sc_data_tree, err = ss.GetTree(string(scid[:])); err != nil {
-				break
-			} else {
-				w_sc_data_tree = &Tree_Wrapper{tree: sc_data_tree, entries: map[string][]byte{}}
-			}
+		meta := SC_META_DATA{Balance: tx.Value}
 
-			// install SC, should we check for sanity now, why or why not
-			w_sc_data_tree.Put(SC_Code_Key(scid), dvm.Variable{Type: dvm.String, Value: sc_code}.MarshalBinaryPanic())
+		if _, ok := sc.Functions["InitializePrivate"]; ok {
+			meta.Type = 1
+		}
+		if sc_data_tree, err = ss.GetTree(string(scid[:])); err != nil {
+			break
+		} else {
+			w_sc_data_tree = &Tree_Wrapper{tree: sc_data_tree, entries: map[string][]byte{}}
+		}
 
-			w_sc_tree.Put(SC_Meta_Key(scid), meta.MarshalBinary())
+		// install SC, should we check for sanity now, why or why not
+		w_sc_data_tree.Put(SC_Code_Key(scid), dvm.Variable{Type: dvm.String, Value: sc_code}.MarshalBinaryPanic())
 
-			// at this point we must trigger the initialize call in the DVM
-			//fmt.Printf("We must call the SC initialize function\n")
+		w_sc_tree.Put(SC_Meta_Key(scid), meta.MarshalBinary())
 
-			if meta.Type == 1 { // if its a a private SC
-				gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, blid, tx, "InitializePrivate", 1)
-			} else {
-				gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, blid, tx, "Initialize", 1)
-			}
+		// at this point we must trigger the initialize call in the DVM
+		//fmt.Printf("We must call the SC initialize function\n")
 
-		case rpc.SC_CALL: // trigger a CALL
-			if !tx.SCDATA.Has(rpc.SCID, rpc.DataHash) { // but only it is present
-				err = fmt.Errorf("no scid provided")
-				break
-			}
-			if !tx.SCDATA.Has("entrypoint", rpc.DataString) { // but only it is present
-				err = fmt.Errorf("no entrypoint provided")
-				break
-			}
+		if meta.Type == 1 { // if its a a private SC
+			gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, blid, tx, "InitializePrivate", 1)
+		} else {
+			gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, blid, tx, "Initialize", 1)
+		}
 
-			scid = tx.SCDATA.Value(rpc.SCID, rpc.DataHash).(crypto.Hash)
+	case rpc.SC_CALL: // trigger a CALL
+		if !tx.SCDATA.Has(rpc.SCID, rpc.DataHash) { // but only it is present
+			err = fmt.Errorf("no scid provided")
+			break
+		}
+		if !tx.SCDATA.Has("entrypoint", rpc.DataString) { // but only it is present
+			err = fmt.Errorf("no entrypoint provided")
+			break
+		}
 
-			if _, err = w_sc_tree.Get(SC_Meta_Key(scid)); err != nil {
-				err = fmt.Errorf("scid %s not installed", scid)
-				return
-			}
+		scid = tx.SCDATA.Value(rpc.SCID, rpc.DataHash).(crypto.Hash)
 
-			if sc_data_tree, err = ss.GetTree(string(scid[:])); err != nil {
-
-				return
-			} else {
-				w_sc_data_tree = &Tree_Wrapper{tree: sc_data_tree, entries: map[string][]byte{}}
-			}
-
-			entrypoint := tx.SCDATA.Value("entrypoint", rpc.DataString).(string)
-			//fmt.Printf("We must call the SC %s function\n", entrypoint)
-
-			gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, blid, tx, entrypoint, 1)
-
-		default: // unknown  what to do
-			err = fmt.Errorf("unknown action what to do", scid)
+		if _, err = w_sc_tree.Get(SC_Meta_Key(scid)); err != nil {
+			err = fmt.Errorf("scid %s not installed", scid)
 			return
 		}
+
+		if sc_data_tree, err = ss.GetTree(string(scid[:])); err != nil {
+
+			return
+		} else {
+			w_sc_data_tree = &Tree_Wrapper{tree: sc_data_tree, entries: map[string][]byte{}}
+		}
+
+		entrypoint := tx.SCDATA.Value("entrypoint", rpc.DataString).(string)
+		//fmt.Printf("We must call the SC %s function\n", entrypoint)
+
+		gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, blid, tx, entrypoint, 1)
+
+	default: // unknown  what to do
+		err = fmt.Errorf("unknown action what to do", scid)
+		return
 	}
 
 	if err == nil { // we must commit the changes
@@ -323,11 +326,12 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 		//fmt.Printf("SC %s balance %d\n", scid, w_sc_data_tree.leftover_balance)
 		sc_tree.Put(SC_Meta_Key(scid), meta.MarshalBinary())
 
-		for _, transfer := range w_sc_data_tree.transfere { // give devs reward
+		for i, transfer := range w_sc_data_tree.transfere { // give devs reward
 			var balance_serialized []byte
 			addr_bytes := []byte(transfer.Address)
 			balance_serialized, err = balance_tree.Get(addr_bytes)
 			if err != nil {
+				fmt.Printf("%s %d  could not transfer %d  %+v\n", scid, i, transfer.Amount, addr_bytes)
 				return
 			}
 			balance := new(crypto.ElGamal).Deserialize(balance_serialized)

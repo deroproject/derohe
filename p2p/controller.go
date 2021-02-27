@@ -412,12 +412,12 @@ func process_connection(conn net.Conn, remote_addr *net.TCPAddr, incoming, sync_
 		}
 		go func() {
 			//defer globals.Recover()
-		defer func() {
-		if r := recover(); r != nil {
-			rlog.Warnf("Recovered while handling connection, Stack trace below", r)
-			rlog.Warnf("Stack trace  \n%s", debug.Stack())
-		}
-		}()
+			defer func() {
+				if r := recover(); r != nil {
+					rlog.Warnf("Recovered while handling connection, Stack trace below", r)
+					rlog.Warnf("Stack trace  \n%s", debug.Stack())
+				}
+			}()
 			//RPCSERVER.ServeConn(rconn.ServerConn)                      // start single threaded rpc server with GOB encoding
 			RPCSERVER.ServeCodec(NewCBORServerCodec(rconn.ServerConn)) // use CBOR encoding on rpc
 		}()

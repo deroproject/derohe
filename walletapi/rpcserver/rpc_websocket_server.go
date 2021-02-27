@@ -148,7 +148,7 @@ func (r *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 		}
 
 		p.SC_Code = string(b) // encode as base64
-		p.Transfers = append(p.Transfers, rpc.Transfer{Destination: "deto1qxsplx7vzgydacczw6vnrtfh3fxqcjevyxcvlvl82fs8uykjkmaxgfgulfha5", Amount: 1})
+		p.Transfers = append(p.Transfers, rpc.Transfer{Destination: "deto1qxsplx7vzgydacczw6vnrtfh3fxqcjevyxcvlvl82fs8uykjkmaxgfgulfha5", Amount: 0})
 		if err := wallet_apis.Transfer(context.Background(), p); err != nil {
 			fmt.Fprintf(w, err.Error())
 			return
@@ -281,6 +281,7 @@ var historical_apis = handler.Map{
 	"transfer":                 handler.New(wallet_apis.Transfer),
 	"Transfer":                 handler.New(wallet_apis.Transfer),
 	"transfer_split":           handler.New(wallet_apis.Transfer),
+	"scinvoke":                 handler.New(wallet_apis.ScInvoke),
 }
 
 func translate_http_to_jsonrpc_and_vice_versa(w http.ResponseWriter, r *http.Request) {
