@@ -1,15 +1,17 @@
 /* Lottery Smart Contract Example in DVM-BASIC.  
-   This lottery smart contract will give lottery wins every xth try.
+This lottery smart contract will give lottery wins on every second try in following default contract.
+	Make depost transaction to this SCID to play lottery. 
+	Check https://github.com/deroproject/derohe/blob/main/guide/examples/lottery_sc_guide.md
 */
 
 
 
-        Function Lottery(value Uint64) Uint64
+        Function Lottery() Uint64
 	10  dim deposit_count,winner as Uint64
 	20  LET deposit_count =  LOAD("deposit_count")+1
-	25  IF value == 0 THEN GOTO 110  // if deposit amount is 0, simply return
+	25  IF DEROVALUE() == 0 THEN GOTO 110  // if deposit amount is 0, simply return
 	30  STORE("depositor_address" + (deposit_count-1), SIGNER()) // store address for later on payment
-	40  STORE("deposit_total", LOAD("deposit_total") + value )
+	40  STORE("deposit_total", LOAD("deposit_total") + DEROVALUE() )
 	50  STORE("deposit_count",deposit_count)
 	60  IF LOAD("lotteryeveryXdeposit") > deposit_count THEN GOTO 110 // we will wait till X players join in
         // we are here means all players have joined in, roll the DICE, 
