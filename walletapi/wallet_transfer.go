@@ -66,8 +66,6 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 	defer w.transfer_mutex.Unlock()
 	ringsize := uint64(w.account.Ringsize) // use wallet mixin, if mixin not provided
 
-	bits_needed := make([]int, ringsize, ringsize)
-
 	// if wallet is online,take the fees from the network itself
 	// otherwise use whatever user has provided
 	//if w.GetMode()  {
@@ -186,6 +184,9 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 			ringsize = 2 // only for easier testing
 		}
 
+		bits_needed := make([]int, ringsize, ringsize)
+
+
 		bits_needed[0], self_e, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, w.GetAddress().String())
 		if err != nil {
 			fmt.Printf("self unregistered err %s\n", err)
@@ -217,13 +218,13 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 		}*/
 
 		receiver_without_payment_id := addr.BaseAddress()
-		for i, k := range w.random_ring_members(transfers[t].SCID) {
+		for _, k := range w.random_ring_members(transfers[t].SCID) {
 			if len(ring_members_keys)+2 < int(ringsize) && k != receiver_without_payment_id.String() && k != w.GetAddress().String() {
 
 				//  fmt.Printf("%s     receiver %s   sender %s\n", k, receiver_without_payment_id.String(), w.GetAddress().String())
 				var ebal *crypto.ElGamal
 				var addr *rpc.Address
-				bits_needed[i+2], ebal, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, k)
+				bits_needed[len(ring_members_keys)], ebal, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, k)
 				if err != nil {
 					fmt.Printf(" unregistered %s\n", k)
 					return

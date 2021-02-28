@@ -127,8 +127,8 @@ func Initialize() {
 // used to recover in case of panics
 func Recover() {
 	if r := recover(); r != nil {
-		rlog.Warnf("Recovered while handling connection, Stack trace below", r)
-		rlog.Warnf("Stack trace  \n%s", debug.Stack())
+		rlog.Warnf("Recovered, error %s", r)
+		rlog.Warnf("Stack trace  \n%s\n", debug.Stack())
 	}
 }
 

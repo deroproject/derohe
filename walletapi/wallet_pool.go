@@ -19,7 +19,6 @@ package walletapi
 // the objective of this file is to implememt a pool which sends and retries transactions until they are accepted by the chain
 
 import "fmt"
-import "runtime/debug"
 
 //import "encoding/binary"
 //import "encoding/hex"
@@ -36,7 +35,7 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 //import "github.com/deroproject/derohe/crypto/ringct"
 //import "github.com/deroproject/derohe/transaction"
 
-//import "github.com/deroproject/derohe/globals"
+import "github.com/deroproject/derohe/globals"
 //import "github.com/deroproject/derohe/address"
 import "github.com/deroproject/derohe/rpc"
 
@@ -187,12 +186,7 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 		return nil
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			rlog.Warnf("Stack trace  \n%s", debug.Stack())
-
-		}
-	}()
+	defer globals.Recover()
 
 	if !w.GetMode() { // if wallet is in offline mode , we cannot do anything
 		return fmt.Errorf("wallet is in offline mode")
@@ -226,8 +220,10 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 			}
 
 			if tx_result.Txs_as_hex[0] == "" {
-				try.Status = "Lost (not in mempool/chain, Waiting for more"
-				if try.Height > info.StableHeight { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
+				try.Status = "Lost (not in mempool/chain), Waiting for more blocks to retry"
+				if try.Height < (info.StableHeight + 1) { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
+					// we need to send this tx again now
+				}else{
 					continue // try other txs
 				}
 			} else if tx_result.Txs[0].In_pool {
@@ -237,15 +233,16 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 				try.Status = fmt.Sprintf("Mined in %s (%d confirmations)", tx_result.Txs[0].ValidBlock, info.TopoHeight-tx_result.Txs[0].Block_Height)
 				if try.Height < (info.StableHeight + 1) { // successful confirmation
 					w.account.PoolHistory = append(w.account.PoolHistory, w.account.Pool[i])
-					rlog.Infof("tx %s confirmed successfully  at stableheight %d  height %d trigger_height %d\n", try.TXID.String(), info.StableHeight, try.Height, w.account.Pool[i].Trigger_Height)
+					rlog.Infof("tx %s confirmed successfully at stableheight %d  height %d trigger_height %d\n", try.TXID.String(), info.StableHeight, try.Height, w.account.Pool[i].Trigger_Height)
 					w.account.Pool = append(w.account.Pool[:i], w.account.Pool[i+1:]...)
 					i-- // so another element at same place gets used
-
 				}
 				continue
 			} else {
-				try.Status = fmt.Sprintf("Mined in sideblock (%d confirmations, waiting for more)", info.Height-try.Height)
-				if try.Height < info.StableHeight { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
+				try.Status = fmt.Sprintf("Mined in sideblock (%d confirmations, waiting for more blocks)", info.Height-try.Height)
+				if try.Height < (info.StableHeight + 1) { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
+					// we need to send this tx again now
+				}else{
 					continue // try other txs
 				}
 			}
@@ -256,20 +253,21 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 
 			// we are here means we have to dispatch tx first time or again or whatever the case
 			rlog.Debugf("%d tries, sending\n", len(w.account.Pool[i].Tries))
+			if len(w.account.Pool[i].Tries) >= 1 {
+				rlog.Debugf("tries status %+v\n", w.account.Pool[i].Tries) // for debug
+			}
 
 			tx, err := w.TransferPayload0(w.account.Pool[i].Transfers, w.account.Pool[i].Transfer_Everything, w.account.Pool[i].SCDATA, false)
-			//tx, err := w.Transfer_Simplified(w.account.Pool[i].Addr, w.account.Pool[i].Amount, w.account.Pool[i].Data)
 			if err != nil {
 				rlog.Errorf("err building tx %s\n", err)
 				return err
 			}
-
+			w.account.Pool[i].Tries = append(w.account.Pool[i].Tries, Try{int64(tx.Height), tx.GetHash(), "Dispatched to mempool"})
 			if err = w.SendTransaction(tx); err != nil {
 				rlog.Errorf("err sending tx %s\n", err)
 				return err
 			}
 			rlog.Infof("dispatched tx %s at height %d trigger_height %d\n", tx.GetHash().String(), tx.Height, w.account.Pool[i].Trigger_Height)
-			w.account.Pool[i].Tries = append(w.account.Pool[i].Tries, Try{int64(tx.Height), tx.GetHash(), "Dispatched to mempool"})
 			break // we can only send one tx per height
 		}
 	}
