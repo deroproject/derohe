@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -22,19 +23,20 @@ type logger = func(string, ...interface{})
 // responses on a channel.Channel provided by the caller, and dispatches
 // requests to user-defined Handlers.
 type Server struct {
-	wg      sync.WaitGroup      // ready when workers are done at shutdown time
-	mux     Assigner            // associates method names with handlers
-	sem     *semaphore.Weighted // bounds concurrent execution (default 1)
-	allow1  bool                // allow v1 requests with no version marker
-	allowP  bool                // allow server notifications to the client
-	log     logger              // write debug logs here
-	rpcLog  RPCLogger           // log RPC requests and responses here
-	dectx   decoder             // decode context from request
-	ckreq   verifier            // request checking hook
-	expctx  bool                // whether to expect request context
-	metrics *metrics.M          // metrics collected during execution
-	start   time.Time           // when Start was called
-	builtin bool                // whether built-in rpc.* methods are enabled
+	wg      sync.WaitGroup         // ready when workers are done at shutdown time
+	mux     Assigner               // associates method names with handlers
+	sem     *semaphore.Weighted    // bounds concurrent execution (default 1)
+	allow1  bool                   // allow v1 requests with no version marker
+	allowP  bool                   // allow server notifications to the client
+	log     logger                 // write debug logs here
+	rpcLog  RPCLogger              // log RPC requests and responses here
+	newctx  func() context.Context // create a new base request context
+	dectx   decoder                // decode context from request
+	ckreq   verifier               // request checking hook
+	expctx  bool                   // whether to expect request context
+	metrics *metrics.M             // metrics collected during execution
+	start   time.Time              // when Start was called
+	builtin bool                   // whether built-in rpc.* methods are enabled
 
 	mu *sync.Mutex // protects the fields below
 
@@ -73,6 +75,7 @@ func NewServer(mux Assigner, opts *ServerOptions) *Server {
 		allowP:  opts.allowPush(),
 		log:     opts.logger(),
 		rpcLog:  opts.rpcLog(),
+		newctx:  opts.newContext(),
 		dectx:   dc,
 		ckreq:   opts.checkRequest(),
 		expctx:  exp,
@@ -89,8 +92,9 @@ func NewServer(mux Assigner, opts *ServerOptions) *Server {
 	return s
 }
 
-// Start enables processing of requests from c. This function will panic if the
-// server is already running.
+// Start enables processing of requests from c and returns. Start does not
+// block while the server runs. This function will panic if the server is
+// already running. It returns s to allow chaining with construction.
 func (s *Server) Start(c channel.Channel) *Server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -142,7 +146,7 @@ func (s *Server) serve() {
 	for {
 		next, err := s.nextRequest()
 		if err != nil {
-			s.log("Reading next request: %v", err)
+			s.log("Error reading from client: %v", err)
 			return
 		}
 		s.wg.Add(1)
@@ -171,7 +175,7 @@ func (s *Server) nextRequest() (func() error, error) {
 	ch := s.ch // capture
 
 	next := s.inq.Remove(s.inq.Front()).(jmessages)
-	s.log("Processing %d requests", len(next))
+	s.log("Dequeued request batch of length %d (qlen=%d)", len(next), s.inq.Len())
 
 	// Construct a dispatcher to run the handlers outside the lock.
 	return s.dispatch(next, ch), nil
@@ -199,7 +203,7 @@ func (s *Server) waitForBarrier(n int) {
 // completed, to ensure that notifications are processed in a partial order
 // that respects order of receipt. Notifications within a batch are handled
 // concurrently.
-func (s *Server) dispatch(next jmessages, ch channel.Sender) func() error {
+func (s *Server) dispatch(next jmessages, ch sender) func() error {
 	// Resolve all the task handlers or record errors.
 	start := time.Now()
 	tasks := s.checkAndAssign(next)
@@ -239,7 +243,7 @@ func (s *Server) dispatch(next jmessages, ch channel.Sender) func() error {
 
 // deliver cleans up completed responses and arranges their replies (if any) to
 // be sent back to the client.
-func (s *Server) deliver(rsps jmessages, ch channel.Sender, elapsed time.Duration) error {
+func (s *Server) deliver(rsps jmessages, ch sender, elapsed time.Duration) error {
 	if len(rsps) == 0 {
 		return nil
 	}
@@ -247,9 +251,13 @@ func (s *Server) deliver(rsps jmessages, ch channel.Sender, elapsed time.Duratio
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Ensure all the inflight requests get their contexts cancelled.
+	// Cancel the contexts of all the inflight requests that were executed.
+	// The extra check is necessary, to prevent a duplicate request from
+	// cancelling its valid predecessor in that ID.
 	for _, rsp := range rsps {
-		s.cancel(string(rsp.ID))
+		if rsp.err == nil {
+			s.cancel(string(rsp.ID))
+		}
 	}
 
 	nw, err := encode(ch, rsps)
@@ -262,26 +270,29 @@ func (s *Server) deliver(rsps jmessages, ch channel.Sender, elapsed time.Duratio
 func (s *Server) checkAndAssign(next jmessages) tasks {
 	var ts tasks
 	for _, req := range next {
-		s.log("Checking request for %q: %s", req.M, string(req.P))
 		fid := fixID(req.ID)
 		t := &task{
 			hreq:  &Request{id: fid, method: req.M, params: req.P},
 			batch: req.batch,
 		}
+		id := string(fid)
 		if req.err != nil {
 			t.err = req.err // deferred validation error
-		} else if id := string(fid); id != "" && s.used[id] != nil {
-			t.err = Errorf(code.InvalidRequest, "duplicate request id %q", id)
-		} else if !s.versionOK(req.V) {
-			t.err = ErrInvalidVersion
 		} else if !req.isRequestOrNotification() && s.call[id] != nil {
 			// This is a result or error for a pending push-call.
+			//
+			// N.B. It is important to check for this before checking for
+			// duplicate request IDs, since the ID spaces could overlap.
 			rsp := s.call[id]
 			delete(s.call, id)
 			rsp.ch <- req
 			continue // don't send a reply for this
+		} else if id != "" && s.used[id] != nil {
+			t.err = Errorf(code.InvalidRequest, "duplicate request id %q", id)
+		} else if !s.versionOK(req.V) {
+			t.err = ErrInvalidVersion
 		} else if req.M == "" {
-			t.err = Errorf(code.InvalidRequest, "empty method name")
+			t.err = errEmptyMethod
 		} else if s.setContext(t, id) {
 			t.m = s.assign(t.ctx, req.M)
 			if t.m == nil {
@@ -290,7 +301,7 @@ func (s *Server) checkAndAssign(next jmessages) tasks {
 		}
 
 		if t.err != nil {
-			s.log("Task error: %v", t.err)
+			s.log("Request check error for %q (params %q): %v", req.M, string(req.P), t.err)
 			s.metrics.Count("rpc.errors", 1)
 		}
 		ts = append(ts, t)
@@ -301,7 +312,7 @@ func (s *Server) checkAndAssign(next jmessages) tasks {
 // setContext constructs and attaches a request context to t, and reports
 // whether this succeeded.
 func (s *Server) setContext(t *task, id string) bool {
-	base, params, err := s.dectx(context.Background(), t.hreq.method, t.hreq.params)
+	base, params, err := s.dectx(s.newctx(), t.hreq.method, t.hreq.params)
 	t.hreq.params = params
 	if err != nil {
 		t.err = Errorf(code.InternalError, "invalid request context: %v", err)
@@ -317,7 +328,7 @@ func (s *Server) setContext(t *task, id string) bool {
 	t.ctx = context.WithValue(base, inboundRequestKey{}, t.hreq)
 
 	// Store the cancellation for a request that needs a reply, so that we can
-	// respond to rpc.cancel requests.
+	// respond to cancellation requests.
 	if id != "" {
 		ctx, cancel := context.WithCancel(t.ctx)
 		s.used[id] = cancel
@@ -355,7 +366,7 @@ func (s *Server) ServerInfo() *ServerInfo {
 		StartTime:   s.start,
 		Counter:     make(map[string]int64),
 		MaxValue:    make(map[string]int64),
-		Label:       make(map[string]string),
+		Label:       make(map[string]interface{}),
 	}
 	s.metrics.Snapshot(metrics.Snapshot{
 		Counter:  info.Counter,
@@ -364,6 +375,10 @@ func (s *Server) ServerInfo() *ServerInfo {
 	})
 	return info
 }
+
+// ErrPushUnsupported is returned by the Notify and Call methods if server
+// pushes are not enabled.
+var ErrPushUnsupported = errors.New("server push is not enabled")
 
 // Notify posts a single server-side notification to the client.
 //
@@ -381,13 +396,17 @@ func (s *Server) Notify(ctx context.Context, method string, params interface{}) 
 }
 
 // Callback posts a single server-side call to the client. It blocks until a
-// reply is received or the client connection terminates.  A successful
-// callback reports a nil error and a non-nil response. Errors returned by the
-// client have concrete type *jrpc2.Error.
+// reply is received, ctx ends, or the client connection terminates.  A
+// successful callback reports a nil error and a non-nil response. Errors
+// returned by the client have concrete type *jrpc2.Error.
 //
 // This is a non-standard extension of JSON-RPC, and may not be supported by
-// all clients. Unless s was constructed with the AllowPush option set true,
-// this method will always report an error (ErrPushUnsupported) without sending
+// all clients. If you are not sure whether the client supports push calls, you
+// should set a deadline on ctx, otherwise the callback may block forever for a
+// client response that will never arrive.
+//
+// Unless s was constructed with the AllowPush option set true, this method
+// will always report an error (ErrPushUnsupported) without sending
 // anything. If Callback is called after the client connection is closed, it
 // returns ErrConnClosed.
 func (s *Server) Callback(ctx context.Context, method string, params interface{}) (*Response, error) {
@@ -403,6 +422,25 @@ func (s *Server) Callback(ctx context.Context, method string, params interface{}
 		return nil, filterError(err)
 	}
 	return rsp, nil
+}
+
+// waitCallback blocks until pctx ends, and then if p is still waiting for a
+// response, deliver an error to the caller.
+func (s *Server) waitCallback(pctx context.Context, id string, p *Response) {
+	<-pctx.Done()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.call[id]; !ok {
+		return
+	}
+	delete(s.call, id)
+	err := pctx.Err()
+	s.log("Context ended for callback id %q, err=%v", id, err)
+
+	p.ch <- &jmessage{
+		ID: json.RawMessage(id),
+		E:  &Error{Code: code.FromError(err), Message: err.Error()},
+	}
 }
 
 func (s *Server) pushReq(ctx context.Context, wantID bool, method string, params interface{}) (rsp *Response, _ error) {
@@ -426,6 +464,7 @@ func (s *Server) pushReq(ctx context.Context, wantID bool, method string, params
 		kind = "call"
 		id := strconv.FormatInt(s.callID, 10)
 		s.callID++
+
 		jid = json.RawMessage(id)
 		rsp = &Response{
 			ch:     make(chan *jmessage, 1),
@@ -433,6 +472,7 @@ func (s *Server) pushReq(ctx context.Context, wantID bool, method string, params
 			cancel: func() {},
 		}
 		s.call[id] = rsp
+		go s.waitCallback(ctx, id, rsp)
 	}
 
 	s.log("Posting server %s %q %s", kind, method, string(bits))
@@ -443,9 +483,14 @@ func (s *Server) pushReq(ctx context.Context, wantID bool, method string, params
 		P:  bits,
 	}})
 	s.metrics.CountAndSetMax("rpc.bytesWritten", int64(nw))
-	s.metrics.Count("rpc."+kind+"s", 1)
+	s.metrics.Count("rpc."+kind+"sPushed", 1)
 	return rsp, err
 }
+
+// Metrics returns the server metrics collector for s.  If s does not define a
+// collector, this method returns nil, which is ready for use but discards all
+// metrics.
+func (s *Server) Metrics() *metrics.M { return s.metrics }
 
 // Stop shuts down the server. It is safe to call this method multiple times or
 // from concurrent goroutines; it will only take effect once.
@@ -456,20 +501,22 @@ func (s *Server) Stop() {
 }
 
 // ServerStatus describes the status of a stopped server.
+//
+// A server is said to have succeeded if it stopped because the client channel
+// closed or because its Stop method was called. On success, Err == nil, and
+// the flag fields indicate the reason why the server exited.
+// Otherwise, Err != nil is the error value that caused the server to exit.
 type ServerStatus struct {
 	Err error // the error that caused the server to stop (nil on success)
 
-	stopped bool // whether Stop was called
+	// On success, these flags explain the reason why the server stopped.
+	// At most one of these fields will be true.
+	Stopped bool // server exited because Stop was called
+	Closed  bool // server exited because the client channel closed
 }
 
 // Success reports whether the server exited without error.
 func (s ServerStatus) Success() bool { return s.Err == nil }
-
-// Stopped reports whether the server exited due to Stop being called.
-func (s ServerStatus) Stopped() bool { return s.Err == nil && s.stopped }
-
-// Closed reports whether the server exited due to a channel close.
-func (s ServerStatus) Closed() bool { return s.Err == nil && !s.stopped }
 
 // WaitStatus blocks until the server terminates, and returns the resulting
 // status. After WaitStatus returns, whether or not there was an error, it is
@@ -480,12 +527,15 @@ func (s *Server) WaitStatus() ServerStatus {
 	if s.inq.Len() != 0 {
 		panic("s.inq is not empty at shutdown")
 	}
-	exitErr := s.err
-	// Don't remark on a closed channel or EOF as a noteworthy failure.
-	if s.err == io.EOF || channel.IsErrClosing(s.err) || s.err == errServerStopped {
-		exitErr = nil
+	stat := ServerStatus{Err: s.err}
+	if s.err == io.EOF || channel.IsErrClosing(s.err) {
+		stat.Err = nil
+		stat.Closed = true
+	} else if s.err == errServerStopped {
+		stat.Err = nil
+		stat.Stopped = true
 	}
-	return ServerStatus{Err: exitErr, stopped: s.err == errServerStopped}
+	return stat
 }
 
 // Wait blocks until the server terminates and returns the resulting error.
@@ -523,7 +573,15 @@ func (s *Server) stop(err error) {
 	}
 	s.work.Broadcast()
 
-	// Cancel any in-flight requests that made it out of the queue.
+	// Cancel any in-flight requests that made it out of the queue, and
+	// terminate any pending callback invocations.
+	for id, rsp := range s.call {
+		rsp.ch <- &jmessage{
+			ID: json.RawMessage(id),
+			E:  errChannelClosed,
+		}
+		delete(s.call, id)
+	}
 	for id, cancel := range s.used {
 		cancel()
 		delete(s.used, id)
@@ -542,7 +600,7 @@ func (s *Server) stop(err error) {
 // them to the queue. Decoding errors and message-format problems are handled
 // and reported back to the client directly, so that any message that survives
 // into the request queue is structurally valid.
-func (s *Server) read(ch channel.Receiver) {
+func (s *Server) read(ch receiver) {
 	for {
 		// If the message is not sensible, report an error; otherwise enqueue it
 		// for processing. Errors in individual requests are handled later.
@@ -563,9 +621,9 @@ func (s *Server) read(ch channel.Receiver) {
 		} else if derr != nil { // parse failure; report and continue
 			s.pushError(derr)
 		} else if len(in) == 0 {
-			s.pushError(Errorf(code.InvalidRequest, "empty request batch"))
+			s.pushError(errEmptyBatch)
 		} else {
-			s.log("Received %d new requests", len(in))
+			s.log("Received request batch of size %d (qlen=%d)", len(in), s.inq.Len())
 			s.inq.PushBack(in)
 			s.work.Broadcast()
 		}
@@ -582,9 +640,9 @@ type ServerInfo struct {
 	UsesContext bool `json:"usesContext"`
 
 	// Metric values defined by the evaluation of methods.
-	Counter  map[string]int64  `json:"counters,omitempty"`
-	MaxValue map[string]int64  `json:"maxValue,omitempty"`
-	Label    map[string]string `json:"labels,omitempty"`
+	Counter  map[string]int64       `json:"counters,omitempty"`
+	MaxValue map[string]int64       `json:"maxValue,omitempty"`
+	Label    map[string]interface{} `json:"labels,omitempty"`
 
 	// When the server started.
 	StartTime time.Time `json:"startTime,omitempty"`
@@ -597,8 +655,6 @@ func (s *Server) assign(ctx context.Context, name string) Handler {
 		switch name {
 		case rpcServerInfo:
 			return methodFunc(s.handleRPCServerInfo)
-		case rpcCancel:
-			return methodFunc(s.handleRPCCancel)
 		default:
 			return nil // reserved
 		}
@@ -615,7 +671,7 @@ func (s *Server) pushError(err error) {
 	if e, ok := err.(*Error); ok {
 		jerr = e
 	} else {
-		jerr = &Error{code: code.FromError(err), message: err.Error()}
+		jerr = &Error{Code: code.FromError(err), Message: err.Error()}
 	}
 
 	nw, err := encode(s.ch, jmessages{{
@@ -683,14 +739,18 @@ func (ts tasks) responses(rpcLog RPCLogger) jmessages {
 		if rsp.ID == nil {
 			rsp.ID = json.RawMessage("null")
 		}
+		if task.m == nil {
+			// No method was ever assigned for this task, so it was never run.
+			rsp.err = errors.New("task not executed")
+		}
 		if task.err == nil {
 			rsp.R = task.val
 		} else if e, ok := task.err.(*Error); ok {
 			rsp.E = e
 		} else if c := code.FromError(task.err); c != code.NoError {
-			rsp.E = &Error{code: c, message: task.err.Error()}
+			rsp.E = &Error{Code: c, Message: task.err.Error()}
 		} else {
-			rsp.E = &Error{code: code.InternalError, message: task.err.Error()}
+			rsp.E = &Error{Code: code.InternalError, Message: task.err.Error()}
 		}
 		rpcLog.LogResponse(task.ctx, &Response{
 			id:     string(rsp.ID),

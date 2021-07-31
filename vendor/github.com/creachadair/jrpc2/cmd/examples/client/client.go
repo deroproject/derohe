@@ -60,7 +60,7 @@ func main() {
 		log.Fatal("You must provide -server address to connect to")
 	}
 
-	conn, err := net.Dial(jrpc2.Network(*serverAddr), *serverAddr)
+	conn, err := net.Dial(jrpc2.Network(*serverAddr))
 	if err != nil {
 		log.Fatalf("Dial %q: %v", *serverAddr, err)
 	}

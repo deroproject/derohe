@@ -80,7 +80,7 @@ func errEQ(x, y error) bool {
 	return code.FromError(x) == code.FromError(y) && x.Error() == y.Error()
 }
 
-func TestUnmarshalParams(t *testing.T) {
+func TestRequest_UnmarshalParams(t *testing.T) {
 	type xy struct {
 		X int  `json:"x"`
 		Y bool `json:"y"`
@@ -149,22 +149,19 @@ func (h hmap) Names() []string                                 { return nil }
 
 // Verify that if the client context terminates during a request, the client
 // will terminate and report failure.
-func TestClientCancellation(t *testing.T) {
+func TestClient_contextCancellation(t *testing.T) {
 	started := make(chan struct{})
-	stopped := make(chan bool, 1)
+	stopped := make(chan struct{})
 	cpipe, spipe := channel.Direct()
 	srv := NewServer(hmap{
 		"Hang": methodFunc(func(ctx context.Context, _ *Request) (interface{}, error) {
 			close(started) // signal that the method handler is running
-			defer close(stopped)
-
-			t.Log("Waiting for context completion...")
 			select {
-			case <-ctx.Done():
-				t.Logf("Server context cancelled: err=%v", ctx.Err())
-				stopped <- true
-				return true, ctx.Err()
+			case <-stopped:
+				t.Log("Server unblocked by client completing")
+				return true, nil
 			case <-time.After(10 * time.Second):
+				t.Error("Server timed out before completion")
 				return false, nil
 			}
 		}),
@@ -195,21 +192,17 @@ func TestClientCancellation(t *testing.T) {
 	// The call should fail client side, in the usual way for a cancellation.
 	rsp := rsps[0]
 	rsp.wait()
+	close(stopped)
 	if err := rsp.Error(); err != nil {
-		if err.code != code.Cancelled {
+		if err.Code != code.Cancelled {
 			t.Errorf("Response error for %q: got %v, want %v", rsp.ID(), err, code.Cancelled)
 		}
 	} else {
 		t.Errorf("Response for %q: unexpectedly succeeded", rsp.ID())
 	}
-
-	// The server handler should have reported a cancellation.
-	if ok := <-stopped; !ok {
-		t.Error("Server context was not cancelled")
-	}
 }
 
-func TestSpecialMethods(t *testing.T) {
+func TestServer_specialMethods(t *testing.T) {
 	s := NewServer(hmap{
 		"rpc.nonesuch": methodFunc(func(context.Context, *Request) (interface{}, error) {
 			return "OK", nil
@@ -219,7 +212,7 @@ func TestSpecialMethods(t *testing.T) {
 		}),
 	}, nil)
 	ctx := context.Background()
-	for _, name := range []string{rpcServerInfo, rpcCancel, "donkeybait"} {
+	for _, name := range []string{rpcServerInfo, "donkeybait"} {
 		if got := s.assign(ctx, name); got == nil {
 			t.Errorf("s.assign(%s): no method assigned", name)
 		}
@@ -231,7 +224,7 @@ func TestSpecialMethods(t *testing.T) {
 
 // Verify that the option to remove the special behaviour of rpc.* methods can
 // be correctly disabled by the server options.
-func TestDisableBuiltin(t *testing.T) {
+func TestServer_disableBuiltinHook(t *testing.T) {
 	s := NewServer(hmap{
 		"rpc.nonesuch": methodFunc(func(context.Context, *Request) (interface{}, error) {
 			return "OK", nil
@@ -240,7 +233,7 @@ func TestDisableBuiltin(t *testing.T) {
 	ctx := context.Background()
 
 	// With builtins disabled, the default rpc.* methods should not get assigned.
-	for _, name := range []string{rpcServerInfo, rpcCancel} {
+	for _, name := range []string{rpcServerInfo} {
 		if got := s.assign(ctx, name); got != nil {
 			t.Errorf("s.assign(%s): got %+v, wanted nil", name, got)
 		}

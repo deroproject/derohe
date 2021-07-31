@@ -43,10 +43,12 @@ Equipped with an Assigner we can now construct a Server:
 
    srv := jrpc2.NewServer(assigner, nil)  // nil for default options
 
-To serve requests, we need a channel.Channel. The channel package exports
-functions to adapt various input and output streams.  For this example, we'll
-use a channel that delimits messages by newlines, and communicates on os.Stdin
-and os.Stdout:
+To serve requests, we need a channel.Channel. Implementations of the Channel
+interface handle the framing, transmission, and receipt of JSON messages.  The
+channel package provides several common framing disciplines and functions to
+wrap them around various input and output streams.  For this example, we'll use
+a channel that delimits messages by newlines, and communicates on os.Stdin and
+os.Stdout:
 
    ch := channel.Line(os.Stdin, os.Stdout)
    srv.Start(ch)
@@ -58,7 +60,7 @@ the server to finish, call:
    err := srv.Wait()
 
 This will report the error that led to the server exiting.  The code for this
-example is availabe from cmd/examples/adder/adder.go:
+example is available from cmd/examples/adder/adder.go:
 
     $ go run cmd/examples/adder/adder.go
 
@@ -137,87 +139,65 @@ not want to do anything for a notification, it can query the request:
    }
 
 
-Cancellation
-
-The *jrpc2.Client and *jrpc2.Server types support a non-standard cancellation
-protocol, consisting of a notification method "rpc.cancel" taking an array of
-request IDs to be cancelled. The server cancels the context of each method
-handler whose ID is named.
-
-When the context associated with a client request is cancelled, the client
-sends an "rpc.cancel" notification to the server for that request's ID.  The
-"rpc.cancel" method is automatically handled (unless disabled) by the
-*jrpc2.Server implementation from this package.
-
-
 Services with Multiple Methods
 
 The example above shows a server with one method using handler.New.  To
-simplify exporting multiple methods, the handler.NewService function applies
-handler.New to all the relevant exported methods of a concrete value, returning
-a handler.Map for those methods:
+simplify exporting multiple methods, the handler.Map type collects named
+methods:
 
-   type math struct{}
+   mathService := handler.Map{
+      "Add": handler.New(Add),
+      "Mul": handler.New(Mul),
+   }
 
-   func (math) Add(ctx context.Context, vals ...int) int { ... }
-   func (math) Mul(ctx context.Context, vals []int) int { ... }
-
-   assigner := handler.NewService(math{})
-
-This assigner maps the name "Add" to the Add method, and the name "Mul" to the
-Mul method, of the math value.
-
-This may be further combined with the handler.ServiceMap type to allow
+Maps may be further combined with the handler.ServiceMap type to allow
 different services to work together:
 
-   type status struct{}
-
-   func (status) Get(context.Context) (string, error) {
+   func GetStatus(context.Context) (string, error) {
       return "all is well", nil
    }
 
    assigner := handler.ServiceMap{
-      "Math":   handler.NewService(math{}),
-      "Status": handler.NewService(status{}),
+      "Math":   mathService,
+      "Status": handler.Map{"Get": handler.New(Status)},
    }
 
-This assigner dispatches "Math.Add" and "Math.Mul" to the math value's methods,
-and "Status.Get" to the status value's method. A ServiceMap splits the method
-name on the first period ("."), and you may nest ServiceMaps more deeply if you
+This assigner dispatches "Math.Add" and "Math.Mul" to the arithmetic functions,
+and "Status.Get" to the GetStatus function. A ServiceMap splits the method name
+on the first period ("."), and you may nest ServiceMaps more deeply if you
 require a more complex hierarchy.
 
 
 Concurrency
 
-A Server processes requests concurrently, up to the Concurrency limit given in
-its ServerOptions. Two requests (either calls or notifications) are concurrent
-if they arrive as part of the same batch. In addition, two calls are concurrent
-if the time intervals between the arrival of the request objects and delivery
-of the response objects overlap.
+A Server issues requests to handlers concurrently, up to the Concurrency limit
+given in its ServerOptions. Two requests (either calls or notifications) are
+concurrent if they arrive as part of the same batch. In addition, two calls are
+concurrent if the time intervals between the arrival of the request objects and
+delivery of the response objects overlap.
 
 The server may issue concurrent requests to their handlers in any order.
-Otherwise, requests are processed in order of arrival. Notifications, in
-particular, can only be concurrent with other notifications in the same batch.
-This ensures a client that sends a notification can be sure its notification
-was fully processed before any subsequent calls are issued.
+Non-concurrent requests are processed in order of arrival. Notifications, in
+particular, can only be concurrent with other requests in the same batch.  This
+ensures a client that sends a notification can be sure its notification will be
+fully processed before any subsequent calls are issued to their handlers.
+
+These rules imply that the client cannot rely on the order of evaluation for
+calls that overlap in time: If the caller needs to ensure that call A completes
+before call B starts, it must wait for A to return before invoking B.
 
 
-Non-Standard Extension Methods
+Built-in Methods
 
-By default, a *jrpc2.Server exports the following built-in non-standard
-extension methods:
+Per the JSON-RPC 2.0 spec, method names beginning with "rpc." are reserved by
+the implementation. By default, a server does not dispatch these methods to its
+assigner. In this configuration, the server exports a "rpc.serverInfo" method
+taking no parameters and returning a jrpc2.ServerInfo value.
 
-  rpc.serverInfo(null) ⇒ jrpc2.ServerInfo
-  Returns a jrpc2.ServerInfo value giving server metrics.
-
-  rpc.cancel([]int)  [notification]
-  Request cancellation of the specified in-flight request IDs.
-
-The rpc.cancel method works only as a notification, and will report an error if
-called as an ordinary method.
-
-These extension methods are enabled by default, but may be disabled by setting
-the DisableBuiltin server option to true when constructing the server.
+Setting the DisableBuiltin option to true in the ServerOptions removes special
+treatment of "rpc." method names, and disables the rpc.serverInfo handler.
+When this option is true, method names beginning with "rpc." will be dispatched
+to the assigner like any other method.
 
 
 Server Push
@@ -235,8 +215,8 @@ client. Otherwise, those methods will report an error:
     // server push is not enabled
   }
 
-A method handler may use jrpc2.PushNotify and jrpc2.PushCall functions to
-access these methods from its context.
+A method handler may use jrpc2.ServerFromContext to access the server from its
+context, and then invoke these methods on it.
 
 On the client side, the OnNotify and OnCallback options in jrpc2.ClientOptions
 provide hooks to which any server requests are delivered, if they are set.

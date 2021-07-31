@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/creachadair/jrpc2)](https://goreportcard.com/report/github.com/creachadair/jrpc2)
 
 This repository provides Go package that implements a [JSON-RPC 2.0][spec] client and server.
-There is also a working [example in the Go playground](https://play.golang.org/p/dafuqfzE4nd).
+There is also a working [example in the Go playground](https://play.golang.org/p/MTWvV7QDEeA).
 
 ## Packages
 
@@ -25,6 +25,10 @@ There is also a working [example in the Go playground](https://play.golang.org/p
 *  Package [server](http://godoc.org/github.com/creachadair/jrpc2/server) provides support for running a server to handle multiple connections, and an in-memory implementation for testing.
 
 [spec]: http://www.jsonrpc.org/specification
+
+### Versioning
+
+This module is currently still at v0 and subject to change. To the extent practical, I try to avoid breaking changes to the API, but when I do make a breaking change I will update the minor version. For bug fixes and non-breaking minor changes I update only the patch. Hence, when going from (say) `v0.11.3` to `v0.12.0`, be advised that some API changes may occur.
 
 ## Implementation Notes
 

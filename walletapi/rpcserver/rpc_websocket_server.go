@@ -43,7 +43,7 @@ import "github.com/gorilla/websocket"
 import "github.com/creachadair/jrpc2"
 import "github.com/creachadair/jrpc2/handler"
 import "github.com/creachadair/jrpc2/channel"
-import "github.com/creachadair/jrpc2/server"
+
 import "github.com/creachadair/jrpc2/jhttp"
 
 /* this file implements the rpcserver api, so as wallet and block explorer tools can work without migration */
@@ -228,8 +228,13 @@ func ws_handler(w http.ResponseWriter, r *http.Request) {
 }
 
 var assigner = handler.ServiceMap{
-	"WALLET": handler.NewService(&wallet_apis),
-	"DERO":   handler.NewService(DERO_RPC_APIS{}),
+	"WALLET": handler.Map{
+		"Echo": handler.New((&wallet_apis).Echo),
+	},
+	"DERO": handler.Map{
+		"Ping": handler.New(DERO_RPC_APIS{}.Ping),
+		"Echo": handler.New(DERO_RPC_APIS{}.Echo),
+	},
 }
 
 type WALLET_RPC_APIS struct {
@@ -251,10 +256,10 @@ func (DERO_RPC_APIS) Echo(ctx context.Context, args []string) string {
 	return "DERO " + strings.Join(args, " ")
 }
 
-//var internal_server = server.NewLocal(assigner,nil) // Use DERO.GetInfo names
-var internal_server = server.NewLocal(historical_apis, nil) // uses traditional "getinfo" for compatibility reasons
 // Bridge HTTP to the JSON-RPC server.
-var bridge = jhttp.NewBridge(internal_server.Client)
+// uses traditional "getinfo" for compatibility reasons
+// Use DERO.GetInfo names
+var bridge = jhttp.NewBridge(historical_apis, nil)
 
 var wallet_apis WALLET_RPC_APIS
 var dero_apis DERO_RPC_APIS

@@ -43,7 +43,6 @@ func BenchmarkFramingCost(b *testing.B) {
 		{"LSP", channel.LSP},
 		{"NUL", channel.Split('\x00')},
 		{"RawJSON", channel.RawJSON},
-		{"Varint", channel.Varint},
 	}
 
 	msg, err := json.Marshal(benchMessage)

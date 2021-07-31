@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/channel"
@@ -19,26 +20,34 @@ var (
 	ctx      = context.Background()
 	sch, cch = channel.Direct()
 	cli      = jrpc2.NewClient(cch, nil)
+
+	setup sync.Once
 )
 
 type Msg struct {
 	Text string `json:"msg"`
 }
 
+func startServer() {
+	setup.Do(func() {
+		s = jrpc2.NewServer(handler.Map{
+			"Hello": handler.New(func(ctx context.Context) string {
+				return "Hello, world!"
+			}),
+			"Echo": handler.New(func(_ context.Context, args []json.RawMessage) []json.RawMessage {
+				return args
+			}),
+			"Log": handler.New(func(ctx context.Context, msg Msg) (bool, error) {
+				fmt.Println("Log:", msg.Text)
+				return true, nil
+			}),
+		}, nil).Start(sch)
+	})
+}
+
 func ExampleNewServer() {
 	// Construct a new server with methods "Hello" and "Log".
-	s = jrpc2.NewServer(handler.Map{
-		"Hello": handler.New(func(ctx context.Context) string {
-			return "Hello, world!"
-		}),
-		"Echo": handler.New(func(_ context.Context, args []json.RawMessage) []json.RawMessage {
-			return args
-		}),
-		"Log": handler.New(func(ctx context.Context, msg Msg) (bool, error) {
-			fmt.Println("Log:", msg.Text)
-			return true, nil
-		}),
-	}, nil).Start(sch)
+	startServer()
 
 	// We can query the server for its current status information, including a
 	// list of its methods.
@@ -52,6 +61,8 @@ func ExampleNewServer() {
 }
 
 func ExampleClient_Call() {
+	startServer()
+
 	// var cli = jrpc2.NewClient(cch, nil)
 	rsp, err := cli.Call(ctx, "Hello", nil)
 	if err != nil {
@@ -67,6 +78,8 @@ func ExampleClient_Call() {
 }
 
 func ExampleClient_CallResult() {
+	startServer()
+
 	// var cli = jrpc2.NewClient(cch, nil)
 	var msg string
 	if err := cli.CallResult(ctx, "Hello", nil, &msg); err != nil {
@@ -78,6 +91,8 @@ func ExampleClient_CallResult() {
 }
 
 func ExampleClient_Batch() {
+	startServer()
+
 	// var cli = jrpc2.NewClient(cch, nil)
 	rsps, err := cli.Batch(ctx, []jrpc2.Spec{
 		{Method: "Hello"},
@@ -130,7 +145,7 @@ func ExampleRequest_UnmarshalParams() {
 	var tmp json.RawMessage
 	reqs[0].UnmarshalParams(&tmp) // cannot fail
 	if err := json.Unmarshal(tmp, &u); err != nil {
-		log.Fatalf("Unmarhsal: %v", err)
+		log.Fatalf("Unmarshal: %v", err)
 	}
 	fmt.Printf("u.A=%d, u.B=%d\n", u.A, u.B)
 

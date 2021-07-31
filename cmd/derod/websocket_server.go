@@ -42,7 +42,7 @@ import "github.com/gorilla/websocket"
 import "github.com/creachadair/jrpc2"
 import "github.com/creachadair/jrpc2/handler"
 import "github.com/creachadair/jrpc2/channel"
-import "github.com/creachadair/jrpc2/server"
+
 import "github.com/creachadair/jrpc2/jhttp"
 
 /* this file implements the rpcserver api, so as wallet and block explorer tools can work without migration */
@@ -235,8 +235,13 @@ func ws_handler(w http.ResponseWriter, r *http.Request) {
 }
 
 var assigner = handler.ServiceMap{
-	"DAEMON": handler.NewService(DAEMON_RPC_APIS{}),
-	"DERO":   handler.NewService(DERO_RPC_APIS{}),
+	"DAEMON": handler.Map{
+		"Echo": handler.New(DAEMON_RPC_APIS{}.Echo),
+	},
+	"DERO": handler.Map{
+		"Ping": handler.New(DERO_RPC_APIS{}.Ping),
+		"Echo": handler.New(DERO_RPC_APIS{}.Echo),
+	},
 }
 
 type DAEMON_RPC_APIS struct{} // exports daemon status and other RPC apis
@@ -256,10 +261,10 @@ func (DERO_RPC_APIS) Echo(ctx context.Context, args []string) string {
 	return "DERO " + strings.Join(args, " ")
 }
 
-//var internal_server = server.NewLocal(assigner,nil) // Use DERO.GetInfo names
-var internal_server = server.NewLocal(historical_apis, nil) // uses traditional "getinfo" for compatibility reasons
 // Bridge HTTP to the JSON-RPC server.
-var bridge = jhttp.NewBridge(internal_server.Client)
+// uses traditional "getinfo" for compatibility reasons
+// Use DERO.GetInfo names
+var bridge = jhttp.NewBridge(historical_apis, nil)
 
 var dero_apis DERO_RPC_APIS
 

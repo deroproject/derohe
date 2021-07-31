@@ -16,16 +16,15 @@ import (
 // A Client is a JSON-RPC 2.0 client. The client sends requests and receives
 // responses on a channel.Channel provided by the caller.
 type Client struct {
-	done chan struct{} // closed when the reader is done at shutdown time
+	done *sync.WaitGroup // done when the reader is finished at shutdown time
 
 	log   func(string, ...interface{}) // write debug logs here
 	enctx encoder
 	snote func(*jmessage)
-	scall func(*jmessage) ([]byte, error)
+	scall func(*jmessage) []byte
 	chook func(*Client, *Response)
 
 	allow1 bool // tolerate v1 replies with no version marker
-	allowC bool // send rpc.cancel when a request context ends
 
 	mu      sync.Mutex           // protects the fields below
 	ch      channel.Channel      // channel to the server
@@ -37,10 +36,9 @@ type Client struct {
 // NewClient returns a new client that communicates with the server via ch.
 func NewClient(ch channel.Channel, opts *ClientOptions) *Client {
 	c := &Client{
-		done:   make(chan struct{}),
+		done:   new(sync.WaitGroup),
 		log:    opts.logger(),
 		allow1: opts.allowV1(),
-		allowC: opts.allowCancel(),
 		enctx:  opts.encodeContext(),
 		snote:  opts.handleNotification(),
 		scall:  opts.handleCallback(),
@@ -59,8 +57,9 @@ func NewClient(ch channel.Channel, opts *ClientOptions) *Client {
 	// back to pending requests by their ID. Outbound requests do not queue;
 	// they are sent synchronously in the Send method.
 
+	c.done.Add(1)
 	go func() {
-		defer close(c.done)
+		defer c.done.Done()
 		for c.accept(ch) == nil {
 		}
 	}()
@@ -70,7 +69,7 @@ func NewClient(ch channel.Channel, opts *ClientOptions) *Client {
 // accept receives the next batch of responses from the server.  This may
 // either be a list or a single object, the decoder for jmessages knows how to
 // handle both. The caller must not hold c.mu.
-func (c *Client) accept(ch channel.Receiver) error {
+func (c *Client) accept(ch receiver) error {
 	var in jmessages
 	bits, err := ch.Recv()
 	if err == nil {
@@ -87,7 +86,9 @@ func (c *Client) accept(ch channel.Receiver) error {
 	}
 
 	c.log("Received %d responses", len(in))
+	c.done.Add(1)
 	go func() {
+		defer c.done.Done()
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		for _, rsp := range in {
@@ -109,10 +110,13 @@ func (c *Client) handleRequest(msg *jmessage) {
 		}
 	} else if c.scall == nil {
 		c.log("Discarding callback request: %v", msg)
-	} else if bits, err := c.scall(msg); err != nil {
-		c.log("Callback for %v failed: %v", msg, err)
-	} else if err := c.ch.Send(bits); err != nil {
-		c.log("Sending reply for callback %v failed: %v", msg, err)
+	} else if c.ch == nil {
+		c.log("Client channel is closed; discarding callback: %v", msg)
+	} else {
+		bits := c.scall(msg)
+		if err := c.ch.Send(bits); err != nil {
+			c.log("Sending reply for callback %v failed: %v", msg, err)
+		}
 	}
 }
 
@@ -135,8 +139,8 @@ func (c *Client) deliver(rsp *jmessage) {
 		p.ch <- &jmessage{
 			ID: rsp.ID,
 			E: &Error{
-				code:    code.InvalidRequest,
-				message: fmt.Sprintf("incorrect version marker %q", rsp.V),
+				Code:    code.InvalidRequest,
+				Message: fmt.Sprintf("incorrect version marker %q", rsp.V),
 			},
 		}
 		c.log("Invalid response for ID %q", id)
@@ -252,9 +256,9 @@ func (c *Client) waitComplete(pctx context.Context, id string, p *Response) {
 
 	var jerr *Error
 	if c.err != nil && !isUninteresting(c.err) {
-		jerr = &Error{code: code.InternalError, message: c.err.Error()}
+		jerr = &Error{Code: code.InternalError, Message: c.err.Error()}
 	} else if err != nil {
-		jerr = &Error{code: code.FromError(err), message: err.Error()}
+		jerr = &Error{Code: code.FromError(err), Message: err.Error()}
 	}
 
 	p.ch <- &jmessage{
@@ -262,18 +266,12 @@ func (c *Client) waitComplete(pctx context.Context, id string, p *Response) {
 		E:  jerr,
 	}
 
-	// Inform the server, best effort only. N.B. Use a background context here,
-	// as the original context has ended by the time we get here.
+	// If there is a cancellation hook, give it a chance to run.
 	if c.chook != nil {
 		cleanup = func() {
 			p.wait() // ensure the response has settled
 			c.log("Calling OnCancel for id %q", id)
 			c.chook(c, p)
-		}
-	} else if c.allowC {
-		cleanup = func() {
-			c.log("Sending rpc.cancel for id %q to the server", id)
-			c.Notify(context.Background(), rpcCancel, []json.RawMessage{json.RawMessage(id)})
 		}
 	}
 }
@@ -321,22 +319,23 @@ func (c *Client) CallResult(ctx context.Context, method string, params, result i
 // responses return. The responses are returned in the same order as the
 // original specs, omitting notifications.
 //
-// Any error returned is from sending the batch; the caller must check each
-// response for errors from the server.
+// Any error reported by Batch represents an error in encoding or sending the
+// batch to the server. Errors reported by the server in response to requests
+// must be recovered from the responses.
 func (c *Client) Batch(ctx context.Context, specs []Spec) ([]*Response, error) {
 	reqs := make(jmessages, len(specs))
 	for i, spec := range specs {
+		var req *jmessage
+		var err error
 		if spec.Notify {
-			req, err := c.note(ctx, spec.Method, spec.Params)
-			if err != nil {
-				return nil, err
-			}
-			reqs[i] = req
-		} else if req, err := c.req(ctx, spec.Method, spec.Params); err != nil {
-			return nil, err
+			req, err = c.note(ctx, spec.Method, spec.Params)
 		} else {
-			reqs[i] = req
+			req, err = c.req(ctx, spec.Method, spec.Params)
 		}
+		if err != nil {
+			return nil, err
+		}
+		reqs[i] = req
 	}
 	rsps, err := c.send(ctx, reqs)
 	if err != nil {
@@ -348,8 +347,8 @@ func (c *Client) Batch(ctx context.Context, specs []Spec) ([]*Response, error) {
 	return rsps, nil
 }
 
-// A Spec combines a method name and parameter value. If the Notify field is
-// true, the spec is sent as a notification instead of a request.
+// A Spec combines a method name and parameter value as part of a Batch.  If
+// the Notify field is true, the request is sent as a notification.
 type Spec struct {
 	Method string
 	Params interface{}
@@ -372,7 +371,8 @@ func (c *Client) Close() error {
 	c.mu.Lock()
 	c.stop(errClientStopped)
 	c.mu.Unlock()
-	<-c.done
+	c.done.Wait()
+
 	// Don't remark on a closed channel or EOF as a noteworthy failure.
 	if isUninteresting(c.err) {
 		return nil
@@ -421,7 +421,7 @@ func (c *Client) marshalParams(ctx context.Context, method string, params interf
 	if len(pbits) == 0 || (pbits[0] != '[' && pbits[0] != '{' && !isNull(pbits)) {
 		// JSON-RPC requires that if parameters are provided at all, they are
 		// an array or an object.
-		return nil, Errorf(code.InvalidRequest, "invalid parameters: array or object required")
+		return nil, &Error{Code: code.InvalidRequest, Message: "invalid parameters: array or object required"}
 	}
 	bits, err := c.enctx(ctx, method, pbits)
 	if err != nil {

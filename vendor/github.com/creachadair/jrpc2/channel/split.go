@@ -31,12 +31,10 @@ type split struct {
 // Send implements part of the Channel interface.  It reports an error if msg
 // contains a split byte.
 func (c split) Send(msg []byte) error {
-	if bytes.ContainsAny(msg, string(c.split)) {
+	if bytes.IndexByte(msg, c.split) >= 0 {
 		return errors.New("message contains split byte")
 	}
-	out := make([]byte, len(msg)+1)
-	copy(out, msg)
-	out[len(msg)] = c.split
+	out := append(msg, c.split)
 	_, err := c.wc.Write(out)
 	return err
 }

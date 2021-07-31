@@ -14,7 +14,7 @@ type M struct {
 	mu      sync.Mutex
 	counter map[string]int64
 	maxVal  map[string]int64
-	label   map[string]string
+	label   map[string]interface{}
 }
 
 // New creates a new, empty metrics collector.
@@ -22,7 +22,7 @@ func New() *M {
 	return &M{
 		counter: make(map[string]int64),
 		maxVal:  make(map[string]int64),
-		label:   make(map[string]string),
+		label:   make(map[string]interface{}),
 	}
 }
 
@@ -61,16 +61,33 @@ func (m *M) CountAndSetMax(name string, n int64) {
 	}
 }
 
-// SetLabel sets the specified label to value. If value == "" the label is
+// SetLabel sets the specified label to value. If value == nil the label is
 // removed from the set.
-func (m *M) SetLabel(name, value string) {
+func (m *M) SetLabel(name string, value interface{}) {
 	if m != nil {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		if value == "" {
+		if value == nil {
 			delete(m.label, name)
 		} else {
 			m.label[name] = value
+		}
+	}
+}
+
+// EditLabel calls edit with the current value of the specified label.
+// The value returned by edit replaces the contents of the label.
+// If edit returns nil, the label is removed from the set.
+// If the label did not exist, the argument to edit is nil.
+func (m *M) EditLabel(name string, edit func(interface{}) interface{}) {
+	if m != nil {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		newValue := edit(m.label[name])
+		if newValue == nil {
+			delete(m.label, name)
+		} else {
+			m.label[name] = newValue
 		}
 	}
 }
@@ -105,5 +122,5 @@ func (m *M) Snapshot(snap Snapshot) {
 type Snapshot struct {
 	Counter  map[string]int64
 	MaxValue map[string]int64
-	Label    map[string]string
+	Label    map[string]interface{}
 }

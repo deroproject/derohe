@@ -13,10 +13,10 @@ import (
 	"github.com/creachadair/jrpc2/handler"
 )
 
-var newChan = channel.Varint
+var newChan = channel.Line
 
 // A static test service that returns the same thing each time.
-var testService = NewStatic(handler.Map{
+var testService = Static(handler.Map{
 	"Test": handler.New(func(context.Context) (string, error) {
 		return "OK", nil
 	}),
@@ -49,7 +49,10 @@ func (t *testSession) Assigner() (jrpc2.Assigner, error) {
 	}, nil
 }
 
-func (t *testSession) Finish(stat jrpc2.ServerStatus) {
+func (t *testSession) Finish(assigner jrpc2.Assigner, stat jrpc2.ServerStatus) {
+	if _, ok := assigner.(handler.Map); !ok {
+		t.t.Errorf("Finished assigner: got %+v, want handler.Map", assigner)
+	}
 	if !t.init {
 		t.t.Error("Service finished without being initialized")
 	}

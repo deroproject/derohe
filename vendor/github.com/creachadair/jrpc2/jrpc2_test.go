@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,11 +19,28 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+// Static type assertions.
+var (
+	_ code.ErrCoder = (*jrpc2.Error)(nil)
+)
+
 var notAuthorized = code.Register(-32095, "request not authorized")
 
 var testOK = handler.New(func(ctx context.Context) (string, error) {
 	return "OK", nil
 })
+
+var testService = handler.Map{
+	// Verify that we can bind methods of a value.
+	"Add": handler.New((dummy{}).Add),
+	"Mul": handler.New((dummy{}).Mul),
+	"Max": handler.New((dummy{}).Max),
+
+	// Verify that we can bind free functions.
+	"Nil":  handler.New(methodNil),
+	"Ctx":  handler.New(methodCtx),
+	"Ping": handler.New(methodPing),
+}
 
 type dummy struct{}
 
@@ -61,27 +79,24 @@ func (dummy) Max(_ context.Context, vs ...int) (int, error) {
 	return max, nil
 }
 
-// Nil does not require any parameters.
-func (dummy) Nil(_ context.Context) (int, error) { return 42, nil }
+// methodNil does not require any parameters.
+func methodNil(_ context.Context) (int, error) { return 42, nil }
 
-// Ctx validates that its context includes the request.
-func (dummy) Ctx(ctx context.Context, req *jrpc2.Request) (int, error) {
+// methodCtx validates that its context includes the request.
+func methodCtx(ctx context.Context, req *jrpc2.Request) (int, error) {
 	if creq := jrpc2.InboundRequest(ctx); creq != req {
 		return 0, fmt.Errorf("wrong req in context %p ≠ %p", creq, req)
 	}
 	return 1, nil
 }
 
-// Ping responds only to notifications.
-func (dummy) Ping(ctx context.Context, req *jrpc2.Request) error {
+// methodPing responds only to notifications.
+func methodPing(ctx context.Context, req *jrpc2.Request) error {
 	if !req.IsNotification() {
 		return errors.New("called Ping expecting a response")
 	}
 	return nil
 }
-
-// Unrelated should not be picked up by the server.
-func (dummy) Unrelated() string { return "ceci n'est pas une méthode" }
 
 var callTests = []struct {
 	method string
@@ -98,9 +113,9 @@ var callTests = []struct {
 	{"Test.Nil", json.RawMessage("null"), 42},
 }
 
-func TestMethodNames(t *testing.T) {
+func TestServerInfo_methodNames(t *testing.T) {
 	loc := server.NewLocal(handler.ServiceMap{
-		"Test": handler.NewService(dummy{}),
+		"Test": testService,
 	}, nil)
 	defer loc.Close()
 	s := loc.Server
@@ -114,9 +129,9 @@ func TestMethodNames(t *testing.T) {
 	}
 }
 
-func TestCall(t *testing.T) {
+func TestClient_Call(t *testing.T) {
 	loc := server.NewLocal(handler.ServiceMap{
-		"Test": handler.NewService(dummy{}),
+		"Test": testService,
 	}, &server.LocalOptions{
 		Server: &jrpc2.ServerOptions{
 			AllowV1:     true,
@@ -148,9 +163,9 @@ func TestCall(t *testing.T) {
 	}
 }
 
-func TestCallResult(t *testing.T) {
+func TestClient_CallResult(t *testing.T) {
 	loc := server.NewLocal(handler.ServiceMap{
-		"Test": handler.NewService(dummy{}),
+		"Test": testService,
 	}, &server.LocalOptions{
 		Server: &jrpc2.ServerOptions{Concurrency: 16},
 	})
@@ -171,9 +186,9 @@ func TestCallResult(t *testing.T) {
 	}
 }
 
-func TestBatch(t *testing.T) {
+func TestClient_Batch(t *testing.T) {
 	loc := server.NewLocal(handler.ServiceMap{
-		"Test": handler.NewService(dummy{}),
+		"Test": testService,
 	}, &server.LocalOptions{
 		Server: &jrpc2.ServerOptions{
 			AllowV1:     true,
@@ -222,7 +237,7 @@ func TestBatch(t *testing.T) {
 }
 
 // Verify that notifications respect order of arrival.
-func TestNotificationOrder(t *testing.T) {
+func TestServer_notificationOrder(t *testing.T) {
 	var last int32
 
 	loc := server.NewLocal(handler.Map{
@@ -253,7 +268,7 @@ func TestNotificationOrder(t *testing.T) {
 
 // Verify that a method that returns only an error (no result payload) is set
 // up and handled correctly.
-func TestErrorOnly(t *testing.T) {
+func TestHandler_errorOnly(t *testing.T) {
 	const errMessage = "not enough strings"
 	loc := server.NewLocal(handler.Map{
 		"ErrorOnly": handler.New(func(_ context.Context, ss []string) error {
@@ -274,13 +289,8 @@ func TestErrorOnly(t *testing.T) {
 			t.Errorf("ErrorOnly: got %+v, want error", rsp)
 		} else if e, ok := err.(*jrpc2.Error); !ok {
 			t.Errorf("ErrorOnly: got %v, want *Error", err)
-		} else if e.Code() != 1 || e.Message() != errMessage {
-			t.Errorf("ErrorOnly: got (%s, %s), want (1, %s)", e.Code(), e.Message(), errMessage)
-		} else {
-			var data json.RawMessage
-			if err, want := e.UnmarshalData(&data), jrpc2.ErrNoData; err != want {
-				t.Errorf("UnmarshalData: got %#q, %v, want %v", string(data), err, want)
-			}
+		} else if e.Code != 1 || e.Message != errMessage {
+			t.Errorf("ErrorOnly: got (%s, %s), want (1, %s)", e.Code, e.Message, errMessage)
 		}
 	})
 	t.Run("CallExpectingOK", func(t *testing.T) {
@@ -301,7 +311,7 @@ func TestErrorOnly(t *testing.T) {
 
 // Verify that a timeout set on the context is respected by the server and
 // propagates back to the client as an error.
-func TestTimeout(t *testing.T) {
+func TestServer_contextTimeout(t *testing.T) {
 	loc := server.NewLocal(handler.Map{
 		"Stall": handler.New(func(ctx context.Context) (bool, error) {
 			t.Log("Stalling...")
@@ -332,7 +342,7 @@ func TestTimeout(t *testing.T) {
 }
 
 // Verify that stopping the server terminates in-flight requests.
-func TestServerStopCancellation(t *testing.T) {
+func TestServer_stopCancelsHandlers(t *testing.T) {
 	started := make(chan struct{})
 	stopped := make(chan error, 1)
 	loc := server.NewLocal(handler.Map{
@@ -367,8 +377,8 @@ func TestServerStopCancellation(t *testing.T) {
 	}
 }
 
-// Test that a handler can cancel an in-flight request with jrpc2.CancelRequest.
-func TestHandlerCancel(t *testing.T) {
+// Test that a handler can cancel an in-flight request.
+func TestServer_CancelRequest(t *testing.T) {
 	ready := make(chan struct{})
 	loc := server.NewLocal(handler.Map{
 		"Stall": handler.New(func(ctx context.Context) error {
@@ -383,7 +393,7 @@ func TestHandlerCancel(t *testing.T) {
 				return err
 			}
 			t.Logf("Test handler: cancelling %q...", id)
-			jrpc2.CancelRequest(ctx, id)
+			jrpc2.ServerFromContext(ctx).CancelRequest(id)
 			return nil
 		}),
 	}, nil)
@@ -419,7 +429,7 @@ func TestHandlerCancel(t *testing.T) {
 
 // Test that an error with data attached to it is correctly propagated back
 // from the server to the client, in a value of concrete type *Error.
-func TestErrors(t *testing.T) {
+func TestError_withData(t *testing.T) {
 	const errCode = -32000
 	const errData = `{"caroline":452}`
 	const errMessage = "error thingy"
@@ -428,7 +438,7 @@ func TestErrors(t *testing.T) {
 			return 17, jrpc2.DataErrorf(errCode, json.RawMessage(errData), errMessage)
 		}),
 		"Push": handler.New(func(ctx context.Context) (bool, error) {
-			return false, jrpc2.PushNotify(ctx, "PushBack", nil)
+			return false, jrpc2.ServerFromContext(ctx).Notify(ctx, "PushBack", nil)
 		}),
 		"Code": handler.New(func(ctx context.Context) error {
 			return code.Code(12345).Err()
@@ -446,16 +456,13 @@ func TestErrors(t *testing.T) {
 	if got, err := c.Call(context.Background(), "Err", nil); err == nil {
 		t.Errorf("Call(Push): got %#v, wanted error", got)
 	} else if e, ok := err.(*jrpc2.Error); ok {
-		if e.Code() != errCode {
-			t.Errorf("Error code: got %d, want %d", e.Code(), errCode)
+		if e.Code != errCode {
+			t.Errorf("Error code: got %d, want %d", e.Code, errCode)
 		}
-		if e.Message() != errMessage {
-			t.Errorf("Error message: got %q, want %q", e.Message(), errMessage)
+		if e.Message != errMessage {
+			t.Errorf("Error message: got %q, want %q", e.Message, errMessage)
 		}
-		var data json.RawMessage
-		if err := e.UnmarshalData(&data); err != nil {
-			t.Errorf("Unmarshaling error data: %v", err)
-		} else if s := string(data); s != errData {
+		if s := string(e.Data); s != errData {
 			t.Errorf("Error data: got %q, want %q", s, errData)
 		}
 	} else {
@@ -476,7 +483,7 @@ func TestErrors(t *testing.T) {
 }
 
 // Test that a client correctly reports bad parameters.
-func TestBadCallParams(t *testing.T) {
+func TestClient_badCallParams(t *testing.T) {
 	loc := server.NewLocal(handler.Map{
 		"Test": handler.New(func(_ context.Context, v interface{}) error {
 			return jrpc2.Errorf(129, "this should not be reached")
@@ -495,10 +502,10 @@ func TestBadCallParams(t *testing.T) {
 }
 
 // Verify that metrics are correctly propagated to server info.
-func TestServerInfo(t *testing.T) {
+func TestServer_serverInfoMetrics(t *testing.T) {
 	loc := server.NewLocal(handler.Map{
 		"Metricize": handler.New(func(ctx context.Context) (bool, error) {
-			m := jrpc2.ServerMetrics(ctx)
+			m := jrpc2.ServerFromContext(ctx).Metrics()
 			if m == nil {
 				t.Error("Request context does not contain a metrics writer")
 				return false, nil
@@ -558,7 +565,7 @@ func TestServerInfo(t *testing.T) {
 // Ensure that a correct request not sent via the *Client type will still
 // elicit a correct response from the server. Here we simulate a "different"
 // client by writing requests directly into the channel.
-func TestOtherClient(t *testing.T) {
+func TestServer_nonLibraryClient(t *testing.T) {
 	srv, cli := channel.Direct()
 	s := jrpc2.NewServer(handler.Map{
 		"X": testOK,
@@ -573,6 +580,7 @@ func TestOtherClient(t *testing.T) {
 		}
 	}()
 
+	const invalidIDMessage = `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request ID"}}`
 	tests := []struct {
 		input, want string
 	}{
@@ -607,6 +615,7 @@ func TestOtherClient(t *testing.T) {
 		// A batch of correct requests.
 		{`[{"jsonrpc":"2.0", "id":"a1", "method":"X"}, {"jsonrpc":"2.0", "id":"a2", "method": "X"}]`,
 			`[{"jsonrpc":"2.0","id":"a1","result":"OK"},{"jsonrpc":"2.0","id":"a2","result":"OK"}]`},
+		{`{"jsonrpc":"2.0", "id":-25, "method":"X"}`, `{"jsonrpc":"2.0","id":-25,"result":"OK"}`},
 
 		// Extra fields on an otherwise-correct request.
 		{`{"jsonrpc":"2.0","id": 7, "method": "Z", "params":[], "bogus":true}`,
@@ -648,6 +657,13 @@ func TestOtherClient(t *testing.T) {
 		// A broken single request should report a top-level error.
 		{`{"bogus"][++`,
 			`{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid request message"}}`},
+
+		// Various invalid ID checks.
+		{`{"jsonrpc":"2.0", "id":[], "method":"X"}`, invalidIDMessage},    // invalid ID: array
+		{`{"jsonrpc":"2.0", "id":["q"], "method":"X"}`, invalidIDMessage}, // "
+		{`{"jsonrpc":"2.0", "id":{}, "method":"X"}`, invalidIDMessage},    // invalid ID: object
+		{`{"jsonrpc":"2.0", "id":true, "method":"X"}`, invalidIDMessage},  // invalid ID: Boolean
+		{`{"jsonrpc":"2.0", "id":false, "method":"X"}`, invalidIDMessage}, // "
 	}
 	for _, test := range tests {
 		if err := cli.Send([]byte(test.input)); err != nil {
@@ -664,7 +680,7 @@ func TestOtherClient(t *testing.T) {
 }
 
 // Verify that server-side push notifications work.
-func TestPushNotify(t *testing.T) {
+func TestServer_Notify(t *testing.T) {
 	// Set up a server and client with server-side notification support.  Here
 	// we're just capturing the name of the notification method, as a sign we
 	// got the right thing.
@@ -673,8 +689,8 @@ func TestPushNotify(t *testing.T) {
 		"NoteMe": handler.New(func(ctx context.Context) (bool, error) {
 			// When this method is called, it posts a notification back to the
 			// client before returning.
-			if err := jrpc2.PushNotify(ctx, "method", nil); err != nil {
-				t.Errorf("PushNotify unexpectedly failed: %v", err)
+			if err := jrpc2.ServerFromContext(ctx).Notify(ctx, "method", nil); err != nil {
+				t.Errorf("Push Notify unexpectedly failed: %v", err)
 				return false, err
 			}
 			return true, nil
@@ -704,7 +720,9 @@ func TestPushNotify(t *testing.T) {
 	}
 
 	// Shut everything down to be sure the callbacks have settled.
+	// Sort the results since the order of arrival may vary.
 	loc.Close()
+	sort.Strings(notes)
 
 	want := []string{"explicit", "method"}
 	if diff := cmp.Diff(want, notes); diff != "" {
@@ -712,17 +730,46 @@ func TestPushNotify(t *testing.T) {
 	}
 }
 
+// Verify that server-side callbacks can time out.
+func TestServer_callbackTimeout(t *testing.T) {
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context) error {
+			tctx, cancel := context.WithTimeout(ctx, 5*time.Millisecond)
+			defer cancel()
+			rsp, err := jrpc2.ServerFromContext(ctx).Callback(tctx, "hey", nil)
+			if err == context.DeadlineExceeded {
+				t.Logf("Callback correctly failed: %v", err)
+				return nil
+			} else if err != nil {
+				return fmt.Errorf("unexpected error: %v", err)
+			}
+			return fmt.Errorf("got rsp=%+v, want error", rsp)
+		}),
+	}, &server.LocalOptions{
+		Server: &jrpc2.ServerOptions{AllowPush: true},
+
+		// N.B. Client does not have a callback handler, so calls will be ignored
+		// and no response will be generated.
+	})
+	defer loc.Close()
+	ctx := context.Background()
+
+	if _, err := loc.Client.Call(ctx, "Test", nil); err != nil {
+		t.Errorf("Call failed: %v", err)
+	}
+}
+
 // Verify that server-side callbacks work.
-func TestPushCall(t *testing.T) {
+func TestServer_Callback(t *testing.T) {
 	loc := server.NewLocal(handler.Map{
 		"CallMeMaybe": handler.New(func(ctx context.Context) error {
-			if rsp, err := jrpc2.PushCall(ctx, "succeed", nil); err != nil {
+			if rsp, err := jrpc2.ServerFromContext(ctx).Callback(ctx, "succeed", nil); err != nil {
 				t.Errorf("Callback failed: %v", err)
 			} else {
 				t.Logf("Callback succeeded: %v", rsp.ResultString())
 			}
 
-			if rsp, err := jrpc2.PushCall(ctx, "fail", nil); err == nil {
+			if rsp, err := jrpc2.ServerFromContext(ctx).Callback(ctx, "fail", nil); err == nil {
 				t.Errorf("Callback did not fail: got %v, want error", rsp)
 			}
 			return nil
@@ -743,22 +790,21 @@ func TestPushCall(t *testing.T) {
 		},
 	})
 	defer loc.Close()
-	s, c := loc.Server, loc.Client
 	ctx := context.Background()
 
-	// Post an explicit callback.
-	if _, err := s.Callback(ctx, "succeed", nil); err != nil {
-		t.Errorf("Callback explicit: unexpected error: %v", err)
+	// Call the method that posts a callback.
+	if _, err := loc.Client.Call(ctx, "CallMeMaybe", nil); err != nil {
+		t.Fatalf("Call CallMeMaybe: unexpected error: %v", err)
 	}
 
-	// Call the method that posts a callback.
-	if _, err := c.Call(ctx, "CallMeMaybe", nil); err != nil {
-		t.Errorf("Call CallMeMaybe: unexpected error: %v", err)
+	// Post an explicit callback.
+	if _, err := loc.Server.Callback(ctx, "succeed", nil); err != nil {
+		t.Errorf("Callback explicit: unexpected error: %v", err)
 	}
 }
 
 // Verify that a server push after the client closes does not trigger a panic.
-func TestDeadServerPush(t *testing.T) {
+func TestServer_pushAfterClose(t *testing.T) {
 	loc := server.NewLocal(make(handler.Map), &server.LocalOptions{
 		Server: &jrpc2.ServerOptions{AllowPush: true},
 	})
@@ -773,43 +819,47 @@ func TestDeadServerPush(t *testing.T) {
 }
 
 // Verify that an OnCancel hook is called when expected.
-func TestOnCancel(t *testing.T) {
-	// Set up a plumbing context so the test can unblock the server.
-	sctx, cancelServer := context.WithCancel(context.Background())
-	defer cancelServer()
+func TestClient_onCancelHook(t *testing.T) {
+	hooked := make(chan struct{}) // closed when hook notification is finished
+
 	loc := server.NewLocal(handler.Map{
-		// Block until explicitly cancelled, via sctx.
-		"Stall": handler.New(func(_ context.Context) error {
+		// Block until explicitly cancelled or a long timeout expires.
+		"Stall": handler.New(func(ctx context.Context) error {
 			select {
-			case <-sctx.Done():
-				t.Logf("Server unblocked; returning err=%v", sctx.Err())
-				return sctx.Err()
+			case <-ctx.Done():
+				t.Logf("Method unblocked; returning err=%v", ctx.Err())
+				return ctx.Err()
 			case <-time.After(10 * time.Second): // shouldn't happen
 				t.Error("Timeout waiting for server cancellation")
 			}
 			return nil
 		}),
 
-		// Verify that setting the cancellation hook prevents the client from
-		// sending the default rpc.cancel notification.
-		"rpc.cancel": handler.New(func(ctx context.Context, ids json.RawMessage) error {
-			t.Errorf("Server-side rpc.cancel unexpectedly called: %s", string(ids))
+		// Cancel the specified request (notification only).
+		"computerSaysNo": handler.New(func(ctx context.Context, ids []string) error {
+			defer close(hooked)
+			if req := jrpc2.InboundRequest(ctx); !req.IsNotification() {
+				return jrpc2.Errorf(code.MethodNotFound, "no such method %q", req.Method())
+			}
+			srv := jrpc2.ServerFromContext(ctx)
+			for _, id := range ids {
+				srv.CancelRequest(id)
+				t.Logf("In cancellation handler, cancelled request id=%v", id)
+			}
 			return nil
 		}),
 	}, &server.LocalOptions{
-		// Disable handling of built-in methods on the server.
-		Server: &jrpc2.ServerOptions{DisableBuiltin: true},
 		Client: &jrpc2.ClientOptions{
 			OnCancel: func(cli *jrpc2.Client, rsp *jrpc2.Response) {
 				t.Logf("OnCancel hook called with id=%q, err=%v", rsp.ID(), rsp.Error())
-				cancelServer()
+				cli.Notify(context.Background(), "computerSaysNo", []string{rsp.ID()})
 			},
 		},
 	})
 
-	// Call a method on the server that will stall until cancelServer is called.
+	// Call a method on the server that will stall until its context terminates.
 	// On the client side, set a deadline to expire the caller's context.
-	// The cancellation hook will unblock the server.
+	// The cancellation hook will notify the server to unblock the method.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -819,6 +869,7 @@ func TestOnCancel(t *testing.T) {
 	} else if err != context.DeadlineExceeded {
 		t.Errorf("Stall: got error %v, want %v", err, context.Canceled)
 	}
+	<-hooked
 	loc.Client.Close()
 	if err := loc.Server.Wait(); err != nil {
 		t.Errorf("Server exit status: %v", err)
@@ -854,7 +905,7 @@ func TestContextPlumbing(t *testing.T) {
 }
 
 // Verify that the request-checking hook works.
-func TestRequestHook(t *testing.T) {
+func TestServer_checkRequestHook(t *testing.T) {
 	const wantResponse = "Hey girl"
 	const wantToken = "OK"
 
@@ -934,7 +985,7 @@ func TestRequestHook(t *testing.T) {
 
 // Verify that calling a wrapped method which takes no parameters, but in which
 // the caller provided parameters, will correctly report an error.
-func TestNoParams(t *testing.T) {
+func TestHandler_noParams(t *testing.T) {
 	loc := server.NewLocal(handler.Map{"Test": testOK}, nil)
 	defer loc.Close()
 
@@ -983,15 +1034,18 @@ func TestNetwork(t *testing.T) {
 		{"localhost:http", "tcp"}, // host and service name
 	}
 	for _, test := range tests {
-		got := jrpc2.Network(test.input)
+		got, addr := jrpc2.Network(test.input)
 		if got != test.want {
-			t.Errorf("Network(%q): got %q, want %q", test.input, got, test.want)
+			t.Errorf("Network(%q) type: got %q, want %q", test.input, got, test.want)
+		}
+		if addr != test.input {
+			t.Errorf("Network(%q) addr: got %q, want %q", test.input, addr, test.input)
 		}
 	}
 }
 
 // Verify that the context passed to an assigner has the correct structure.
-func TestAssignContext(t *testing.T) {
+func TestHandler_assignContext(t *testing.T) {
 	loc := server.NewLocal(assignFunc(func(ctx context.Context, method string) jrpc2.Handler {
 		req := jrpc2.InboundRequest(ctx)
 		if req == nil {
@@ -1019,17 +1073,17 @@ type assignFunc func(context.Context, string) jrpc2.Handler
 func (a assignFunc) Assign(ctx context.Context, m string) jrpc2.Handler { return a(ctx, m) }
 func (assignFunc) Names() []string                                      { return nil }
 
-func TestWaitStatus(t *testing.T) {
+func TestServer_WaitStatus(t *testing.T) {
 	check := func(t *testing.T, stat jrpc2.ServerStatus, closed, stopped bool, wantErr error) {
 		t.Helper()
 		t.Logf("Server status: %+v", stat)
 		if got, want := stat.Success(), wantErr == nil; got != want {
 			t.Errorf("Status success: got %v, want %v", got, want)
 		}
-		if got := stat.Closed(); got != closed {
+		if got := stat.Closed; got != closed {
 			t.Errorf("Status closed: got %v, want %v", got, closed)
 		}
-		if got := stat.Stopped(); got != stopped {
+		if got := stat.Stopped; got != stopped {
 			t.Errorf("Status stopped: got %v, want %v", got, stopped)
 		}
 		if stat.Err != wantErr {
@@ -1065,7 +1119,7 @@ func (buggyChannel) Send([]byte) error       { panic("should not be called") }
 func (b buggyChannel) Recv() ([]byte, error) { return []byte(b.data), b.err }
 func (buggyChannel) Close() error            { return nil }
 
-func TestStrictFields(t *testing.T) {
+func TestRequest_strictFields(t *testing.T) {
 	type other struct {
 		C bool `json:"charlie"`
 	}
@@ -1100,17 +1154,17 @@ func TestStrictFields(t *testing.T) {
 	defer loc.Close()
 
 	ctx := context.Background()
-	req := handler.Obj{
+	rsp, err := loc.Client.Call(ctx, "Test", handler.Obj{
 		"alpha":   "foo",
 		"bravo":   25,
 		"charlie": true, // exercise embedding
 		"delta":   31.5, // unknown field
+	})
+	if err != nil {
+		t.Fatalf("Call failed: %v", err)
 	}
+
 	t.Run("NonStrictResult", func(t *testing.T) {
-		rsp, err := loc.Client.Call(ctx, "Test", req)
-		if err != nil {
-			t.Fatalf("Call failed: %v", err)
-		}
 		var res result
 		if err := rsp.UnmarshalResult(&res); err != nil {
 			t.Errorf("UnmarshalResult: %v", err)
@@ -1119,10 +1173,6 @@ func TestStrictFields(t *testing.T) {
 	})
 
 	t.Run("StrictResult", func(t *testing.T) {
-		rsp, err := loc.Client.Call(ctx, "Test", req)
-		if err != nil {
-			t.Fatalf("Call failed: %v", err)
-		}
 		var res result
 		if err := rsp.UnmarshalResult(jrpc2.StrictFields(&res)); err == nil {
 			t.Errorf("UnmarshalResult: got %+v, want error", res)
@@ -1130,4 +1180,51 @@ func TestStrictFields(t *testing.T) {
 			t.Logf("UnmarshalResult: got expected error: %v", err)
 		}
 	})
+}
+
+func TestServerFromContext(t *testing.T) {
+	var got *jrpc2.Server
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context) error {
+			got = jrpc2.ServerFromContext(ctx)
+			return nil
+		}),
+	}, nil)
+	if _, err := loc.Client.Call(context.Background(), "Test", nil); err != nil {
+		t.Fatalf("Call failed: %v", err)
+	}
+	if err := loc.Close(); err != nil {
+		t.Errorf("Close failed: %v", err)
+	}
+	if got != loc.Server {
+		t.Errorf("ServerFromContext: got %p, want %p", got, loc.Server)
+	}
+}
+
+func TestServer_newContext(t *testing.T) {
+	// Prepare a context with a test value attached to it, that the handler can
+	// extract to verify that the base context was plumbed in correctly.
+	type ctxKey string
+	ctx := context.WithValue(context.Background(), ctxKey("test"), 42)
+
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context) error {
+			val := ctx.Value(ctxKey("test"))
+			if val == nil {
+				t.Error("Test value is not present in context")
+			} else if v, ok := val.(int); !ok || v != 42 {
+				t.Errorf("Wrong test value: got %+v, want %v", val, 42)
+			}
+			return nil
+		}),
+	}, &server.LocalOptions{
+		Server: &jrpc2.ServerOptions{
+			// Use the test context constructed above as the base request context.
+			NewContext: func() context.Context { return ctx },
+		},
+	})
+	defer loc.Close()
+	if _, err := loc.Client.Call(context.Background(), "Test", nil); err != nil {
+		t.Errorf("Call failed: %v", err)
+	}
 }

@@ -10,35 +10,20 @@ import (
 
 // Error is the concrete type of errors returned from RPC calls.
 type Error struct {
-	message string
-	code    code.Code
-	data    json.RawMessage
+	Message string          // the human-readable error message
+	Code    code.Code       // the machine-readable error code
+	Data    json.RawMessage // optional ancillary error data
 }
 
 // Error renders e to a human-readable string for the error interface.
-func (e Error) Error() string { return fmt.Sprintf("[%d] %s", e.code, e.message) }
+func (e Error) Error() string { return fmt.Sprintf("[%d] %s", e.Code, e.Message) }
 
-// Code returns the error code value associated with e.
-func (e Error) Code() code.Code { return e.code }
-
-// Message returns the message string associated with e.
-func (e Error) Message() string { return e.message }
-
-// HasData reports whether e has error data to unmarshal.
-func (e Error) HasData() bool { return len(e.data) != 0 }
-
-// UnmarshalData decodes the error data associated with e into v.  It returns
-// ErrNoData without modifying v if there was no data message attached to e.
-func (e Error) UnmarshalData(v interface{}) error {
-	if !e.HasData() {
-		return ErrNoData
-	}
-	return json.Unmarshal([]byte(e.data), v)
-}
+// ErrCode trivially satisfies the code.ErrCoder interface for an *Error.
+func (e Error) ErrCode() code.Code { return e.Code }
 
 // MarshalJSON implements the json.Marshaler interface for Error values.
 func (e Error) MarshalJSON() ([]byte, error) {
-	return json.Marshal(jerror{C: int32(e.code), M: e.message, D: e.data})
+	return json.Marshal(jerror{C: int32(e.Code), M: e.Message, D: e.Data})
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for Error values.
@@ -47,14 +32,11 @@ func (e *Error) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &v); err != nil {
 		return err
 	}
-	e.code = code.Code(v.C)
-	e.message = v.M
-	e.data = v.D
+	e.Code = code.Code(v.C)
+	e.Message = v.M
+	e.Data = v.D
 	return nil
 }
-
-// ErrNoData indicates that there are no data to unmarshal.
-var ErrNoData = errors.New("no data to unmarshal")
 
 // errServerStopped is returned by Server.Wait when the server was shut down by
 // an explicit call to its Stop method or orderly termination of its channel.
@@ -63,6 +45,16 @@ var errServerStopped = errors.New("the server has been stopped")
 // errClientStopped is the error reported when a client is shut down by an
 // explicit call to its Close method.
 var errClientStopped = errors.New("the client has been stopped")
+
+// errEmptyMethod is the error reported for an empty request method name.
+var errEmptyMethod = &Error{Code: code.InvalidRequest, Message: "empty method name"}
+
+// errChannelClosed is the error reported to a pending callback when the client
+// channel has closed before the call completed.
+var errChannelClosed = &Error{Code: code.Cancelled, Message: "client channel terminated"}
+
+// errEmptyBatch is the error reported for an empty request batch.
+var errEmptyBatch = &Error{Code: code.InvalidRequest, Message: "empty request batch"}
 
 // ErrConnClosed is returned by a server's push-to-client methods if they are
 // called after the client connection is closed.
@@ -79,10 +71,10 @@ func Errorf(code code.Code, msg string, args ...interface{}) error {
 // specified code, error data, and formatted message string.
 // If v == nil this behaves identically to Errorf(code, msg, args...).
 func DataErrorf(code code.Code, v interface{}, msg string, args ...interface{}) error {
-	e := &Error{code: code, message: fmt.Sprintf(msg, args...)}
+	e := &Error{Code: code, Message: fmt.Sprintf(msg, args...)}
 	if v != nil {
 		if data, err := json.Marshal(v); err == nil {
-			e.data = data
+			e.Data = data
 		}
 	}
 	return e

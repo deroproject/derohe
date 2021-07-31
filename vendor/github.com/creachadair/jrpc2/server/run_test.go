@@ -21,12 +21,12 @@ func (t *testService) Assigner() (jrpc2.Assigner, error) {
 	return t.assigner, nil
 }
 
-func (t *testService) Finish(stat jrpc2.ServerStatus) {
+func (t *testService) Finish(_ jrpc2.Assigner, stat jrpc2.ServerStatus) {
 	t.finishCalled = true
 	t.stat = stat
 }
 
-func TestSimple(t *testing.T) {
+func TestRun(t *testing.T) {
 	svc := &testService{assigner: handler.Map{
 		"Test": handler.New(func(ctx context.Context) string {
 			return "OK"
@@ -44,8 +44,7 @@ func TestSimple(t *testing.T) {
 		}
 	}()
 
-	srv := server.NewSimple(svc, nil)
-	if err := srv.Run(spipe); err != nil {
+	if err := server.Run(spipe, svc, nil); err != nil {
 		t.Errorf("Server failed: %v", err)
 	}
 	if result != "OK" {

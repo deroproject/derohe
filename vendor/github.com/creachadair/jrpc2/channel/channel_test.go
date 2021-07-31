@@ -20,7 +20,7 @@ func newPipe(framing Framing) (client, server Channel) {
 	return
 }
 
-func testSendRecv(t *testing.T, s Sender, r Receiver, msg string) {
+func testSendRecv(t *testing.T, s, r Channel, msg string) {
 	var wg sync.WaitGroup
 	var sendErr, recvErr error
 	var data []byte
@@ -84,7 +84,6 @@ var tests = []struct {
 	{"RS", Split('\x1e')},
 	{"RawJSON", RawJSON},
 	{"StrictHeader", StrictHeader("text/plain")},
-	{"Varint", Varint},
 }
 
 // N.B. the messages in this list must be valid JSON, since the RawJSON framing
@@ -199,48 +198,5 @@ func TestHeaderTypeMismatch(t *testing.T) {
 		} else {
 			t.Logf("Recv OK: %q", msg)
 		}
-	}
-}
-
-func TestWithTrigger(t *testing.T) {
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			r, w := io.Pipe()
-			triggered := false
-			ch := WithTrigger(test.framing(r, w), func() {
-				triggered = true
-			})
-
-			// Send a message to the channel, then close it.
-			const message = `["fools", "rush", "in"]`
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				t.Log("Sending...")
-				if err := ch.Send([]byte(message)); err != nil {
-					t.Errorf("Send failed: %v", err)
-				}
-				t.Logf("Close: err=%v", ch.Close())
-			}()
-
-			// Read messages from the channel till it closes, then check that
-			// the trigger was correctly invoked.
-			for {
-				msg, err := ch.Recv()
-				if err == io.EOF {
-					t.Log("Recv: returned io.EOF")
-					break
-				} else if err != nil {
-					t.Errorf("Recv: unexpected error: %v", err)
-					break
-				}
-				t.Logf("Recv: msg=%q", string(msg))
-			}
-
-			<-done
-			if !triggered {
-				t.Error("After channel close: trigger not called")
-			}
-		})
 	}
 }

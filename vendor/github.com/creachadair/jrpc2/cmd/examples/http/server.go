@@ -4,7 +4,7 @@
 // Usage (see also the client example):
 //
 //   go build github.com/creachadair/jrpc2/cmd/examples/http
-//   ./http -port 8080
+//   ./http -listen :8080
 //
 // The server accepts RPCs on http://localhost:<port>/rpc.
 package main
@@ -12,7 +12,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -22,28 +21,31 @@ import (
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/jhttp"
 	"github.com/creachadair/jrpc2/metrics"
-	"github.com/creachadair/jrpc2/server"
 )
 
-var port = flag.Int("port", 0, "Service port")
+var listenAddr = flag.String("listen", "", "Service address")
 
 func main() {
 	flag.Parse()
-	if *port <= 0 {
-		log.Fatal("You must provide a positive -port to listen on")
+	if *listenAddr == "" {
+		log.Fatal("You must provide a non-empty -listen address")
 	}
 
-	// Start a local server with a single trivial method and bridge it to HTTP.
-	local := server.NewLocal(handler.Map{
-		"Ping": handler.New(func(ctx context.Context, msg ...string) string {
-			return "OK: " + strings.Join(msg, ", ")
-		}),
-	}, &server.LocalOptions{
+	// Start an HTTP bridge with a single trivial method.
+	bridge := jhttp.NewBridge(handler.Map{
+		"Ping": handler.New(ping),
+	}, &jhttp.BridgeOptions{
 		Server: &jrpc2.ServerOptions{
 			Logger:  log.New(os.Stderr, "[jhttp.Bridge] ", log.LstdFlags|log.Lshortfile),
 			Metrics: metrics.New(),
 		},
 	})
-	http.Handle("/rpc", jhttp.NewBridge(local.Client))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
+	defer bridge.Close()
+
+	http.Handle("/rpc", bridge)
+	log.Fatal(http.ListenAndServe(*listenAddr, nil))
+}
+
+func ping(ctx context.Context, msg ...string) string {
+	return "OK: " + strings.Join(msg, "|")
 }

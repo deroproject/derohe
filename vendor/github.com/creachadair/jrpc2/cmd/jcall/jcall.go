@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/channel"
-	"github.com/creachadair/jrpc2/channel/chanutil"
 	"github.com/creachadair/jrpc2/jctx"
 	"github.com/creachadair/jrpc2/jhttp"
 )
@@ -28,12 +28,12 @@ import (
 var (
 	dialTimeout = flag.Duration("dial", 5*time.Second, "Timeout on dialing the server (0 for no timeout)")
 	callTimeout = flag.Duration("timeout", 0, "Timeout on each call (0 for no timeout)")
-	doHTTP      = flag.Bool("http", false, "Connect via HTTP (address is the endpoint URL)")
 	doNotify    = flag.Bool("notify", false, "Send a notification")
 	withContext = flag.Bool("c", false, "Send context with request")
 	chanFraming = flag.String("f", envOrDefault("JCALL_FRAMING", "raw"), "Channel framing")
 	doBatch     = flag.Bool("batch", false, "Issue calls as a batch rather than sequentially")
 	doErrors    = flag.Bool("e", false, "Print error values to stdout")
+	doIndent    = flag.Bool("i", false, "Indent JSON output")
 	doMulti     = flag.Bool("m", false, "Issue the same call repeatedly with different arguments")
 	doTiming    = flag.Bool("T", false, "Print call timing stats")
 	withLogging = flag.Bool("v", false, "Enable verbose logging")
@@ -61,7 +61,6 @@ server in order for communication to work. The options are:
   line       -- byte-terminated, records end in LF (Unicode 10)
   lsp        -- header-framed, content-type application/vscode-jsonrpc (like LSP)
   raw        -- unframed, each message is a complete JSON value
-  varint     -- length-prefixed, length is a binary varint
 
 See also: https://godoc.org/github.com/creachadair/jrpc2/channel.
 The default framing is read from the JCALL_FRAMING environment variable, if set.
@@ -111,12 +110,12 @@ func main() {
 	// connection; the HTTP client will handle that.
 	start := time.Now()
 	var cc channel.Channel
-	if *doHTTP || isHTTP(flag.Arg(0)) {
-		cc = jhttp.NewChannel(flag.Arg(0))
-	} else if nc := chanutil.Framing(*chanFraming); nc == nil {
+	if isHTTP(flag.Arg(0)) {
+		cc = jhttp.NewChannel(flag.Arg(0), nil)
+	} else if nc := newFraming(*chanFraming); nc == nil {
 		log.Fatalf("Unknown channel framing %q", *chanFraming)
 	} else {
-		ntype := jrpc2.Network(flag.Arg(0))
+		ntype, _ := jrpc2.Network(flag.Arg(0))
 		conn, err := net.DialTimeout(ntype, flag.Arg(0), *dialTimeout)
 		if err != nil {
 			log.Fatalf("Dial %q: %v", flag.Arg(0), err)
@@ -173,7 +172,7 @@ func printResults(rsps []*jrpc2.Response) (time.Duration, error) {
 		if rerr := rsp.Error(); rerr != nil {
 			if *doErrors {
 				etxt, _ := json.Marshal(rerr)
-				fmt.Println(string(etxt))
+				fmt.Println(formatJSON(etxt))
 			} else {
 				log.Printf("Error (%d): %v", i+1, rerr)
 			}
@@ -187,7 +186,7 @@ func printResults(rsps []*jrpc2.Response) (time.Duration, error) {
 			set(perr)
 			continue
 		}
-		fmt.Println(string(result))
+		fmt.Println(formatJSON(result))
 		dur += time.Since(pstart)
 	}
 	return dur, err
@@ -237,7 +236,7 @@ func issueSequential(ctx context.Context, cli *jrpc2.Client, specs []jrpc2.Spec)
 		if perr := rsp.UnmarshalResult(&result); perr != nil {
 			return dur, err
 		}
-		fmt.Println(string(result))
+		fmt.Println(formatJSON(result))
 		pdur := time.Since(pstart)
 		dur += pdur
 		tprintf("[call %s]: %v call, %v print [%s]\n", spec.Method, cdur, pdur, callStatus(err))
@@ -276,6 +275,15 @@ func param(s string) interface{} {
 	return json.RawMessage(s)
 }
 
+func formatJSON(data []byte) string {
+	if *doIndent {
+		var buf bytes.Buffer
+		json.Indent(&buf, data, "", "  ")
+		return buf.String()
+	}
+	return string(data)
+}
+
 func isHTTP(addr string) bool {
 	return strings.HasPrefix(addr, "http:") || strings.HasPrefix(addr, "https:")
 }
@@ -296,4 +304,31 @@ func envOrDefault(env, dflt string) string {
 		return s
 	}
 	return dflt
+}
+
+// newFraming returns a channel.Framing described by the specified name, or nil
+// if the name is unknown. The framing types currently understood are:
+//
+//    header:t -- corresponds to channel.Header(t)
+//    strict:t -- corresponds to channel.StrictHeader(t)
+//    line     -- corresponds to channel.Line
+//    lsp      -- corresponds to channel.LSP
+//    raw      -- corresponds to channel.RawJSON
+//
+func newFraming(name string) channel.Framing {
+	if t := strings.TrimPrefix(name, "header:"); t != name {
+		return channel.Header(t)
+	}
+	if t := strings.TrimPrefix(name, "strict:"); t != name {
+		return channel.StrictHeader(t)
+	}
+	switch name {
+	case "line":
+		return channel.Line
+	case "lsp":
+		return channel.LSP
+	case "raw":
+		return channel.RawJSON
+	}
+	return nil
 }

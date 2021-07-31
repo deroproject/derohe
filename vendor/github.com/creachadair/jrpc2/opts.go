@@ -14,8 +14,9 @@ import (
 
 // ServerOptions control the behaviour of a server created by NewServer.
 // A nil *ServerOptions provides sensible defaults.
+// It is safe to share server options among multiple server instances.
 type ServerOptions struct {
-	// If not nil, send debug logs here.
+	// If not nil, send debug text logs here.
 	Logger *log.Logger
 
 	// If not nil, the methods of this value are called to log each request
@@ -38,21 +39,26 @@ type ServerOptions struct {
 	// along to the given assigner.
 	DisableBuiltin bool
 
-	// Allows up to the specified number of goroutines to execute concurrently
-	// in request handlers. A value less than 1 uses runtime.NumCPU().  Note
-	// that this setting does not constrain order of issue.
+	// Allows up to the specified number of goroutines to execute in parallel in
+	// request handlers. A value less than 1 uses runtime.NumCPU().  Note that
+	// this setting does not constrain order of issue.
 	Concurrency int
+
+	// If set, this function is called to create a new base request context.
+	// If unset, the server uses a background context.
+	NewContext func() context.Context
 
 	// If set, this function is called with the method name and encoded request
 	// parameters received from the client, before they are delivered to the
 	// handler. Its return value replaces the context and argument values. This
 	// allows the server to decode context metadata sent by the client.
-	// If unset, ctx and params are used as given.
+	// If unset, context and parameters are used as given.
 	DecodeContext func(context.Context, string, json.RawMessage) (context.Context, json.RawMessage, error)
 
-	// If set, this function is called with the context and the client request
-	// to be delivered to the handler. If CheckRequest reports a non-nil error,
-	// the request fails with that error without invoking the handler.
+	// If set, this function is called with the context and client request
+	// (after decoding, if DecodeContext is set) that are to be delivered to the
+	// handler. If CheckRequest reports a non-nil error, the request fails with
+	// that error without invoking the handler.
 	CheckRequest func(ctx context.Context, req *Request) error
 
 	// If set, use this value to record server metrics. All servers created
@@ -61,7 +67,8 @@ type ServerOptions struct {
 	Metrics *metrics.M
 
 	// If nonzero this value as the server start time; otherwise, use the
-	// current time when Start is called.
+	// current time when Start is called. All servers created from the same
+	// options will share the same start time if one is set.
 	StartTime time.Time
 }
 
@@ -89,6 +96,13 @@ func (s *ServerOptions) startTime() time.Time {
 		return time.Time{}
 	}
 	return s.StartTime
+}
+
+func (o *ServerOptions) newContext() func() context.Context {
+	if o == nil || o.NewContext == nil {
+		return context.Background
+	}
+	return o.NewContext
 }
 
 type decoder = func(context.Context, string, json.RawMessage) (context.Context, json.RawMessage, error)
@@ -135,10 +149,6 @@ type ClientOptions struct {
 	// required "jsonrpc" version marker.
 	AllowV1 bool
 
-	// Instructs the client not to send rpc.cancel notifications to the server
-	// when the context for an in-flight request terminates.
-	DisableCancel bool
-
 	// If set, this function is called with the context, method name, and
 	// encoded request parameters before the request is sent to the server.
 	// Its return value replaces the request parameters. This allows the client
@@ -156,15 +166,17 @@ type ClientOptions struct {
 	// If unset, server requests are logged and discarded. At most one
 	// invocation of this callback will be active at a time.
 	// Server callbacks are a non-standard extension of JSON-RPC.
+	//
+	// If a callback handler panics, the client will recover the panic and
+	// report a system error back to the server describing the error.
 	OnCallback func(context.Context, *Request) (interface{}, error)
 
 	// If set, this function is called when the context for a request terminates.
 	// The function receives the client and the response that was cancelled.
 	// The hook can obtain the ID and error value from rsp.
 	//
-	// Setting this option disables the default rpc.cancel handling (as DisableCancel).
-	// Note that the hook does not receive the client context, which has already
-	// ended by the time the hook is called.
+	// Note that the hook does not receive the request context, which has
+	// already ended by the time the hook is called.
 	OnCancel func(cli *Client, rsp *Response)
 }
 
@@ -176,8 +188,7 @@ func (c *ClientOptions) logger() logger {
 	return func(msg string, args ...interface{}) { logger.Output(2, fmt.Sprintf(msg, args...)) }
 }
 
-func (c *ClientOptions) allowV1() bool     { return c != nil && c.AllowV1 }
-func (c *ClientOptions) allowCancel() bool { return c == nil || !c.DisableCancel }
+func (c *ClientOptions) allowV1() bool { return c != nil && c.AllowV1 }
 
 type encoder = func(context.Context, string, json.RawMessage) (json.RawMessage, error)
 
@@ -205,20 +216,31 @@ func (c *ClientOptions) handleCancel() func(*Client, *Response) {
 	return c.OnCancel
 }
 
-func (c *ClientOptions) handleCallback() func(*jmessage) ([]byte, error) {
+func (c *ClientOptions) handleCallback() func(*jmessage) []byte {
 	if c == nil || c.OnCallback == nil {
 		return nil
 	}
 	cb := c.OnCallback
-	return func(req *jmessage) ([]byte, error) {
+	return func(req *jmessage) []byte {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		// Recover panics from the callback handler to ensure the server gets a
+		// response even if the callback fails without a result.
+		//
+		// Otherwise, a client and a server (a) running in the same process, and
+		// (b) where panics are recovered at a higher level, and (c) without
+		// cleaning up the client, can cause the server to stall in a manner that
+		// is difficult to debug.
+		//
+		// See https://github.com/creachadair/jrpc2/issues/41.
 		rsp := &jmessage{V: Version, ID: req.ID}
-		v, err := cb(ctx, &Request{
-			id:     req.ID,
-			method: req.M,
-			params: req.P,
+		v, err := panicToError(func() (interface{}, error) {
+			return cb(ctx, &Request{
+				id:     req.ID,
+				method: req.M,
+				params: req.P,
+			})
 		})
 		if err == nil {
 			rsp.R, err = json.Marshal(v)
@@ -228,11 +250,21 @@ func (c *ClientOptions) handleCallback() func(*jmessage) ([]byte, error) {
 			if e, ok := err.(*Error); ok {
 				rsp.E = e
 			} else {
-				rsp.E = &Error{code: code.FromError(err), message: err.Error()}
+				rsp.E = &Error{Code: code.FromError(err), Message: err.Error()}
 			}
 		}
-		return json.Marshal(rsp)
+		bits, _ := json.Marshal(rsp)
+		return bits
 	}
+}
+
+func panicToError(f func() (interface{}, error)) (v interface{}, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("panic in callback handler: %v", p)
+		}
+	}()
+	return f()
 }
 
 // An RPCLogger receives callbacks from a server to record the receipt of

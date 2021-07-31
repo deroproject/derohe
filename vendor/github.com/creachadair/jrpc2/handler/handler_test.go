@@ -1,4 +1,4 @@
-package handler
+package handler_test
 
 import (
 	"context"
@@ -6,12 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"testing"
 
 	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/handler"
 	"github.com/google/go-cmp/cmp"
 )
+
+func y1(context.Context) (int, error) { return 0, nil }
+
+func y2(_ context.Context, vs ...int) (int, error) { return len(vs), nil }
+
+func y3(context.Context) error { return errors.New("blah") }
+
+type argStruct struct {
+	A string `json:"alpha"`
+	B int    `json:"bravo"`
+}
 
 // Verify that the New function correctly handles the various type signatures
 // it's advertised to support, and not others.
@@ -29,10 +40,16 @@ func TestNew(t *testing.T) {
 		{v: func(context.Context) (int, error) { return 0, nil }},
 		{v: func(context.Context, []int) error { return nil }},
 		{v: func(context.Context, []bool) (float64, error) { return 0, nil }},
+		{v: func(context.Context, *argStruct) int { return 0 }},
+		{v: func(context.Context, ...int) error { return nil }},
+		{v: func(context.Context, ...int) bool { return true }},
 		{v: func(context.Context, ...string) (bool, error) { return false, nil }},
+		{v: func(context.Context, *jrpc2.Request) error { return nil }},
+		{v: func(context.Context, *jrpc2.Request) float64 { return 0 }},
 		{v: func(context.Context, *jrpc2.Request) (byte, error) { return '0', nil }},
 		{v: func(context.Context) bool { return true }},
 		{v: func(context.Context, int) bool { return true }},
+		{v: func(_ context.Context, s [1]string) string { return s[0] }},
 
 		// Things that aren't supposed to work.
 		{v: func() error { return nil }, bad: true},                           // wrong # of params
@@ -47,7 +64,7 @@ func TestNew(t *testing.T) {
 		{v: func(context.Context) (error, float64) { return nil, 0 }, bad: true}, // ...
 	}
 	for _, test := range tests {
-		got, err := newHandler(test.v)
+		got, err := handler.Check(test.v)
 		if !test.bad && err != nil {
 			t.Errorf("newHandler(%T): unexpected error: %v", test.v, err)
 		} else if test.bad && err == nil {
@@ -56,46 +73,49 @@ func TestNew(t *testing.T) {
 	}
 }
 
-type dummy struct{}
-
-func (dummy) Y1(context.Context) (int, error) { return 0, nil }
-
-func (dummy) N1(string) {}
-
-func (dummy) Y2(_ context.Context, vs ...int) (int, error) { return len(vs), nil }
-
-func (dummy) N2() bool { return false }
-
-func (dummy) Y3(context.Context) error { return errors.New("blah") }
-
-//lint:ignore U1000 verify unexported methods are not assigned
-func (dummy) n3(context.Context, []string) error { return nil }
-
-// Verify that the NewService function obtains the correct functions.
-func TestNewService(t *testing.T) {
-	var stub dummy
-	ctx := context.Background()
-	m := NewService(stub)
-	for _, test := range []string{"Y1", "Y2", "Y3", "N1", "N2", "n3", "foo"} {
-		got := m.Assign(ctx, test) != nil
-		want := strings.HasPrefix(test, "Y")
-		if got != want {
-			t.Errorf("Assign %q: got %v, want %v", test, got, want)
-		}
+// Verify that the handling of pointer-typed arguments does not incorrectly
+// introduce another pointer indirection.
+func TestNew_pointerRegression(t *testing.T) {
+	var got argStruct
+	call := handler.New(func(_ context.Context, arg *argStruct) error {
+		got = *arg
+		t.Logf("Got argument struct: %+v", got)
+		return nil
+	})
+	req, err := jrpc2.ParseRequests([]byte(`{
+   "jsonrpc": "2.0",
+   "id":      "foo",
+   "method":  "bar",
+   "params":{
+      "alpha": "xyzzy",
+      "bravo": 23
+   }}`))
+	if err != nil {
+		t.Fatalf("Parse request failed: %v", err)
+	}
+	if _, err := call.Handle(context.Background(), req[0]); err != nil {
+		t.Errorf("Handle failed: %v", err)
+	}
+	want := argStruct{A: "xyzzy", B: 23}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Wrong argStruct value: (-want, +got)\n%s", diff)
 	}
 }
 
-// Verify that a stub with no usable methods panics.
-func TestEmptyService(t *testing.T) {
-	type empty struct{}
-
-	defer func() {
-		if x := recover(); x != nil {
-			t.Logf("Received expected panic: %v", x)
-		}
-	}()
-	m := NewService(empty{})
-	t.Fatalf("NewService(empty): got %v, want panic", m)
+func ExampleCheck() {
+	fi, err := handler.Check(func(_ context.Context, ss []string) int { return len(ss) })
+	if err != nil {
+		log.Fatalf("Check failed: %v", err)
+	}
+	fmt.Printf("Argument type: %v\n", fi.Argument)
+	fmt.Printf("Result type:   %v\n", fi.Result)
+	fmt.Printf("Reports error? %v\n", fi.ReportsError)
+	fmt.Printf("Wrapped type:  %T\n", fi.Wrap())
+	// Output:
+	// Argument type: []string
+	// Result type:   int
+	// Reports error? false
+	// Wrapped type:  handler.Func
 }
 
 // Verify that a ServiceMap assigns names correctly.
@@ -115,7 +135,11 @@ func TestServiceMap(t *testing.T) {
 		{"Test.N2", false},
 	}
 	ctx := context.Background()
-	m := ServiceMap{"Test": NewService(dummy{})}
+	m := handler.ServiceMap{"Test": handler.Map{
+		"Y1": handler.New(y1),
+		"Y2": handler.New(y2),
+		"Y3": handler.New(y3),
+	}}
 	for _, test := range tests {
 		got := m.Assign(ctx, test.name) != nil
 		if got != test.want {
@@ -140,7 +164,7 @@ func TestArgs(t *testing.T) {
 	var tmp stuff
 	tests := []struct {
 		json string
-		args Args
+		args handler.Args
 		want stuff
 		ok   bool
 	}{
@@ -153,25 +177,25 @@ func TestArgs(t *testing.T) {
 		{`null`, nil, stuff{}, true},
 
 		// Respect order of arguments and values.
-		{`["foo", 25]`, Args{&tmp.S, &tmp.Z}, stuff{S: "foo", Z: 25}, true},
-		{`[25, "foo"]`, Args{&tmp.Z, &tmp.S}, stuff{S: "foo", Z: 25}, true},
+		{`["foo", 25]`, handler.Args{&tmp.S, &tmp.Z}, stuff{S: "foo", Z: 25}, true},
+		{`[25, "foo"]`, handler.Args{&tmp.Z, &tmp.S}, stuff{S: "foo", Z: 25}, true},
 
-		{`[true, 3.5, "blah"]`, Args{&tmp.B, &tmp.F, &tmp.S},
+		{`[true, 3.5, "blah"]`, handler.Args{&tmp.B, &tmp.F, &tmp.S},
 			stuff{S: "blah", B: true, F: 3.5}, true},
 
 		// Skip values with a nil corresponding argument.
-		{`[true, 101, "ignored"]`, Args{&tmp.B, &tmp.Z, nil},
+		{`[true, 101, "ignored"]`, handler.Args{&tmp.B, &tmp.Z, nil},
 			stuff{B: true, Z: 101}, true},
-		{`[true, 101, "observed"]`, Args{&tmp.B, nil, &tmp.S},
+		{`[true, 101, "observed"]`, handler.Args{&tmp.B, nil, &tmp.S},
 			stuff{B: true, S: "observed"}, true},
 
 		// Mismatched argument/value count.
-		{`["wrong"]`, Args{&tmp.S, &tmp.Z}, stuff{}, false},   // too few values
-		{`["really", "wrong"]`, Args{&tmp.S}, stuff{}, false}, // too many values
+		{`["wrong"]`, handler.Args{&tmp.S, &tmp.Z}, stuff{}, false},   // too few values
+		{`["really", "wrong"]`, handler.Args{&tmp.S}, stuff{}, false}, // too many values
 
 		// Mismatched argument/value types.
-		{`["nope"]`, Args{&tmp.B}, stuff{}, false}, // wrong value type
-		{`[{}]`, Args{&tmp.F}, stuff{}, false},     // "
+		{`["nope"]`, handler.Args{&tmp.B}, stuff{}, false}, // wrong value type
+		{`[{}]`, handler.Args{&tmp.F}, stuff{}, false},     // "
 	}
 	for _, test := range tests {
 		tmp = stuff{} // reset
@@ -207,7 +231,7 @@ func TestArgsMarshal(t *testing.T) {
 		}, 3}, `[1,{"ok":"yes"},3]`},
 	}
 	for _, test := range tests {
-		got, err := json.Marshal(Args(test.input))
+		got, err := json.Marshal(handler.Args(test.input))
 		if err != nil {
 			t.Errorf("Marshal %+v: unexpected error: %v", test.input, err)
 		} else if s := string(got); s != test.want {
@@ -231,22 +255,22 @@ func TestObjUnmarshal(t *testing.T) {
 
 	tests := []struct {
 		input string
-		obj   Obj
+		obj   handler.Obj
 		want  *values
 	}{
-		{"", nil, nil},                      // error: empty text
-		{"true", nil, nil},                  // error: not an object
-		{"[]", nil, nil},                    // error: not an object
-		{`{"x":true}`, Obj{"x": &v.S}, nil}, // error: wrong type
+		{"", nil, nil},     // error: empty text
+		{"true", nil, nil}, // error: not an object
+		{"[]", nil, nil},   // error: not an object
+		{`{"x":true}`, handler.Obj{"x": &v.S}, nil}, // error: wrong type
 
 		// Nothing to unpack, no place to put it.
 		{"{}", nil, &values{}},
 
 		// Ignore non-matching keys but keep matching ones.
-		{`{"apple":true, "laser":"sauce"}`, Obj{"laser": &v.S}, &values{S: "sauce"}},
+		{`{"apple":true, "laser":"sauce"}`, handler.Obj{"laser": &v.S}, &values{S: "sauce"}},
 
 		// Assign to matching fields including compound types.
-		{`{"x": 25, "q": "snark", "sub": {"foo":"bark"}, "yawp": false, "#":[5,3,2,4,7]}`, Obj{
+		{`{"x": 25, "q": "snark", "sub": {"foo":"bark"}, "yawp": false, "#":[5,3,2,4,7]}`, handler.Obj{
 			"x":   &v.Z,
 			"q":   &v.S,
 			"sub": &v.T,
@@ -281,7 +305,7 @@ func ExampleArgs_unmarshal() {
 	var count int
 	var item string
 
-	if err := json.Unmarshal([]byte(input), &Args{&count, nil, &item}); err != nil {
+	if err := json.Unmarshal([]byte(input), &handler.Args{&count, nil, &item}); err != nil {
 		log.Fatalf("Decoding failed: %v", err)
 	}
 	fmt.Printf("count=%d, item=%q\n", count, item)
@@ -290,7 +314,7 @@ func ExampleArgs_unmarshal() {
 }
 
 func ExampleArgs_marshal() {
-	bits, err := json.Marshal(Args{1, "foo", false, nil})
+	bits, err := json.Marshal(handler.Args{1, "foo", false, nil})
 	if err != nil {
 		log.Fatalf("Encoding failed: %v", err)
 	}
@@ -305,7 +329,7 @@ func ExampleObj_unmarshal() {
 	var uid int
 	var name string
 
-	if err := json.Unmarshal([]byte(input), &Obj{
+	if err := json.Unmarshal([]byte(input), &handler.Obj{
 		"uid":  &uid,
 		"name": &name,
 	}); err != nil {
