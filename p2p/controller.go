@@ -43,7 +43,7 @@ import log "github.com/sirupsen/logrus"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/metrics"
+
 
 var chain *blockchain.Blockchain // external reference to chain
 
@@ -105,9 +105,6 @@ func P2P_Init(params map[string]interface{}) error {
 		}
 	}
 
-	// register the metrics with the metrics registry
-	metrics.Registry.MustRegister(block_propagation)
-	metrics.Registry.MustRegister(transaction_propagation)
 
 	go P2P_Server_v2()        // start accepting connections
 	go P2P_engine()           // start outgoing engine

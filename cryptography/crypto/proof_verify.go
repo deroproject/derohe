@@ -64,7 +64,7 @@ type ProtocolSupport struct {
 // sigma protocol
 type SigmaSupport struct {
 	c                            *big.Int
-	A_y, A_D, A_b, A_X, A_t, A_u *bn256.G1
+	A_y, A_D, A_b, A_X, A_t, A_u, A_u1 *bn256.G1
 }
 
 // support structures are those which
@@ -96,7 +96,7 @@ var gparams = NewGeneratorParams(128) // these can be pregenerated similarly as 
 
 // verify proof
 // first generate supporting structures
-func (proof *Proof) Verify(s *Statement, txid Hash, extra_value uint64) bool {
+func (proof *Proof) Verify(s *Statement, txid Hash, height uint64, extra_value uint64) bool {
 
 	var anonsupport AnonSupport
 	var protsupport ProtocolSupport
@@ -377,14 +377,14 @@ func (proof *Proof) Verify(s *Statement, txid Hash, extra_value uint64) bool {
 	//	klog.V(2).Infof("protsupport.tEval %s\n", protsupport.tEval.String())
 
 	{
-		var input []byte
-		input = append(input, []byte(PROTOCOL_CONSTANT)...)
-		input = append(input, s.Roothash[:]...)
-
-		point := HashToPoint(HashtoNumber(input))
-
+		point := HeightToPoint(height)
 		sigmasupport.A_u = new(bn256.G1).ScalarMult(point, proof.s_sk)
 		sigmasupport.A_u.Add(new(bn256.G1).Set(sigmasupport.A_u), new(bn256.G1).ScalarMult(proof.u, proof_c_neg))
+
+		point = HeightToPoint(height+BLOCK_BATCH_SIZE)
+		sigmasupport.A_u1 = new(bn256.G1).ScalarMult(point, proof.s_sk)
+		sigmasupport.A_u1.Add(new(bn256.G1).Set(sigmasupport.A_u1), new(bn256.G1).ScalarMult(proof.u1, proof_c_neg))
+	
 	}
 
 	//	klog.V(2).Infof("A_y %s\n", sigmasupport.A_y.String())
@@ -403,6 +403,7 @@ func (proof *Proof) Verify(s *Statement, txid Hash, extra_value uint64) bool {
 		input = append(input, sigmasupport.A_X.Marshal()...)
 		input = append(input, sigmasupport.A_t.Marshal()...)
 		input = append(input, sigmasupport.A_u.Marshal()...)
+		input = append(input, sigmasupport.A_u1.Marshal()...)
 		// fmt.Printf("C calculation expected %s actual %s\n",proof.c.Text(16), reducedhash(input).Text(16) )
 
 		if reducedhash(input).Text(16) != proof.c.Text(16) { // we must fail here

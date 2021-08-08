@@ -18,14 +18,28 @@
 
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import "net/http"
+import  "github.com/VictoriaMetrics/metrics"
 
-var Registry = prometheus.NewRegistry()
+// these are exported by the daemon for various analysis
 
-var DefaultRegisterer prometheus.Registerer = Registry
-var DefaultGatherer prometheus.Gatherer = Registry
 
-// register some default go collectors
-func init() {
-	Registry.MustRegister(prometheus.NewGoCollector())
+var Blockchain_tx_counter = metrics.NewCounter(`blockchain_tx_counter`)
+var Mempool_tx_counter = metrics.NewCounter(`mempool_tx_counter`)
+var Mempool_tx_count = metrics.NewCounter(`mempool_tx_count`) // its actually a gauge
+var Block_size = metrics.NewHistogram(`block_size`)
+var Block_tx = metrics.NewHistogram(`block_tx`)
+var Block_processing_time = metrics.NewHistogram(`block_processing_time`)
+var Transaction_size = metrics.NewHistogram(`transaction_size`)
+var Transaction_ring_size = metrics.NewHistogram(`transaction_ring_size`)
+var Transaction_outputs = metrics.NewHistogram("transaction_outputs") // a single tx will give to so many people
+
+// we may need to expose various p2p stats, but currently they can be skipped
+
+var Block_propagation = metrics.NewHistogram(`block_propagation`)
+var Transaction_propagation = metrics.NewHistogram(`transaction_propagation`)
+
+
+func WritePrometheus(w http.ResponseWriter, req *http.Request){
+	 metrics.WritePrometheus(w, true)
 }

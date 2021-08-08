@@ -308,9 +308,9 @@ var tx_template string = `{{define "tx"}}
                     <H4 style="margin:5px; color: red">Burns: {{.info.Burn_Value }} DERO</H4>
                 {{end}}
 
-                <H5>Block: <a href="/block/{{.info.ValidBlock}}">{{.info.ValidBlock}}</a> (VALID) </H5>
+                <H5>Block: <a href="/block/{{.info.StateBlock}}">{{.info.StateBlock}}</a> (Reference) </H5>
 
-                {{range $i, $e := .info.InvalidBlock}} 
+                {{range $i, $e := .info.MinedBlock}} 
                  <H5>Block: <a href="/block/{{$e}}">{{$e}}</a></H5>
                 {{end}}
 

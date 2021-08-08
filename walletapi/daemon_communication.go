@@ -157,7 +157,7 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon() {
 			rlog.Debugf("wallet topo height %d daemon online topo height %d\n", w.account.TopoHeight, w.Daemon_TopoHeight)
 			previous := w.account.Balance_Result.Data
 			var scid crypto.Hash
-			if _, _, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
+			if _, _,_,_,_, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
 				if w.account.Balance_Result.Data != previous /*|| (len(w.account.EntriesNative[scid]) >= 1 && strings.ToLower(w.account.Balance_Result.Data) != strings.ToLower(w.account.EntriesNative[scid][len(w.account.EntriesNative[scid])-1].EWData)) */ {
 					w.DecodeEncryptedBalance() // try to decode balance
 
@@ -240,7 +240,7 @@ func (w *Wallet_Memory) DecodeEncryptedBalanceNow(el *crypto.ElGamal) uint64 {
 // TODO in order to stop privacy leaks we must guess this information somehow on client side itself
 // maybe the server can broadcast a bloomfilter or something else from the mempool keyimages
 //
-func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (bits int, e *crypto.ElGamal, err error) {
+func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (bits int, e *crypto.ElGamal, height,rtopoheight uint64, merkleroot crypto.Hash, err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -300,7 +300,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		}
 	}
 
-	//	fmt.Printf("status '%s' err '%s'  %+v  %+v \n", result.Status , w.Error , result.Status == errormsg.ErrAccountUnregistered.Error()  , accountaddr == w.account.GetAddress().String())
+//		fmt.Printf("status '%s' err '%s'  %+v  %+v \n", result.Status , w.Error , result.Status == errormsg.ErrAccountUnregistered.Error()  , accountaddr == w.account.GetAddress().String())
 
 	if scid.IsZero() && result.Status == errormsg.ErrAccountUnregistered.Error() {
 		err = fmt.Errorf("%s", result.Status)
@@ -311,7 +311,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 	w.Daemon_TopoHeight = result.DTopoheight
 	w.Merkle_Balance_TreeHash = result.DMerkle_Balance_TreeHash
 
-	if scid.IsZero() && accountaddr == w.GetAddress().String() {
+	if topoheight == -1 && scid.IsZero() && accountaddr == w.GetAddress().String() {
 		w.account.Balance_Result = result
 		w.account.TopoHeight = result.Topoheight
 	}
@@ -330,10 +330,17 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		w.Error = nil
 	}
 
-	//fmt.Printf("decoding elgamal\n")
-
 	el := new(crypto.ElGamal).Deserialize(hexdecoded)
-	return result.Bits, el, nil
+
+	hexdecoded, err = hex.DecodeString(result.Merkle_Balance_TreeHash)
+	if err != nil {
+		return
+	}
+
+	var mhash crypto.Hash
+	copy(mhash[:],hexdecoded[:])
+
+	return result.Bits, el, uint64(result.Height), uint64(result.Topoheight), mhash, nil
 }
 
 func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) (balance uint64) {
@@ -346,7 +353,7 @@ func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint u
 }
 
 func (w *Wallet_Memory) GetDecryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (balance uint64, err error) {
-	_, encrypted_balance, err := w.GetEncryptedBalanceAtTopoHeight(scid, topoheight, accountaddr)
+	_, encrypted_balance,_,_,_, err := w.GetEncryptedBalanceAtTopoHeight(scid, topoheight, accountaddr)
 	if err != nil {
 		return 0, err
 	}
@@ -466,13 +473,13 @@ func (w *Wallet_Memory) synchistory_internal(scid crypto.Hash, start_topo, end_t
 	if start_topo == w.account.Balance_Result.Registration {
 		start_balance_e = crypto.ConstructElGamal(w.account.Keys.Public.G1(), crypto.ElGamal_BASE_G)
 	} else {
-		_, start_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, start_topo, w.GetAddress().String())
+		_, start_balance_e,_,_,_, err = w.GetEncryptedBalanceAtTopoHeight(scid, start_topo, w.GetAddress().String())
 		if err != nil {
 			return err
 		}
 	}
 
-	_, end_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, end_topo, w.GetAddress().String())
+	_, end_balance_e,_,_,_, err := w.GetEncryptedBalanceAtTopoHeight(scid, end_topo, w.GetAddress().String())
 	if err != nil {
 		return err
 	}
@@ -512,7 +519,7 @@ func (w *Wallet_Memory) synchistory_internal_binary_search(scid crypto.Hash, sta
 			return w.synchistory_block(scid, end_topo)
 		}
 
-		_, median_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, median, w.GetAddress().String())
+		_, median_balance_e,_,_,_, err := w.GetEncryptedBalanceAtTopoHeight(scid, median, w.GetAddress().String())
 		if err != nil {
 			return err
 		}
@@ -599,13 +606,13 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 	if topo <= 0 || w.account.Balance_Result.Registration == topo {
 		previous_balance_e = crypto.ConstructElGamal(w.account.Keys.Public.G1(), crypto.ElGamal_BASE_G)
 	} else {
-		_, previous_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo-1, w.GetAddress().String())
+		_, previous_balance_e,_,_,_, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo-1, w.GetAddress().String())
 		if err != nil {
 			return err
 		}
 	}
 
-	_, current_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo, w.GetAddress().String())
+	_, current_balance_e,_,_,_, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo, w.GetAddress().String())
 	if err != nil {
 		return err
 	}
@@ -625,6 +632,10 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 	var bresult rpc.GetBlock_Result
 	if err = rpc_client.Call("DERO.GetBlock", rpc.GetBlock_Params{Height: uint64(topo)}, &bresult); err != nil {
 		return fmt.Errorf("getblock rpc failed")
+	}
+
+	if bresult.Block_Header.SideBlock { // skip side blocks
+		return nil
 	}
 
 	block_bin, _ := hex.DecodeString(bresult.Blob)

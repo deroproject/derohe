@@ -113,6 +113,34 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 	return nil // success comes last
 }
 
+
+// only verifies height whether all height checks are good
+func Verify_Transaction_NonCoinbase_Height(tx *transaction.Transaction, chain_height uint64) bool {
+	return Verify_Transaction_Height(tx.Height, chain_height)
+}
+
+
+func Verify_Transaction_Height(tx_height, chain_height uint64) bool{
+	if tx_height % config.BLOCK_BATCH_SIZE != 0  {
+		return false
+	}
+
+	if tx_height >= chain_height {
+		return false
+	}
+
+	if chain_height-tx_height <= 5 { // we should be atleast 5 steps from top
+		return false
+	}
+
+	comp := (chain_height / config.BLOCK_BATCH_SIZE) -  (tx_height / config.BLOCK_BATCH_SIZE)
+	if comp ==0 || comp ==1 {
+		return true
+	}else{
+		return false
+	}
+}
+
 // all non miner tx must be non-coinbase tx
 // each check is placed in a separate  block of code, to avoid ambigous code or faulty checks
 // all check are placed and not within individual functions ( so as we cannot skip a check )
@@ -329,7 +357,7 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 
 	// at this point has been completely expanded, verify the tx statement
 	for t := range tx.Payloads {
-		if !tx.Payloads[t].Proof.Verify(&tx.Payloads[t].Statement, tx.GetHash(), tx.Payloads[t].BurnValue) {
+		if !tx.Payloads[t].Proof.Verify(&tx.Payloads[t].Statement, tx.GetHash(), tx.Height, tx.Payloads[t].BurnValue) {
 
 			fmt.Printf("Statement %+v\n", tx.Payloads[t].Statement)
 			fmt.Printf("Proof %+v\n", tx.Payloads[t].Proof)

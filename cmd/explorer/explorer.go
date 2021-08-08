@@ -259,8 +259,8 @@ type txinfo struct {
 	OutAddress      []string // contains output secret key
 	OutOffset       []uint64 // contains index offsets
 	Type            string   // ringct or ruffct ( bulletproof)
-	ValidBlock      string   // the tx is valid in which block
-	InvalidBlock    []string // the tx is invalid in which block
+	StateBlock      string   // the tx is valid with reference to this block
+	MinedBlock    []string // the tx is mined in which block
 	Skipped         bool     // this is only valid, when a block is being listed
 	Ring_size       int
 	Ring            [][][]byte // contains entire ring  in raw form
@@ -399,9 +399,6 @@ func load_block_from_rpc(info *block_info, block_hash string, recursive bool) (e
 			var tx txinfo
 			err = load_tx_from_rpc(&tx, bl.Tx_hashes[i].String()) //TODO handle error
 			fmt.Printf("loading tx %s err %s\n", bl.Tx_hashes[i].String(), err)
-			if tx.ValidBlock != bresult.Block_Header.Hash { // track skipped status
-				tx.Skipped = true
-			}
 			info.Txs = append(info.Txs, tx)
 			fees += tx.Feeuint64
 			size += tx.Sizeuint64
@@ -552,8 +549,8 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 		info.Amount = fmt.Sprintf("%.05f", float64(uint64(tx_result.Txs[0].Reward))/100000)
 	}
 
-	info.ValidBlock = tx_result.Txs[0].ValidBlock
-	info.InvalidBlock = tx_result.Txs[0].InvalidBlock
+	info.StateBlock = tx_result.Txs[0].StateBlock
+	info.MinedBlock = tx_result.Txs[0].MinedBlock
 
 	info.Ring = tx_result.Txs[0].Ring
 

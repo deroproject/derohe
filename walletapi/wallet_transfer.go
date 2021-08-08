@@ -23,7 +23,7 @@ import "fmt"
 //import cryptorand "crypto/rand"
 
 //import "encoding/binary"
-import "encoding/hex"
+//import "encoding/hex"
 
 //import "encoding/json"
 
@@ -153,7 +153,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 	var rings [][]*bn256.G1
 	var max_bits_array []int
 
-	_, self_e, _ := w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, -1, w.GetAddress().String())
+	_, self_e,height,topoheight,treehash, err := w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, rpc.RECENT_BATCH_BLOCK, w.GetAddress().String())
 	if err != nil {
 		fmt.Printf("self unregistered err %s\n", err)
 		return
@@ -162,17 +162,9 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 	// WaitNewHeightBlock() // wait till a new block at new height is found
 	// due to this we weill dispatch a new tx immediate after a block is found for better propagation
 
-	height := w.Daemon_Height
-	treehash := w.Merkle_Balance_TreeHash
+//	height := w.Daemon_Height
+//	treehash := w.Merkle_Balance_TreeHash
 
-	treehash_raw, err := hex.DecodeString(treehash)
-	if err != nil {
-		return
-	}
-	if len(treehash_raw) != 32 {
-		err = fmt.Errorf("roothash is not of 32 bytes, probably daemon corruption '%s'", treehash)
-		return
-	}
 
 	for t := range transfers {
 
@@ -187,7 +179,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 		bits_needed := make([]int, ringsize, ringsize)
 
 
-		bits_needed[0], self_e, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, w.GetAddress().String())
+		bits_needed[0], self_e,_,_,_, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, int64(topoheight), w.GetAddress().String())
 		if err != nil {
 			fmt.Printf("self unregistered err %s\n", err)
 			return
@@ -201,7 +193,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 			return
 		}
 		var dest_e *crypto.ElGamal
-		bits_needed[1], dest_e, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, addr.String())
+		bits_needed[1], dest_e,_,_,_, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, int64(topoheight), addr.String())
 		if err != nil {
 			fmt.Printf(" t %d unregistered1 '%s' %s\n", t, addr, err)
 			return
@@ -224,7 +216,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 				//  fmt.Printf("%s     receiver %s   sender %s\n", k, receiver_without_payment_id.String(), w.GetAddress().String())
 				var ebal *crypto.ElGamal
 				var addr *rpc.Address
-				bits_needed[len(ring_members_keys)], ebal, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, -1, k)
+				bits_needed[len(ring_members_keys)], ebal,_,_,_, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, int64(topoheight), k)
 				if err != nil {
 					fmt.Printf(" unregistered %s\n", k)
 					return
@@ -262,7 +254,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, transfer_all 
 
 	if !dry_run {
 		rlog.Debugf("we should build a TX now")
-		tx = w.BuildTransaction(transfers, emap, rings, height, scdata, treehash_raw, max_bits_array)
+		tx = w.BuildTransaction(transfers, emap, rings, height, scdata, treehash[:], max_bits_array)
 	}
 
 	return

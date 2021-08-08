@@ -94,20 +94,17 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p rpc.GetTransaction_Pa
 					}
 
 					// also fill where the tx is found and in which block is valid and in which it is invalid
-
-					valid_blid, invalid_blid, valid := chain.IS_TX_Valid(hash)
+					blid_list,state_block,state_block_topo := chain.IS_TX_Mined(hash)
 
 					//logger.Infof(" tx %s related info valid_blid %s invalid_blid %+v valid %v ",hash, valid_blid, invalid_blid, valid)
 
-					if valid {
-						related.ValidBlock = valid_blid.String()
-						// topo height at which it was mined
-						topo_height := int64(chain.Load_Block_Topological_order(valid_blid))
-						related.Block_Height = topo_height
+					if state_block_topo > 0 {
+						related.StateBlock = state_block.String()						
+						related.Block_Height = state_block_topo
 
 						if tx.TransactionType != transaction.REGISTRATION {
 							// we must now fill in compressed ring members
-							if toporecord, err := chain.Store.Topo_store.Read(topo_height); err == nil {
+							if toporecord, err := chain.Store.Topo_store.Read(state_block_topo); err == nil {
 								if ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version); err == nil {
 
 									if tx.TransactionType == transaction.SC_TX {
@@ -141,7 +138,6 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p rpc.GetTransaction_Pa
 
 										if tx.Payloads[t].SCID.IsZero() {
 											tree, err = ss.GetTree(config.BALANCE_TREE)
-
 										} else {
 											tree, err = ss.GetTree(string(tx.Payloads[t].SCID[:]))
 										}
@@ -166,8 +162,8 @@ func (DERO_RPC_APIS) GetTransaction(ctx context.Context, p rpc.GetTransaction_Pa
 							}
 						}
 					}
-					for i := range invalid_blid {
-						related.InvalidBlock = append(related.InvalidBlock, invalid_blid[i].String())
+					for i := range blid_list {
+						related.MinedBlock = append(related.MinedBlock, blid_list[i].String())
 					}
 
 					result.Txs_as_hex = append(result.Txs_as_hex, hex.EncodeToString(tx.Serialize()))

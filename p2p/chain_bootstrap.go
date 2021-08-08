@@ -56,7 +56,7 @@ func (connection *Connection) bootstrap_chain() {
 	// we will request top 60 blocks
 	ctopo := connection.TopoHeight
 	var topos []int64
-	for i := ctopo - 20; i < ctopo; i++ {
+	for i := ctopo - 200; i < ctopo; i++ {
 		topos = append(topos, i)
 	}
 

@@ -74,7 +74,6 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *t
 		if err != nil {
 			panic(err)
 		}
-
 	}
 
 	topoheight := chain.Load_TOPO_HEIGHT()
@@ -116,6 +115,15 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *t
 	sizeoftxs := uint64(0) // size of all non coinbase tx included within this block
 	//fees_collected := uint64(0)
 
+
+	nonce_map,err := chain.BuildNonces(bl.Tips)
+	if err != nil {
+		panic(err)
+	}
+
+	local_nonce_map := map[crypto.Hash]bool{}
+
+
 	_ = sizeoftxs
 
 	// add upto 100 registration tx each registration tx is 99 bytes, so 100 tx will take 9900 bytes or 10KB
@@ -129,9 +137,8 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *t
 				_, err = balance_tree.Get(tx.MinerAddress[:])
 				if err != nil {
 					if xerrors.Is(err, graviton.ErrNotFound) { // address needs registration
-
 						cbl.Txs = append(cbl.Txs, tx)
-						tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i])
+						tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i])						
 					} else {
 						panic(err)
 					}
@@ -159,7 +166,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *t
 		}
 
 		tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash)
-		if tx != nil && int64(tx.Height)+1 == height {
+		if tx != nil && Verify_Transaction_NonCoinbase_Height(tx,uint64(height)) {
 
 			/*
 				// skip and delete any mempool tx
@@ -180,10 +187,22 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *t
 					continue
 				}
 			*/
-			rlog.Tracef(1, "Adding Top  Sorted tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
-			sizeoftxs += tx_hash_list_sorted[i].Size
-			cbl.Txs = append(cbl.Txs, tx)
-			tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
+
+
+			if   nonce_map[tx.Payloads[0].Proof.Nonce1()] || nonce_map[tx.Payloads[0].Proof.Nonce1()] ||
+							 local_nonce_map[tx.Payloads[0].Proof.Nonce1()] || local_nonce_map[tx.Payloads[0].Proof.Nonce1()] {
+								continue // skip this tx
+						}
+
+						cbl.Txs = append(cbl.Txs, tx)
+								tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
+								local_nonce_map[tx.Payloads[0].Proof.Nonce1()] = true 
+								local_nonce_map[tx.Payloads[0].Proof.Nonce2()] = true 
+											rlog.Tracef(1, "Adding Top  Sorted tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
+								sizeoftxs += tx_hash_list_sorted[i].Size
+
+
+
 		}
 	}
 	// any left over transactions, should be randomly selected
@@ -204,12 +223,21 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address, tx *t
 		}
 
 		tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash)
-		if tx != nil && int64(tx.Height)+1 == height {
+		if tx != nil &&   Verify_Transaction_NonCoinbase_Height(tx, uint64(height)){
 
-			rlog.Tracef(1, "Adding Random tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
-			sizeoftxs += tx_hash_list_sorted[i].Size
-			cbl.Txs = append(cbl.Txs, tx)
-			tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
+
+			if  nonce_map[tx.Payloads[0].Proof.Nonce1()] || nonce_map[tx.Payloads[0].Proof.Nonce1()] ||
+							 local_nonce_map[tx.Payloads[0].Proof.Nonce1()] || local_nonce_map[tx.Payloads[0].Proof.Nonce1()] {
+							continue // skip this tx
+						}
+
+						cbl.Txs = append(cbl.Txs, tx)
+								tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
+								local_nonce_map[tx.Payloads[0].Proof.Nonce1()] = true 
+								local_nonce_map[tx.Payloads[0].Proof.Nonce2()] = true 
+								rlog.Tracef(1, "Adding Random tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
+			
+								sizeoftxs += tx_hash_list_sorted[i].Size
 		}
 	}
 

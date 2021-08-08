@@ -54,7 +54,7 @@ func CalcBlockReward(height uint64) uint64 {
 }
 
 // process the miner tx, giving fees, miner rewatd etc
-func (chain *Blockchain) process_miner_transaction(tx transaction.Transaction, genesis bool, balance_tree *graviton.Tree, fees uint64, height uint64) {
+func (chain *Blockchain) process_miner_transaction(tx transaction.Transaction, genesis bool, balance_tree *graviton.Tree, fees uint64, height uint64,sideblock bool) {
 	var acckey crypto.Point
 	if err := acckey.DecodeCompressed(tx.MinerAddress[:]); err != nil {
 		panic(err)
@@ -69,29 +69,26 @@ func (chain *Blockchain) process_miner_transaction(tx transaction.Transaction, g
 
 	// general coin base transaction
 	base_reward := CalcBlockReward(uint64(height))
-	full_reward := base_reward + fees
+	full_reward :=  base_reward+ fees
 
-	dev_reward := (full_reward * config.DEVSHARE) / 10000 // take % from reward
-	miner_reward := full_reward - dev_reward              // it's value, do subtraction
 
-	{ // giver miner reward
-		balance_serialized, err := balance_tree.Get(tx.MinerAddress[:])
-		if err != nil {
-			panic(err)
-		}
-		balance := new(crypto.ElGamal).Deserialize(balance_serialized)
-		balance = balance.Plus(new(big.Int).SetUint64(miner_reward)) // add miners reward to miners balance homomorphically
-		balance_tree.Put(tx.MinerAddress[:], balance.Serialize())    // reserialize and store
-	}
-
-	{ // give devs reward
+	if sideblock {// give devs reward
 		balance_serialized, err := balance_tree.Get(chain.Dev_Address_Bytes[:])
 		if err != nil {
 			panic(err)
 		}
 		balance := new(crypto.ElGamal).Deserialize(balance_serialized)
-		balance = balance.Plus(new(big.Int).SetUint64(dev_reward))        // add devs reward to devs balance homomorphically
+		balance = balance.Plus(new(big.Int).SetUint64(full_reward))        // add devs reward to devs balance homomorphically
 		balance_tree.Put(chain.Dev_Address_Bytes[:], balance.Serialize()) // reserialize and store
+
+	}else{ // giver miner reward
+		balance_serialized, err := balance_tree.Get(tx.MinerAddress[:])
+		if err != nil {
+			panic(err)
+		}
+		balance := new(crypto.ElGamal).Deserialize(balance_serialized)
+		balance = balance.Plus(new(big.Int).SetUint64(full_reward)) // add miners reward to miners balance homomorphically
+		balance_tree.Put(tx.MinerAddress[:], balance.Serialize())    // reserialize and store
 	}
 
 	return
@@ -106,6 +103,9 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 	switch tx.TransactionType {
 
 	case transaction.REGISTRATION:
+		if _, err := balance_tree.Get(tx.MinerAddress[:]); err == nil {
+			return 0
+		}
 		if _, err := balance_tree.Get(tx.MinerAddress[:]); err != nil {
 			if !xerrors.Is(err, graviton.ErrNotFound) { // any other err except not found panic
 				panic(err)

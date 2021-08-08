@@ -26,11 +26,13 @@ import "sync/atomic"
 import "context"
 import "strings"
 import "runtime/debug"
+import "net/http/pprof"
 
 import "github.com/romana/rlog"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
+import "github.com/deroproject/derohe/metrics"
 import "github.com/deroproject/derohe/blockchain"
 import "github.com/deroproject/derohe/glue/rwc"
 
@@ -164,12 +166,15 @@ func (r *RPCServer) Run() {
 	r.Unlock()
 
 	r.mux.HandleFunc("/json_rpc", translate_http_to_jsonrpc_and_vice_versa)
+    r.mux.HandleFunc("/metrics", metrics.WritePrometheus)  // write all the metrics
+
 	r.mux.HandleFunc("/ws", ws_handler)
 	r.mux.HandleFunc("/", hello)
-	//r.mux.Handle("/json_rpc", mr)
-
-	// handle nasty http requests
-	//r.mux.HandleFunc("/getheight", getheight)
+    r.mux.HandleFunc("/debug/pprof/", pprof.Index)
+    r.mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	r.mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	r.mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	r.mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	//if DEBUG_MODE {
 	// r.mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -182,21 +187,8 @@ func (r *RPCServer) Run() {
 			r.mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	*/
 
-	/*
-	       // Register pprof handlers individually if required
-	   r.mux.HandleFunc("/cdebug/pprof/", pprof.Index)
-	   r.mux.HandleFunc("/cdebug/pprof/cmdline", pprof.Cmdline)
-	   r.mux.HandleFunc("/cdebug/pprof/profile", pprof.Profile)
-	   r.mux.HandleFunc("/cdebug/pprof/symbol", pprof.Symbol)
-	   r.mux.HandleFunc("/cdebug/pprof/trace", pprof.Trace)
-	*/
 
-	// register metrics handler
-	//	r.mux.HandleFunc("/metrics", prometheus.InstrumentHandler("dero", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{})))
 
-	//}
-
-	//r.mux.HandleFunc("/json_rpc/debug", mr.ServeDebug)
 
 	go Notify_Block_Addition() // process all blocks
 	go Notify_Height_Changes() // gives notification of changed height

@@ -58,14 +58,16 @@ const MAINNET_MINIMUM_DIFFICULTY = uint64(800 * BLOCK_TIME)   // 5 KH/s
 const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(800 * BLOCK_TIME) // testnet bootstrap at 800 H/s
 const TESTNET_MINIMUM_DIFFICULTY = uint64(800 * BLOCK_TIME)   // 800 H
 
+
+//this controls the batch size which controls till how many blocks incoming funds cannot be spend
+const BLOCK_BATCH_SIZE = crypto.BLOCK_BATCH_SIZE 
+
 // this single parameter controls lots of various parameters
 // within the consensus, it should never go below 7
 // if changed responsibly, we can have one second  or lower blocks (ignoring chain bloat/size issues)
 // gives immense scalability,
 const STABLE_LIMIT = int64(8)
 
-// reward percent that is shared between miners/dev
-const DEVSHARE = uint64(600) // it's out of 10000,  600*100/10000 = 6%,  3% dev, 3% foundation
 
 // we can have number of chains running for testing reasons
 type CHAIN_CONFIG struct {
@@ -104,7 +106,7 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x26, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x26, 0x00, 0x02, 0x00}),
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
 	Wallet_RPC_Default_Port: 40403,

@@ -27,6 +27,7 @@ import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/blockchain"
 
 //import "github.com/deroproject/derohe/dvm"
 //import "github.com/deroproject/derohe/cryptography/crypto"
@@ -50,6 +51,37 @@ func (DERO_RPC_APIS) GetEncryptedBalance(ctx context.Context, p rpc.GetEncrypted
 
 	if p.Merkle_Balance_TreeHash == "" && p.TopoHeight >= 0 && p.TopoHeight <= topoheight { // get balance tree at specific topoheight
 		topoheight = p.TopoHeight
+	}
+
+	switch p.TopoHeight {
+	case rpc.RECENT_BATCH_BLOCK: // give data of specific point from where tx could be  built
+
+		chain_height := chain.Get_Height()
+
+		var topo_list []int64
+		for  ;topoheight > 0; {
+			toporecord, err := chain.Store.Topo_store.Read(topoheight)
+			if err != nil {
+				panic(err)
+			}
+
+			if  blockchain.Verify_Transaction_Height(uint64(toporecord.Height), uint64(chain_height)){
+				if  chain_height - toporecord.Height  <= (3*config.BLOCK_BATCH_SIZE)/2   { // give us enough leeway
+				  topo_list=append(topo_list, topoheight)
+			   }
+			}
+
+			if chain_height-toporecord.Height >= 2 * config.BLOCK_BATCH_SIZE {
+				break;
+			}
+
+			topoheight--
+		}
+		topoheight = topo_list[len(topo_list)-1]
+
+	case rpc.RECENT_BLOCK : fallthrough
+	default:	
+	
 	}
 
 	toporecord, err := chain.Store.Topo_store.Read(topoheight)

@@ -39,7 +39,6 @@ import "github.com/romana/rlog"
 import "github.com/dustin/go-humanize"
 import log "github.com/sirupsen/logrus"
 import "github.com/paulbellamy/ratecounter"
-import "github.com/prometheus/client_golang/prometheus"
 
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/cryptography/crypto"
@@ -115,19 +114,6 @@ func (c *Connection) exit() {
 
 }
 
-// 300 such buckets can be used to track block propagation accuratly upto a minute
-var block_propagation = prometheus.NewHistogram(prometheus.HistogramOpts{
-	Name:    "block_propagation_ms",
-	Help:    "Block Propagation time milliseconds as detected by daemon",
-	Buckets: prometheus.LinearBuckets(0, 1000, 20), // start 0 ms, each 1000 ms,  20 such buckets.
-})
-
-// 300 such buckets can be used to track transaction propagation accurately upto a minute
-var transaction_propagation = prometheus.NewHistogram(prometheus.HistogramOpts{
-	Name:    "tx_propagation_ms",
-	Help:    "TX Propagation time milliseconds as detected by daemon",
-	Buckets: prometheus.LinearBuckets(0, 1000, 20), // start 0 ms, each 1000 ms,  20 such buckets.
-})
 
 var block_propagation_map sync.Map
 var tx_propagation_map sync.Map

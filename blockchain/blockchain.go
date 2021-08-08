@@ -49,7 +49,6 @@ import hashicorp_lru "github.com/hashicorp/golang-lru"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/errormsg"
-import "github.com/prometheus/client_golang/prometheus"
 
 //import "github.com/deroproject/derosuite/address"
 import "github.com/deroproject/derohe/block"
@@ -58,6 +57,7 @@ import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/blockchain/mempool"
 import "github.com/deroproject/derohe/blockchain/regpool"
 import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/metrics"
 
 /*
 import "github.com/deroproject/derosuite/emission"
@@ -67,7 +67,7 @@ import "github.com/deroproject/derosuite/crypto/ringct"
 
 
 import "github.com/deroproject/derosuite/checkpoints"
-import "github.com/deroproject/derosuite/metrics"
+
 
 import "github.com/deroproject/derosuite/blockchain/inputmaturity"
 */
@@ -276,16 +276,7 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 	*/
 
-	/*
-		// register the metrics with the metrics registry
-		metrics.Registry.MustRegister(blockchain_tx_counter)
-		metrics.Registry.MustRegister(mempool_tx_counter)
-		metrics.Registry.MustRegister(mempool_tx_count)
-		metrics.Registry.MustRegister(block_size)
-		metrics.Registry.MustRegister(transaction_size)
-		metrics.Registry.MustRegister(block_tx_count)
-		metrics.Registry.MustRegister(block_processing_time)
-	*/
+	
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
 
 	return &chain, nil
@@ -334,20 +325,24 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 					}
 				}()
-				blockchain_tx_counter.Add(float64(len(cbl.Bl.Tx_hashes)))
-				block_tx_count.Observe(float64(len(cbl.Bl.Tx_hashes)))
-				block_processing_time.Observe(float64(time.Now().Sub(processing_start).Round(time.Millisecond) / 1000000))
+				metrics.Blockchain_tx_counter.Add(len(cbl.Bl.Tx_hashes))
+				metrics.Block_tx.Update(float64(len(cbl.Bl.Tx_hashes)))
+				metrics.Block_processing_time.UpdateDuration(processing_start)
 
-				// tracks counters for tx_size
-
+				// tracks counters for tx internals, do we need to serialize everytime, just for stats
 				{
 					complete_block_size := 0
 					for i := 0; i < len(cbl.Txs); i++ {
 						tx_size := len(cbl.Txs[i].Serialize())
 						complete_block_size += tx_size
-						transaction_size.Observe(float64(tx_size))
+						metrics.Transaction_size.Update(float64(tx_size))
+
+						metrics.Transaction_outputs.Update(float64(len(cbl.Txs[i].Payloads)))
+						if len(cbl.Txs[i].Payloads) >= 1 {
+							metrics.Transaction_ring_size.Update(float64(cbl.Txs[i].Payloads[0].Statement.RingSize))
+						}
 					}
-					block_size.Observe(float64(complete_block_size))
+					metrics.Block_size.Update(float64(complete_block_size))
 				}
 			}()
 
@@ -586,49 +581,73 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 	}
 
-	// another check, whether the tx  is build with the latest snapshot of balance tree
+
+	// another check, whether the tx  is build with the correct height reference
 	{
 		for i := 0; i < len(cbl.Txs); i++ {
 			if cbl.Txs[i].TransactionType == transaction.NORMAL || cbl.Txs[i].TransactionType == transaction.BURN_TX || cbl.Txs[i].TransactionType == transaction.SC_TX {
-				if cbl.Txs[i].Height+1 != cbl.Bl.Height {
+				if cbl.Txs[i].Height % config.BLOCK_BATCH_SIZE != 0 {
+					block_logger.Warnf("invalid tx mined %s  tx height not a multiple of %d", cbl.Txs[i].GetHash(), config.BLOCK_BATCH_SIZE)
+					return errormsg.ErrTXDoubleSpend, false
+				}
+
+				if cbl.Txs[i].Height >= cbl.Bl.Height { // chain height should be more than tx
 					block_logger.Warnf("invalid tx mined %s", cbl.Txs[i].GetHash())
 					return errormsg.ErrTXDoubleSpend, false
 				}
 
+				if !Verify_Transaction_NonCoinbase_Height(cbl.Txs[i],cbl.Bl.Height ){
+					block_logger.Warnf("invalid tx mined height issue %s %d %d", cbl.Txs[i].GetHash(),cbl.Txs[i].Height,cbl.Bl.Height )
+					return errormsg.ErrTXDoubleSpend, false
+				}
 			}
 		}
 	}
+
 
 	// another check, whether the tx contains any duplicate nonces within the block
 	// block wide duplicate input detector
 	{
 		nonce_map := map[crypto.Hash]bool{}
 		for i := 0; i < len(cbl.Txs); i++ {
-
 			if cbl.Txs[i].TransactionType == transaction.NORMAL || cbl.Txs[i].TransactionType == transaction.BURN_TX || cbl.Txs[i].TransactionType == transaction.SC_TX {
-				if _, ok := nonce_map[cbl.Txs[i].Payloads[0].Proof.Nonce()]; ok {
-					block_logger.Warnf("Double Spend attack within block %s", cbl.Txs[i].GetHash())
+				if _, ok := nonce_map[cbl.Txs[i].Payloads[0].Proof.Nonce1()]; ok {
+					block_logger.Warnf("Double Spend attack within block nonce1 %s", cbl.Txs[i].GetHash())
 					return errormsg.ErrTXDoubleSpend, false
 				}
-				nonce_map[cbl.Txs[i].Payloads[0].Proof.Nonce()] = true
+				nonce_map[cbl.Txs[i].Payloads[0].Proof.Nonce1()] = true
+
+				if _, ok := nonce_map[cbl.Txs[i].Payloads[0].Proof.Nonce2()]; ok {
+					block_logger.Warnf("Double Spend attack within block nonce2 %s", cbl.Txs[i].GetHash())
+					return errormsg.ErrTXDoubleSpend, false
+				}
+				nonce_map[cbl.Txs[i].Payloads[0].Proof.Nonce2()] = true
 			}
 		}
 	}
 
 	// we also need to reject if the the immediately reachable history, has spent the nonce
 	// both the checks works on the basis of nonces and not on the basis of txhash
-	/*
 		{
-			reachable_nonces := chain.BuildReachabilityNonces(bl)
+			reachable_nonces,err := chain.BuildNonces(bl.Tips)
+			if err != nil{
+				return err,false
+			}
 		for i := 0; i < len(cbl.Txs); i++ { // loop through all the TXs
-			   if cbl.Txs[i].TransactionType == transaction.NORMAL {
-				if _, ok := reachable_nonces[cbl.Txs[i].Proof.Nonce()]; ok {
+			   switch cbl.Txs[i].TransactionType  {
+			   case transaction.PREMINE,transaction.REGISTRATION, transaction.COINBASE: // these donot have nonces
+
+			   case transaction.NORMAL, transaction.BURN_TX, transaction.SC_TX: // these have nonces
+
+				if  reachable_nonces[cbl.Txs[i].Payloads[0].Proof.Nonce1()] || reachable_nonces[cbl.Txs[i].Payloads[0].Proof.Nonce1()]  {
 					block_logger.Warnf("Double spend attack tx %s is already mined, rejecting ", cbl.Txs[i].GetHash())
 					return errormsg.ErrTXDoubleSpend, false
 				}
+			default:
 			}
 		}
-	}*/
+	}
+
 
 	// we need to anyways verify the TXS since proofs are not covered by checksum
 	{
@@ -729,10 +748,52 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			base_topo_index = 0
 		}
 
+		nonce_map := map[crypto.Hash]bool{}
+
+		
 		// any blocks which have not changed their topo will be skipped using graviton trick
 		skip := true
 
 		for i := int64(0); i < int64(len(full_order)); i++ {
+
+			if i == 0 {
+				bl_prev, err1 := chain.Load_BL_FROM_ID(full_order[0])
+				if err1 != nil {
+				block_logger.Debugf("Cannot load block %s for client protocol,probably DB/disk corruption", full_order[0])
+				return errormsg.ErrInvalidBlock, false
+			}
+			  nonce_map,err = chain.BuildNonces(bl_prev.Tips)
+				if err != nil {
+				panic(err)
+			}
+			}
+
+			if i >= 1 { // load nonces for previous blocks
+				bl_prev_hash := full_order[i-1]
+			bl_prev, err1 := chain.Load_BL_FROM_ID(full_order[i-1])
+			if err1 != nil {
+				block_logger.Debugf("Cannot load block %s for client protocol,probably DB/disk corruption", bl_prev_hash)
+				return errormsg.ErrInvalidBlock, false
+			}
+
+				for i := 0; i < len(bl_prev.Tx_hashes); i++ { // load all tx one by one, no skipping 
+				tx_bytes, err := chain.Store.Block_tx_store.ReadTX(bl_prev.Tx_hashes[i])
+				if err != nil {
+				panic(fmt.Errorf("Cannot load  tx for %s err %s", bl_prev.Tx_hashes[i], err))
+			}
+
+			var tx transaction.Transaction
+			if err = tx.DeserializeHeader(tx_bytes); err != nil {
+				panic(err)
+			}
+
+			if !tx.IsRegistration(){
+			// tx has been loaded, now lets get the nonce
+			nonce_map[tx.Payloads[0].Proof.Nonce1()] = true // add element to map for next check
+			nonce_map[tx.Payloads[0].Proof.Nonce2()] = true // add element to map for next check
+				}
+			}
+			}
 
 			// check whether the new block is at the same position at the last position
 			current_topo_block := i + base_topo_index
@@ -761,7 +822,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			bl_current_hash := full_order[i]
 			bl_current, err1 := chain.Load_BL_FROM_ID(bl_current_hash)
 			if err1 != nil {
-				block_logger.Debugf("Cannot load block %s for client protocol,probably DB corruption", bl_current_hash)
+				block_logger.Debugf("Cannot load block %s for client protocol,probably DB/disk corruption", bl_current_hash)
 				return errormsg.ErrInvalidBlock, false
 			}
 
@@ -770,9 +831,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			height_current := chain.Calculate_Height_At_Tips(bl_current.Tips)
 			hard_fork_version_current := chain.Get_Current_Version_at_Height(height_current)
 
-			// this version does not require client protocol as of now
-			//  run full client protocol and find valid transactions
-			//	rlog.Debugf("running client protocol for %s minertx %s  topo %d", bl_current_hash, bl_current.Miner_TX.GetHash(), highest_topo)
 
 			// generate miner TX rewards as per client protocol
 			if hard_fork_version_current == 1 {
@@ -780,7 +838,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			}
 
 			var balance_tree, sc_meta *graviton.Tree
-			_ = sc_meta
 
 			var ss *graviton.Snapshot
 			if bl_current.Height == 0 { // if it's genesis block
@@ -818,14 +875,14 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 			fees_collected := uint64(0)
 
-			// side blocks only represent chain strenth , else they are are ignored
+			// side blocks not only represent chain strenth , they also represent extra data
 			// this means they donot get any reward , 0 reward
 			// their transactions are ignored
 
 			//chain.Store.Topo_store.Write(i+base_topo_index, full_order[i],0, int64(bl_current.Height)) // write entry so as sideblock could work
 			var data_trees []*graviton.Tree
 
-			if !chain.isblock_SideBlock_internal(full_order[i], current_topo_block, int64(bl_current.Height)) {
+			 {
 
 				sc_change_cache := map[crypto.Hash]*graviton.Tree{} // cache entire changes for entire block
 
@@ -837,12 +894,23 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 						if err = tx.DeserializeHeader(tx_bytes); err != nil {
 							panic(err)
 						}
+
+
+						if tx.TransactionType != transaction.REGISTRATION {
+
+						if   nonce_map[tx.Payloads[0].Proof.Nonce1()] || nonce_map[tx.Payloads[0].Proof.Nonce1()] {
+							continue // skip this tx, since it has been processed earlier
+						}else{
+								nonce_map[tx.Payloads[0].Proof.Nonce1()] = true 
+								nonce_map[tx.Payloads[0].Proof.Nonce2()] = true 
+						}
 						for t := range tx.Payloads {
 							if !tx.Payloads[t].SCID.IsZero() {
 								tree, _ := ss.GetTree(string(tx.Payloads[t].SCID[:]))
 								sc_change_cache[tx.Payloads[t].SCID] = tree
 							}
 						}
+					}
 						// we have loaded a tx successfully, now lets execute it
 						tx_fees := chain.process_transaction(sc_change_cache, tx, balance_tree)
 
@@ -886,11 +954,17 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 				}
 
-				chain.process_miner_transaction(bl_current.Miner_TX, bl_current.Height == 0, balance_tree, fees_collected, bl_current.Height)
-			} else {
-				rlog.Debugf("this block is a side block   block height %d blid %s ", chain.Load_Block_Height(full_order[i]), full_order[i])
 
-			}
+				// if block is side block, pass all reward to devs, else pass it to original miner
+				side_block := chain.isblock_SideBlock_internal(full_order[i], current_topo_block, int64(bl_current.Height))
+				if side_block{
+					rlog.Debugf("this block is a side block   block height %d blid %s ", chain.Load_Block_Height(full_order[i]), full_order[i])
+				}
+					chain.process_miner_transaction(bl_current.Miner_TX, bl_current.Height == 0, balance_tree, fees_collected, bl_current.Height,side_block)
+				
+
+				
+			} 
 
 			// we are here, means everything is okay, lets commit the update balance tree
 
@@ -1135,53 +1209,6 @@ func (chain *Blockchain) BlockCheckSum(cbl *block.Complete_Block) []byte {
 	return h.Sum(nil)
 }
 
-// various counters/gauges which track a numer of metrics
-// such as number of txs, number of inputs, number of outputs
-// mempool total addition, current mempool size
-// block processing time etcs
-
-// Try it once more, this time with a help string.
-var blockchain_tx_counter = prometheus.NewCounter(prometheus.CounterOpts{
-	Name: "blockchain_tx_counter",
-	Help: "Number of tx mined",
-})
-
-var mempool_tx_counter = prometheus.NewCounter(prometheus.CounterOpts{
-	Name: "mempool_tx_counter",
-	Help: "Total number of tx added in mempool",
-})
-var mempool_tx_count = prometheus.NewGauge(prometheus.GaugeOpts{
-	Name: "mempool_tx_count",
-	Help: "Number of tx in mempool at this point",
-})
-
-//  track block size about 2 MB
-var block_size = prometheus.NewHistogram(prometheus.HistogramOpts{
-	Name:    "block_size_byte",
-	Help:    "Block size in byte (complete)",
-	Buckets: prometheus.LinearBuckets(0, 102400, 10), // start block size 0, each 1 KB step,  2048 such buckets .
-})
-
-//  track transaction size upto 500 KB
-var transaction_size = prometheus.NewHistogram(prometheus.HistogramOpts{
-	Name:    "tx_size_byte",
-	Help:    "TX size in byte",
-	Buckets: prometheus.LinearBuckets(0, 10240, 16), // start 0  byte, each 1024 byte,  512 such buckets.
-})
-
-//  number of tx per block
-var block_tx_count = prometheus.NewHistogram(prometheus.HistogramOpts{
-	Name:    "block_tx_count",
-	Help:    "Number of TX in the block",
-	Buckets: prometheus.LinearBuckets(0, 20, 25), // start 0  byte, each 1024 byte,  1024 such buckets.
-})
-
-//
-var block_processing_time = prometheus.NewHistogram(prometheus.HistogramOpts{
-	Name:    "block_processing_time_ms",
-	Help:    "Block processing time milliseconds",
-	Buckets: prometheus.LinearBuckets(0, 100, 20), // start 0  ms, each 100 ms,  200 such buckets.
-})
 
 // this is the only entrypoint for new txs in the chain
 // add a transaction to MEMPOOL,
@@ -1222,7 +1249,7 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	}
 
 	// track counter for the amount of mempool tx
-	defer mempool_tx_count.Set(float64(len(chain.Mempool.Mempool_List_TX())))
+	defer metrics.Mempool_tx_count.Set(uint64(len(chain.Mempool.Mempool_List_TX())))
 
 	txhash := tx.GetHash()
 
@@ -1233,9 +1260,9 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	}
 
 	chain_height := uint64(chain.Get_Height())
-	if chain_height > tx.Height {
-		rlog.Tracef(2, "TX %s rejected since chain has already progressed", txhash)
-		return fmt.Errorf("TX %s rejected since chain has already progressed", txhash)
+	if !Verify_Transaction_NonCoinbase_Height(tx,chain_height) {
+		rlog.Tracef(2, "TX %s rejected since tx is too recent or too old", txhash)
+		return fmt.Errorf("TX %s rejected since tx is too recent or too old", txhash)
 	}
 
 	// quick check without calculating everything whether tx is in pool, if yes we do nothing
@@ -1285,11 +1312,11 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	if chain.Mempool.Mempool_Add_TX(tx, 0) { // new tx come with 0 marker
 		rlog.Tracef(2, "Successfully added tx %s to pool", txhash)
 
-		mempool_tx_counter.Inc()
+		metrics.Mempool_tx_counter.Inc()
 		return nil
 	} else {
-		rlog.Tracef(2, "TX %s rejected by pool", txhash)
-		return fmt.Errorf("TX %s rejected by pool", txhash)
+		rlog.Tracef(2, "TX %s rejected by pool by mempool", txhash)
+		return fmt.Errorf("TX %s rejected by pool by mempool", txhash)
 	}
 
 }
@@ -1394,13 +1421,17 @@ func (chain *Blockchain) isblock_SideBlock_internal(blid crypto.Hash, block_topo
 	return false
 }
 
-// this will return the tx combination as valid/invalid
+
+// this will return the block ids in which tx has been mined
 // this is not used as core consensus but reports only to user that his tx though in the blockchain is invalid
 // a tx is valid, if it exist in a block which is not a side block
-func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash, invalid_blid []crypto.Hash, valid bool) {
+// this is not part of consensus but only for support of explorer
+func (chain *Blockchain) IS_TX_Mined(txhash crypto.Hash) (mined_blocks []crypto.Hash, state_block crypto.Hash, state_block_topo int64) {
 
 	var tx_bytes []byte
 	var err error
+
+	state_found := false
 
 	if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(txhash); err != nil {
 		return
@@ -1411,11 +1442,24 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 		return
 	}
 
-	blids, _ := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height + 1))
+	for i := int64(0); i < 2 *config.BLOCK_BATCH_SIZE;i++ {
+		blids, topos := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height) + i )
 
-	var exist_list []crypto.Hash
+	for j, blid := range blids {
+		if !state_found{ // keep finding state
+			merkle_hash, err := chain.Load_Merkle_Hash(topos[j])
+			if err != nil {
+				panic(err)
+			}
 
-	for _, blid := range blids {
+			if len(tx.Payloads) >= 1 && merkle_hash == tx.Payloads[0].Statement.Roothash {
+				state_block = blid
+				state_block_topo = topos[j]
+				state_found = true
+			}
+
+		}
+
 		bl, err := chain.Load_BL_FROM_ID(blid)
 		if err != nil {
 			return
@@ -1423,123 +1467,19 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 
 		for _, bltxhash := range bl.Tx_hashes {
 			if bltxhash == txhash {
-				exist_list = append(exist_list, blid)
+				mined_blocks = append(mined_blocks, blid)
 				break
 			}
 		}
 	}
 
-	for _, blid := range exist_list {
-		if chain.Isblock_SideBlock(blid) {
-			invalid_blid = append(invalid_blid, blid)
-		} else {
-			valid_blid = blid
-			valid = true
-		}
-
 	}
+
+
 
 	return
 }
 
-/*
-
-
-// runs the client protocol which includes the following operations
-// if any TX are being duplicate or double-spend ignore them
-// mark all the valid transactions as valid
-// mark all invalid transactions  as invalid
-// calculate total fees based on valid TX
-// we need NOT check ranges/ring signatures here, as they have been done already by earlier steps
-func (chain *Blockchain) client_protocol(dbtx storage.DBTX, bl *block.Block, blid crypto.Hash, height int64, topoheight int64) (total_fees uint64) {
-	// run client protocol for all TXs
-	for i := range bl.Tx_hashes {
-		tx, err := chain.Load_TX_FROM_ID(dbtx, bl.Tx_hashes[i])
-		if err != nil {
-			panic(fmt.Errorf("Cannot load  tx for %x err %s ", bl.Tx_hashes[i], err))
-		}
-		// mark TX found in this block also  for explorer
-		chain.store_TX_in_Block(dbtx, blid, bl.Tx_hashes[i])
-
-		// check all key images as double spend, if double-spend detected mark invalid, else consider valid
-		if chain.Verify_Transaction_NonCoinbase_DoubleSpend_Check(dbtx, tx) {
-
-			chain.consume_keyimages(dbtx, tx, height) // mark key images as consumed
-			total_fees += tx.RctSignature.Get_TX_Fee()
-
-			chain.Store_TX_Height(dbtx, bl.Tx_hashes[i], topoheight) // link the tx with the topo height
-
-			//mark tx found in this block is valid
-			chain.mark_TX(dbtx, blid, bl.Tx_hashes[i], true)
-
-		} else { // TX is double spend or reincluded by 2 blocks simultaneously
-			rlog.Tracef(1,"Double spend TX is being ignored %s %s", blid, bl.Tx_hashes[i])
-			chain.mark_TX(dbtx, blid, bl.Tx_hashes[i], false)
-		}
-	}
-
-	return total_fees
-}
-
-// this undoes everything that is done by client protocol
-// NOTE: this will have any effect, only if client protocol has been run on this block earlier
-func (chain *Blockchain) client_protocol_reverse(dbtx storage.DBTX, bl *block.Block, blid crypto.Hash) {
-	// run client protocol for all TXs
-	for i := range bl.Tx_hashes {
-		tx, err := chain.Load_TX_FROM_ID(dbtx, bl.Tx_hashes[i])
-		if err != nil {
-			panic(fmt.Errorf("Cannot load  tx for %x err %s ", bl.Tx_hashes[i], err))
-		}
-		// only the  valid TX must be revoked
-		if chain.IS_TX_Valid(dbtx, blid, bl.Tx_hashes[i]) {
-			chain.revoke_keyimages(dbtx, tx) // mark key images as not used
-
-			chain.Store_TX_Height(dbtx, bl.Tx_hashes[i], -1) // unlink the tx with the topo height
-
-			//mark tx found in this block is invalid
-			chain.mark_TX(dbtx, blid, bl.Tx_hashes[i], false)
-
-		} else { // TX is double spend or reincluded by 2 blocks simultaneously
-			// invalid tx is related
-		}
-	}
-
-	return
-}
-
-// scavanger for transactions from rusty/stale tips to reinsert them into pool
-func (chain *Blockchain) transaction_scavenger(dbtx storage.DBTX, blid crypto.Hash) {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Warnf("Recovered while transaction scavenging, Stack trace below ")
-			logger.Warnf("Stack trace  \n%s", debug.Stack())
-		}
-	}()
-
-	logger.Debugf("scavenging transactions from blid %s", blid)
-	reachable_blocks := chain.BuildReachableBlocks(dbtx, []crypto.Hash{blid})
-	reachable_blocks[blid] = true // add self
-	for k, _ := range reachable_blocks {
-		if chain.Is_Block_Orphan(k) {
-			bl, err := chain.Load_BL_FROM_ID(dbtx, k)
-			if err == nil {
-				for i := range bl.Tx_hashes {
-					tx, err := chain.Load_TX_FROM_ID(dbtx, bl.Tx_hashes[i])
-					if err != nil {
-						rlog.Warnf("err while scavenging blid %s  txid %s err %s", k, bl.Tx_hashes[i], err)
-					} else {
-						// add tx to pool, it will do whatever is necessarry
-						chain.Add_TX_To_Pool(tx)
-					}
-				}
-			} else {
-				rlog.Warnf("err while scavenging blid %s err %s", k, err)
-			}
-		}
-	}
-}
-
-*/
 // Finds whether a  block is orphan
 // since we donot store any fields, we need to calculate/find the block as orphan
 // using an algorithm
@@ -1548,14 +1488,6 @@ func (chain *Blockchain) Is_Block_Orphan(hash crypto.Hash) bool {
 	return !chain.Is_Block_Topological_order(hash)
 }
 
-// this is used to find if a tx is orphan, YES orphan TX
-// these can occur during  when they lie only  in a side block
-// so the TX becomes orphan ( chances are less may be less that .000001 % but they are there)
-// if a tx is not valid in any of the blocks, it has been mined it is orphan
-func (chain *Blockchain) Is_TX_Orphan(hash crypto.Hash) (result bool) {
-	_, _, result = chain.IS_TX_Valid(hash)
-	return !result
-}
 
 // verifies whether we are lagging
 // return true if we need resync
@@ -1627,6 +1559,74 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 
 	return true
 }
+
+
+// used to check for nonce duplication, so as txs can avoid reexecution
+// note that the tips might not be part of chain
+func (chain *Blockchain) BuildNonces(tips []crypto.Hash) (map[crypto.Hash]bool, error) {
+	nonce_list := map[crypto.Hash]bool{} // contains a list of all reachable blocks
+
+	var blocks_map  = map[crypto.Hash]bool{}
+	var blocks_pending  []crypto.Hash 
+	for i := range tips {
+		blocks_pending =  append(blocks_pending,tips[i])
+	}
+
+	height := chain.Calculate_Height_At_Tips(tips) // we are 1 higher than previous highest tip
+
+
+	for ; len(blocks_pending) > 0; {
+
+		blid :=  blocks_pending[len(blocks_pending)-1]
+		blocks_pending =  blocks_pending[:len(blocks_pending)-1]
+
+		 if _, processed := blocks_map[blid]; processed {
+		 	continue
+		 }
+		 blocks_map[blid] = true
+
+		bl, err := chain.Load_BL_FROM_ID(blid)
+		if err != nil {
+			return nil,err
+		}
+
+		if bl.Height == 0 { // if we reach genesis, we skip
+			continue
+		}
+
+		if int64(bl.Height + (config.BLOCK_BATCH_SIZE*4)) < height { // if we are too deep, skip past
+			continue
+		}
+
+		blocks_pending =  append(blocks_pending,bl.Tips...)
+
+
+		for i := 0; i < len(bl.Tx_hashes); i++ { // load all tx one by one, no skipping 
+			tx_bytes, err := chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[i])
+			if err != nil {
+				panic(fmt.Errorf("Cannot load  tx for %s err %s", bl.Tx_hashes[i], err))
+			}
+
+			var tx transaction.Transaction
+			if err = tx.DeserializeHeader(tx_bytes); err != nil {
+				panic(err)
+			}
+
+			if !tx.IsRegistration(){
+
+			// tx has been loaded, now lets get the nonce
+			nonce_list[tx.Payloads[0].Proof.Nonce1()] = true // add element to map for next check
+			nonce_list[tx.Payloads[0].Proof.Nonce2()] = true // add element to map for next check
+		}
+		
+	}
+
+		
+	}
+
+	return nonce_list,nil
+}
+
 
 // build reachability graph upto 2*config deeps to answer reachability queries
 func (chain *Blockchain) buildReachability_internal(reachmap map[crypto.Hash]bool, blid crypto.Hash, level int) {
@@ -1731,7 +1731,8 @@ func (chain *Blockchain) BuildReachabilityNonces(bl *block.Block) map[crypto.Has
 			}
 
 			// tx has been loaded, now lets get the nonce
-			nonce_reach_map[tx.Payloads[0].Proof.Nonce()] = true // add element to map for next check
+			nonce_reach_map[tx.Payloads[0].Proof.Nonce1()] = true // add element to map for next check
+			nonce_reach_map[tx.Payloads[0].Proof.Nonce2()] = true // add element to map for next check
 		}
 	}
 	return nonce_reach_map

@@ -26,6 +26,7 @@ import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/transaction"
+import "github.com/deroproject/derohe/metrics"
 
 // notifies inventory
 func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) {
@@ -104,9 +105,7 @@ func (c *Connection) NotifyTx(request Objects, response *Dummy) error {
 
 	// track transaction propagation
 	if first_time, ok := tx_propagation_map.Load(tx.GetHash()); ok {
-		// block already has a reference, take the time and observe the value
-		diff := time.Now().Sub(first_time.(time.Time)).Round(time.Millisecond)
-		transaction_propagation.Observe(float64(diff / 1000000))
+		metrics.Transaction_propagation.UpdateDuration(first_time.(time.Time))
 	} else {
 		tx_propagation_map.Store(tx.GetHash(), time.Now()) // if this is the first time, store the tx time
 	}
@@ -153,10 +152,8 @@ func (c *Connection) NotifyBlock(request Objects, response *Dummy) error {
 	rlog.Infof("Incoming block Notification hash %s %s ", blid, globals.CTXString(c.logger))
 
 	// track block propagation
-	if first_time, ok := block_propagation_map.Load(blid); ok {
-		// block already has a reference, take the time and observe the value
-		diff := time.Now().Sub(first_time.(time.Time)).Round(time.Millisecond)
-		block_propagation.Observe(float64(diff / 1000000))
+	if first_time, ok := block_propagation_map.Load(blid); ok { // block already has a reference, take the time and observe the value
+				metrics.Block_propagation.UpdateDuration(first_time.(time.Time))
 	} else {
 		block_propagation_map.Store(blid, time.Now()) // if this is the first time, store the block
 	}

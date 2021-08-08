@@ -123,6 +123,9 @@ type (
 	}
 )
 
+const RECENT_BLOCK = int64(-1) // will give most recent data
+const RECENT_BATCH_BLOCK = int64(-2) // will give data from recent block batch for tx building
+
 //get encrypted balance call
 type (
 	GetEncryptedBalance_Params struct {
@@ -193,8 +196,8 @@ type (
 		In_pool        bool       `json:"in_pool"`
 		Output_Indices []uint64   `json:"output_indices"`
 		Tx_hash        string     `json:"tx_hash"`
-		ValidBlock     string     `json:"valid_block"`   // TX is valid in this block
-		InvalidBlock   []string   `json:"invalid_block"` // TX is invalid in this block,  0 or more
+		StateBlock     string     `json:"state_block"`   // TX is built in reference to this block
+		MinedBlock    []string   `json:"mined_block"` // TX is mined in this block, 1 or more
 		Ring           [][][]byte `json:"ring"`          // ring members completed, since tx contains compressed
 		Balance        uint64     `json:"balance"`       // if tx is SC, give SC balance at start
 		Code           string     `json:"code"`          // smart contract code at start

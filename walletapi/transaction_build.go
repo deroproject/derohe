@@ -2,16 +2,16 @@ package walletapi
 
 import "fmt"
 import "math/big"
-
-//import "encoding/binary"
 import mathrand "math/rand"
-import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/globals"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/cryptography/bn256"
 
 // generate proof  etc
+// we use a previous point in history and cryptographically prove that we have not used the funds till now
 func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap map[string]map[string][]byte, rings [][]*bn256.G1, height uint64, scdata rpc.Arguments, roothash []byte, max_bits_array []int) *transaction.Transaction {
 
 	var tx transaction.Transaction
@@ -22,6 +22,11 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap map[stri
 	tx.Version = 1
 	tx.Height = height
 	tx.TransactionType = transaction.NORMAL
+
+
+	if height % config.BLOCK_BATCH_SIZE != 0 {
+		panic(fmt.Sprintf("Height must be a multiple of %d (config.BLOCK_BATCH_SIZE)", config.BLOCK_BATCH_SIZE))
+	}
 	/*
 		if burn_value >= 1 {
 			tx.TransactionType = transaction.BURN_TX
@@ -217,9 +222,12 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap map[stri
 
 	}
 
-	u := new(bn256.G1).ScalarMult(crypto.HashToPoint(crypto.HashtoNumber(append([]byte(crypto.PROTOCOL_CONSTANT), tx.Payloads[0].Statement.Roothash[:]...))), sender_secret) // this should be moved to generate proof
+
+
+	u := new(bn256.G1).ScalarMult(crypto.HeightToPoint(height), sender_secret) // this should be moved to generate proof
+	u1 := new(bn256.G1).ScalarMult(crypto.HeightToPoint(height + config.BLOCK_BATCH_SIZE), sender_secret) // this should be moved to generate proof
 	for t := range transfers {
-		tx.Payloads[t].Proof = crypto.GenerateProof(&tx.Payloads[t].Statement, &witness_list[t], u, tx.GetHash(), tx.Payloads[t].BurnValue)
+		tx.Payloads[t].Proof = crypto.GenerateProof(&tx.Payloads[t].Statement, &witness_list[t], u,u1, height, tx.GetHash(), tx.Payloads[t].BurnValue)
 	}
 
 	// after the tx is serialized, it loses information which is then fed by blockchain
@@ -227,8 +235,8 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap map[stri
 	//fmt.Printf("txhash before %s\n", tx.GetHash())
 
 	for t := range tx.Payloads {
-		if tx.Payloads[t].Proof.Verify(&tx.Payloads[t].Statement, tx.GetHash(), tx.Payloads[t].BurnValue) {
-			//fmt.Printf("TX verified with proof successfuly %s  burn_value %d\n", tx.GetHash(), tx.Payloads[t].BurnValue)
+		if tx.Payloads[t].Proof.Verify(&tx.Payloads[t].Statement, tx.GetHash(), height, tx.Payloads[t].BurnValue) {
+			fmt.Printf("TX verified with proof successfuly %s  burn_value %d\n", tx.GetHash(), tx.Payloads[t].BurnValue)
 
 			//fmt.Printf("Statement %+v\n", tx.Payloads[t].Statement)
 			//fmt.Printf("Proof %+v\n", tx.Payloads[t].Proof)

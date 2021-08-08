@@ -29,7 +29,7 @@ import "github.com/romana/rlog"
 
 //import "github.com/vmihailenco/msgpack"
 
-//import "github.com/deroproject/derohe/config"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derohe/crypto/ringct"
@@ -121,6 +121,7 @@ func (w *Wallet_Memory) PoolTransfer(transfers []rpc.Transfer, scdata rpc.Argume
 	entry.Transfer_Everything = transfer_all
 	entry.Trigger_Height = int64(w.Daemon_Height)
 
+	defer w.processPool(false)
 	w.account.Lock()
 	defer w.account.Unlock()
 	w.account.Pool = append(w.account.Pool, entry)
@@ -219,9 +220,9 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 				return fmt.Errorf("gettransa rpc failed err %s", err)
 			}
 
-			if tx_result.Txs_as_hex[0] == "" {
+			if tx_result.Txs_as_hex[0] == "" { // we need to work this code better
 				try.Status = "Lost (not in mempool/chain), Waiting for more blocks to retry"
-				if try.Height < (info.StableHeight + 1) { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
+				if try.Height + 3*config.BLOCK_BATCH_SIZE  < (info.StableHeight + 1) { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
 					// we need to send this tx again now
 				}else{
 					continue // try other txs
@@ -229,18 +230,27 @@ func (w *Wallet_Memory) processPool(checkonly bool) error {
 			} else if tx_result.Txs[0].In_pool {
 				try.Status = "TX in Mempool"
 				continue
-			} else if tx_result.Txs[0].ValidBlock != "" { // if the result is valid in one of the blocks
-				try.Status = fmt.Sprintf("Mined in %s (%d confirmations)", tx_result.Txs[0].ValidBlock, info.TopoHeight-tx_result.Txs[0].Block_Height)
-				if try.Height < (info.StableHeight + 1) { // successful confirmation
+			} else if len(tx_result.Txs[0].MinedBlock) >= 1 { // if the result tx has been mined in one of the blocks
+
+
+				var bl_result rpc.GetBlockHeaderByHeight_Result
+				// Issue a call with a response.
+				if err := rpc_client.Call("DERO.GetBlockHeaderByHash", rpc.GetBlockHeaderByHash_Params{Hash: tx_result.Txs[0].MinedBlock[0]}, &bl_result); err != nil {
+					rlog.Errorf("GetBlockHeaderByTopoHeight Call failed: %v", err)
+					return err
+				}
+
+				try.Status = fmt.Sprintf("Mined in %s (%d confirmations)", tx_result.Txs[0].MinedBlock[0], info.TopoHeight-bl_result.Block_Header.TopoHeight)
+				if try.Height + 2*config.BLOCK_BATCH_SIZE < (info.StableHeight + 1) { // successful confirmation
 					w.account.PoolHistory = append(w.account.PoolHistory, w.account.Pool[i])
 					rlog.Infof("tx %s confirmed successfully at stableheight %d  height %d trigger_height %d\n", try.TXID.String(), info.StableHeight, try.Height, w.account.Pool[i].Trigger_Height)
 					w.account.Pool = append(w.account.Pool[:i], w.account.Pool[i+1:]...)
 					i-- // so another element at same place gets used
 				}
 				continue
-			} else {
-				try.Status = fmt.Sprintf("Mined in sideblock (%d confirmations, waiting for more blocks)", info.Height-try.Height)
-				if try.Height < (info.StableHeight + 1) { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
+			} else { // tx may not be in pool and has not been mined, so we wait for couple of blocks 
+				try.Status = fmt.Sprintf("unknown state (waiting for some more blocks)")
+				if try.Height + 2*config.BLOCK_BATCH_SIZE < (info.StableHeight + 1) { // we have attempted, lets wait some blocks, this  needs to be optimized, for instant transfer
 					// we need to send this tx again now
 				}else{
 					continue // try other txs

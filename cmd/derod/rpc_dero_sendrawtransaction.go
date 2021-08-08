@@ -64,8 +64,8 @@ func (DERO_RPC_APIS) SendRawTransaction(ctx context.Context, p rpc.SendRawTransa
 		result.Status = "OK"
 		rlog.Debugf("Incoming TXID %s from RPC Server successfully accepted by MEMPOOL", tx.GetHash())
 	} else {
-		err = fmt.Errorf("Transaction %s rejected by daemon err '%s'", tx.GetHash(), err)
-		rlog.Warnf("Incoming TXID %s from RPC Server rejected by POOL", tx.GetHash())
+		rlog.Warnf("Incoming TXID %s from RPC Server rejected by POOL err '%s'", tx.GetHash(),err)
+   		err = fmt.Errorf("Transaction %s rejected by daemon err '%s'", tx.GetHash(), err)
 	}
 	return
 }

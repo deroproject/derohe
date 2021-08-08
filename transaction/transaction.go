@@ -170,7 +170,7 @@ func (a *AssetPayload) UnmarshalProofs(r *bytes.Reader) (err error) {
 type Transaction struct {
 	Transaction_Prefix // same as Transaction_Prefix
 
-	Payloads []AssetPayload // each transaction can have a number os payloads
+	Payloads []AssetPayload // each transaction can have a number of payloads
 }
 
 // this excludes the proof part, so it can pruned
