@@ -342,29 +342,30 @@ var servicemux = handler.ServiceMap{
 }
 
 type dummyassigner int
+
 var d dummyassigner
 
 func (d dummyassigner) Assign(ctx context.Context, method string) (handler jrpc2.Handler) {
-	if handler = servicemux.Assign(ctx,method);handler != nil {
+	if handler = servicemux.Assign(ctx, method); handler != nil {
 		return
 	}
-	if handler = historical_apis.Assign(ctx,method);handler != nil {
+	if handler = historical_apis.Assign(ctx, method); handler != nil {
 		return
 	}
 	return nil
 }
 
 func (d dummyassigner) Names() []string {
-	names := servicemux.Names() 
+	names := servicemux.Names()
 	hist_names := historical_apis.Names()
 
-	names = append(names,hist_names...)
+	names = append(names, hist_names...)
 	sort.Strings(names)
 	return names
 }
 
-
 var bridge = jhttp.NewBridge(d, nil)
+
 func translate_http_to_jsonrpc_and_vice_versa(w http.ResponseWriter, r *http.Request) {
 	bridge.ServeHTTP(w, r)
 }

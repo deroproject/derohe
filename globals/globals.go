@@ -93,7 +93,7 @@ var Dialer proxy.Dialer = proxy.Direct // for proxy and direct connections
 // all outgoing connections , including DNS requests must be made using this
 
 // all program arguments are available here
-var Arguments map[string]interface{}
+var Arguments = map[string]interface{}{}
 
 func InitNetwork() {
 	Config = config.Mainnet                    // default is mainnnet

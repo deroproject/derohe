@@ -96,7 +96,7 @@ func (arg Argument) String() string {
 	case DataHash:
 		return fmt.Sprintf("Name:%s Type:%s Value:'%s'", arg.Name, arg.DataType, arg.Value)
 	case DataAddress:
-		return fmt.Sprintf("Name:%s Type:%s Value:'%x'", arg.Name, arg.DataType, arg.Value)
+		return fmt.Sprintf("Name:%s Type:%s Value:'%s'", arg.Name, arg.DataType, arg.Value)
 	case DataTime:
 		return fmt.Sprintf("Name:%s Type:%s Value:'%s'", arg.Name, arg.DataType, arg.Value)
 
@@ -195,7 +195,7 @@ func (args Arguments) MarshalBinary() (data []byte, err error) {
 		case crypto.Hash:
 			localmap[arg.Name+string(arg.DataType)] = v
 		case Address:
-			localmap[arg.Name+string(arg.DataType)] = v
+			localmap[arg.Name+string(arg.DataType)] = v.PublicKey.EncodeCompressed()
 		case string:
 			localmap[arg.Name+string(arg.DataType)] = v
 		case time.Time:
@@ -352,11 +352,17 @@ func (args *Arguments) Sort() {
 }
 
 // some fields are already defined
-const RPC_DESTINATION_PORT = "D" // mandatory,uint64,  used for ID of type uint64
-const RPC_SOURCE_PORT = "S"      // mandatory,uint64, used for ID
-const RPC_VALUE_TRANSFER = "V"   //uint64, this is representation and is only readable, value is never transferred
-const RPC_COMMENT = "C"          //optional,string, used for display MSG to user
-const RPC_EXPIRY = "E"           //optional,time used for Expiry for this service call
+// TODO we need to define ABI here to use names also, we have a name service
+
+const RPC_DESTINATION_PORT = "D"  // mandatory,uint64,  used for ID of type uint64
+const RPC_SOURCE_PORT = "S"       // mandatory,uint64, used for ID
+const RPC_VALUE_TRANSFER = "V"    //uint64, this is representation and is only readable, value is never transferred
+const RPC_COMMENT = "C"           //optional,string, used for display MSG to user
+const RPC_EXPIRY = "E"            //optional,time used for Expiry for this service call
+const RPC_REPLYBACK_ADDRESS = "R" //this is mandatory this is an address,otherwise how will otherside respond
+//RPC will include own address so as the other enc can respond
+
+const RPC_NEEDS_REPLYBACK_ADDRESS = "N" //optional, uint64
 
 type argument_raw struct {
 	Name     string          `json:"name"`     // string name must be atleast 1 byte

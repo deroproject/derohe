@@ -10,7 +10,7 @@
 
 package main
 
-//import "os"
+import "os"
 import "fmt"
 import "time"
 import "crypto/sha1"
@@ -18,6 +18,8 @@ import "crypto/sha1"
 import "etcd.io/bbolt"
 
 import "github.com/go-logr/logr"
+import "gopkg.in/natefinch/lumberjack.v2"
+import "github.com/deroproject/derohe/globals" // needed for logs
 
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/walletapi"
@@ -34,6 +36,7 @@ var expected_arguments = rpc.Arguments{
 	// { rpc.RPC_EXPIRY , rpc.DataTime, time.Now().Add(time.Hour).UTC()},
 	{rpc.RPC_COMMENT, rpc.DataString, "Purchase PONG"},
 	//{"float64", rpc.DataFloat64, float64(0.12345)},          // in atomic units
+	//	{rpc.RPC_NEEDS_REPLYBACK_ADDRESS,rpc.DataUint64,uint64(0)},  // this service will reply to incoming request,so needs the senders address
 	{rpc.RPC_VALUE_TRANSFER, rpc.DataUint64, uint64(12345)}, // in atomic units
 
 }
@@ -53,6 +56,17 @@ var rpcClient = jsonrpc.NewClient("http://127.0.0.1:40403/json_rpc")
 func main() {
 	var err error
 	fmt.Printf("Pong Server to demonstrate RPC over dero chain.\n")
+
+	// parse arguments and setup logging , print basic information
+	globals.Arguments["--debug"] = true
+	exename, _ := os.Executable()
+	globals.InitializeLog(os.Stdout, &lumberjack.Logger{
+		Filename:   exename + ".log",
+		MaxSize:    100, // megabytes
+		MaxBackups: 2,
+	})
+	logger = globals.Logger
+
 	var addr *rpc.Address
 	var addr_result rpc.GetAddress_Result
 	err = rpcClient.CallFor(&addr_result, "GetAddress")
@@ -152,17 +166,28 @@ func processing_thread(db *bbolt.DB) {
 					logger.Error(nil, fmt.Sprintf("user transferred %d, we were expecting %d. so we will not do anything", e.Amount, value_expected)) // this is an unexpected situation
 					continue
 				}
-				// value received is what we are expecting, so time for response
 
+				/*	if !e.Payload_RPC.Has(rpc.RPC_REPLYBACK_ADDRESS, rpc.DataAddress){
+						logger.Error(nil, fmt.Sprintf("user has not give his address so we cannot replyback")) // this is an unexpected situation
+						continue
+					}
+
+					destination_expected := e.Payload_RPC.Value(rpc.RPC_REPLYBACK_ADDRESS, rpc.DataAddress).(rpc.Address).String()
+
+					logger.V(1).Info("tx should be replied", "txid", e.TXID,"replyback_address",destination_expected)
+				*/
+				destination_expected := e.Sender
+
+				// value received is what we are expecting, so time for response
 				response[0].Value = e.SourcePort // source port now becomes destination port, similar to TCP
 				response[2].Value = fmt.Sprintf("Sucessfully purchased pong (could be serial, license or download link or anything).You sent %s at height %d", walletapi.FormatMoney(e.Amount), e.Height)
 
 				//_, err :=  response.CheckPack(transaction.PAYLOAD0_LIMIT)) //  we only have 144 bytes for RPC
 
 				// sender of ping now becomes destination
-				var str string
-				tparams := rpc.Transfer_Params{Transfers: []rpc.Transfer{{Destination: e.Sender, Amount: uint64(1), Payload_RPC: response}}}
-				err = rpcClient.CallFor(&str, "Transfer", tparams)
+				var result rpc.Transfer_Result
+				tparams := rpc.Transfer_Params{Transfers: []rpc.Transfer{{Destination: destination_expected, Amount: uint64(1), Payload_RPC: response}}}
+				err = rpcClient.CallFor(&result, "Transfer", tparams)
 				if err != nil {
 					logger.Error(err, "err while transfer")
 					continue
@@ -173,9 +198,9 @@ func processing_thread(db *bbolt.DB) {
 					return b.Put([]byte(e.TXID), []byte("done"))
 				})
 				if err != nil {
-					logger.Error(err, "err updating db", err)
+					logger.Error(err, "err updating db")
 				} else {
-					logger.Info("ping replied successfully with pong")
+					logger.Info("ping replied successfully with pong ", "result", result)
 				}
 
 			}

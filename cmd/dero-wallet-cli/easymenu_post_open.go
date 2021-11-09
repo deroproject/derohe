@@ -18,7 +18,7 @@ package main
 
 import "io"
 
-//import "time"
+import "time"
 import "fmt"
 
 //import "io/ioutil"
@@ -208,18 +208,120 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 		var amount_to_transfer uint64
 
-		amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter amount to transfer in SCID (max TODO): "))
-
-		if amount_str == "" {
-			amount_str = ".00009"
+		var arguments = rpc.Arguments{
+			// { rpc.RPC_DESTINATION_PORT, rpc.DataUint64,uint64(0x1234567812345678)},
+			// { rpc.RPC_VALUE_TRANSFER, rpc.DataUint64,uint64(12345)},
+			// { rpc.RPC_EXPIRY , rpc.DataTime, time.Now().Add(time.Hour).UTC()},
+			// { rpc.RPC_COMMENT , rpc.DataString, "Purchase XYZ"},
 		}
-		amount_to_transfer, err = globals.ParseAmount(amount_str)
-		if err != nil {
-			logger.Error(err, "Err parsing amount")
-			break // invalid amount provided, bail out
+		if a.IsIntegratedAddress() { // read everything from the address
+
+			if a.Arguments.Validate_Arguments() != nil {
+				logger.Error(err, "Integrated Address  arguments could not be validated.")
+				break
+			}
+
+			if !a.Arguments.Has(rpc.RPC_DESTINATION_PORT, rpc.DataUint64) { // but only it is present
+				logger.Error(fmt.Errorf("Integrated Address does not contain destination port."), "")
+				break
+			}
+
+			arguments = append(arguments, rpc.Argument{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
+			// arguments = append(arguments, rpc.Argument{"Comment", rpc.DataString, "holygrail of all data is now working if you can see this"})
+
+			if a.Arguments.Has(rpc.RPC_EXPIRY, rpc.DataTime) { // but only it is present
+
+				if a.Arguments.Value(rpc.RPC_EXPIRY, rpc.DataTime).(time.Time).Before(time.Now().UTC()) {
+					logger.Error(nil, "This address has expired.", "expiry time", a.Arguments.Value(rpc.RPC_EXPIRY, rpc.DataTime))
+					break
+				} else {
+					logger.Info("This address will expire ", "expiry time", a.Arguments.Value(rpc.RPC_EXPIRY, rpc.DataTime))
+				}
+			}
+
+			logger.Info("Destination port is integreted in address.", "dst port", a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64))
+
+			if a.Arguments.Has(rpc.RPC_COMMENT, rpc.DataString) { // but only it is present
+				logger.Info("Integrated Message", "comment", a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString))
+			}
 		}
 
-		var arguments = rpc.Arguments{}
+		// arguments have been already validated
+		for _, arg := range a.Arguments {
+			if !(arg.Name == rpc.RPC_COMMENT || arg.Name == rpc.RPC_EXPIRY || arg.Name == rpc.RPC_DESTINATION_PORT || arg.Name == rpc.RPC_SOURCE_PORT || arg.Name == rpc.RPC_VALUE_TRANSFER || arg.Name == rpc.RPC_NEEDS_REPLYBACK_ADDRESS) {
+				switch arg.DataType {
+				case rpc.DataString:
+					if v, err := ReadString(l, arg.Name, arg.Value.(string)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
+						return
+					}
+				case rpc.DataInt64:
+					if v, err := ReadInt64(l, arg.Name, arg.Value.(int64)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
+						return
+					}
+				case rpc.DataUint64:
+					if v, err := ReadUint64(l, arg.Name, arg.Value.(uint64)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
+						return
+					}
+				case rpc.DataFloat64:
+					if v, err := ReadFloat64(l, arg.Name, arg.Value.(float64)); err == nil {
+						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+					} else {
+						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
+						return
+					}
+				case rpc.DataTime:
+					logger.Error(fmt.Errorf("time argument is currently not supported."), "")
+					break
+
+				}
+			}
+		}
+
+		if a.Arguments.Has(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64) { // but only it is present
+			logger.Info("Transaction", "Value", globals.FormatMoney(a.Arguments.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)))
+			amount_to_transfer = a.Arguments.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)
+		} else {
+
+			amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter amount to transfer in DERO (max TODO): "))
+
+			if amount_str == "" {
+				amount_str = ".00001"
+			}
+			amount_to_transfer, err = globals.ParseAmount(amount_str)
+			if err != nil {
+				logger.Error(err, "Err parsing amount")
+				break // invalid amount provided, bail out
+			}
+		}
+
+		// check whether the service needs the address of sender
+		// this is required to enable services which are completely invisisble to external entities
+		// external entities means anyone except sender/receiver
+		if a.Arguments.Has(rpc.RPC_NEEDS_REPLYBACK_ADDRESS, rpc.DataUint64) {
+			logger.Info("This RPC has requested your address.")
+			logger.Info("If you are expecting something back, it needs to be sent")
+			logger.Info("Your address will remain completely invisible to external entities(only sender/receiver can see your address)")
+			arguments = append(arguments, rpc.Argument{rpc.RPC_REPLYBACK_ADDRESS, rpc.DataAddress, wallet.GetAddress()})
+		}
+
+		// if no arguments, use space by embedding a small comment
+		if len(arguments) == 0 { // allow user to enter Comment
+			if v, err := ReadString(l, "Comment", ""); err == nil {
+				arguments = append(arguments, rpc.Argument{"Comment", rpc.DataString, v})
+			} else {
+				logger.Error(fmt.Errorf("%s could not be parsed (type %s),", "Comment", rpc.DataString), "")
+				return
+			}
+		}
 
 		if _, err := arguments.CheckPack(transaction.PAYLOAD0_LIMIT); err != nil {
 			logger.Error(err, "Arguments packing err")
