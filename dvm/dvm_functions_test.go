@@ -179,6 +179,46 @@ var execution_tests_functions = []struct {
 		nil,
 		Variable{Type: String, ValueString: string(decodeHex("41FB"))},
 	},
+	{
+		"substr()",
+		`Function TestRun(input String) String
+		 30 return  substr(input,0,5)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("01234")},
+	},
+	{
+		"substr()",
+		`Function TestRun(input String) String
+		 30 return  substr(input,1,5)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("12345")},
+	},
+	{
+		"substr()",
+		`Function TestRun(input String) String
+		 30 return  substr(input,1,129)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("123456789")},
+	},
+	{
+		"substr()",
+		`Function TestRun(input String) String
+		 30 return  substr(input,13,129)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("")},
+	},
 }
 
 func decodeHex(s string) []byte {

@@ -197,7 +197,7 @@ func (chain *Blockchain) InsertMiniBlock(mbl block.MiniBlock) (err error, result
 
 	var miner_hash crypto.Hash
 	copy(miner_hash[:], mbl.KeyHash[:])
-	if !chain.IsAddressHashValid(miner_hash) {
+	if !chain.IsAddressHashValid(true, miner_hash) {
 		logger.V(1).Error(err, "Invalid miner address")
 		err = fmt.Errorf("Invalid miner address")
 		return err, false

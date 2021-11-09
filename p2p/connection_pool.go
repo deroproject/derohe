@@ -803,8 +803,6 @@ func (connection *Connection) isConnectionSyncing() (count int) {
 func trigger_sync() {
 	defer globals.Recover(3)
 
-	topoheight := chain.Load_Block_Topological_order(chain.Get_Top_ID())
-
 	unique_map := UniqueConnections()
 
 	var clist []*Connection
@@ -822,12 +820,14 @@ func trigger_sync() {
 
 	for _, connection := range clist {
 
+		height := chain.Get_Height()
+
 		//connection.Lock()   recursive mutex are not suported
 		// only choose highest available peers for syncing
-		if atomic.LoadUint32(&connection.State) != HANDSHAKE_PENDING && topoheight <= atomic.LoadInt64(&connection.TopoHeight) { // skip pre-handshake connections
+		if atomic.LoadUint32(&connection.State) != HANDSHAKE_PENDING && height < atomic.LoadInt64(&connection.Height) { // skip pre-handshake connections
 			// check whether we are lagging with this connection
 			//connection.Lock()
-			islagging := topoheight < atomic.LoadInt64(&connection.TopoHeight)
+			islagging := height < atomic.LoadInt64(&connection.Height)
 
 			//fmt.Printf("checking cdiff is lagging %+v  topoheight %d peer topoheight %d \n", islagging, topoheight, connection.TopoHeight)
 
@@ -840,15 +840,18 @@ func trigger_sync() {
 					continue
 				}
 
-				if connection.Height >= (chain.Get_Height() + 1) { // give ourselves one sec, maybe the block is just being written
+				if connection.Height > chain.Get_Height() { // give ourselves one sec, maybe the block is just being written
 					time.Sleep(time.Second)
-					islagging = topoheight < atomic.LoadInt64(&connection.TopoHeight) // we only use topoheight, since pruned chain might not have full cdiff
+					height := chain.Get_Height()
+					islagging = height < atomic.LoadInt64(&connection.Height) // we only use topoheight, since pruned chain might not have full cdiff
+				} else {
+					continue
 				}
 
 				if islagging {
 					//connection.Lock()
 
-					connection.logger.V(1).Info("We need to resync with the peer", "height", connection.Height, "pruned", connection.Pruned)
+					connection.logger.V(1).Info("We need to resync with the peer", "our_height", height, "height", connection.Height, "pruned", connection.Pruned)
 
 					//connection.Unlock()
 					// set mode to syncronising

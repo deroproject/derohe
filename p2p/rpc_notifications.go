@@ -202,7 +202,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 
 		var miner_hash crypto.Hash
 		copy(miner_hash[:], mbl.KeyHash[:])
-		if !chain.IsAddressHashValid(miner_hash) {
+		if !chain.IsAddressHashValid(false, miner_hash) { // this will use cache
 			c.logger.V(3).Error(err, "unregistered miner")
 			return fmt.Errorf("unregistered miner")
 		}

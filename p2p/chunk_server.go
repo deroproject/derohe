@@ -104,37 +104,36 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 
 	var bl block.Block
 
-	if err := bl.Deserialize(chunk.BLOCK); err != nil {
-		logger.V(1).Error(err, "error deserializing block")
-		return nil
-	}
-	if bl.GetHash() != chunk.BLID {
-		return fmt.Errorf("Corrupted Chunk. bad block data")
-	}
-
-	// we must check the Pow now
-	if int64(bl.Height) >= chain.Get_Height()-3 && int64(bl.Height) <= chain.Get_Height()+3 {
-
-	} else {
-		return nil // we need not broadcast
-	}
-
-	if len(bl.Tips) == 0 || len(bl.MiniBlocks) < 5 {
-		return nil
-	}
-
-	for _, mbl := range bl.MiniBlocks {
-		if !chain.VerifyMiniblockPoW(&bl, mbl) {
-			return errormsg.ErrInvalidPoW
-		}
-	}
-
-	broadcast_Chunk(chunk, 0, sent) // broadcast chunk INV
-
 	var chunks *Chunks_Per_Block_Data
 	if chunksi, ok := chunk_map.Load(chunk.HHash); ok {
 		chunks = chunksi.(*Chunks_Per_Block_Data)
 	} else {
+
+		if err := bl.Deserialize(chunk.BLOCK); err != nil {
+			logger.V(1).Error(err, "error deserializing block")
+			return nil
+		}
+		if bl.GetHash() != chunk.BLID {
+			return fmt.Errorf("Corrupted Chunk. bad block data")
+		}
+
+		// we must check the Pow now
+		if int64(bl.Height) >= chain.Get_Height()-3 && int64(bl.Height) <= chain.Get_Height()+3 {
+
+		} else {
+			return nil // we need not broadcast
+		}
+
+		if len(bl.Tips) == 0 || len(bl.MiniBlocks) < 5 {
+			return nil
+		}
+
+		for _, mbl := range bl.MiniBlocks {
+			if !chain.VerifyMiniblockPoW(&bl, mbl) {
+				return errormsg.ErrInvalidPoW
+			}
+		}
+
 		chunks = new(Chunks_Per_Block_Data)
 		chunks.Created = time.Now()
 		chunk_map.Store(chunk.HHash, chunks)
@@ -142,6 +141,10 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 
 	if chunks.Processed {
 		return nil
+	}
+
+	if chunks.Chunks[chunk.CHUNK_ID] == nil {
+		broadcast_Chunk(chunk, 0, sent) // broadcast chunk INV
 	}
 
 	chunks.Lock()

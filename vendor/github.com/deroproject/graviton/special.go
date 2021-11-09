@@ -77,7 +77,7 @@ func (l *leaf) GetKeyValue(store *Store, keyhash [HASHSIZE]byte, valid_bit_count
 		return used_bit_count, l.key, l.value, nil
 	}
 
-	return used_bit_count, nil, nil, xerrors.Errorf("%w: collision, keyhash %x not found", ErrNotFound, keyhash)
+	return used_bit_count, nil, nil, xerrors.Errorf("%w: collision, keyhash %x not found, inram hash %x, used_bit_count %d", ErrNotFound, keyhash,l.keyhash,used_bit_count)
 }
 
 // sets a root for the cursor, so the cursor visits only a specific prefix keys

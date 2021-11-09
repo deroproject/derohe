@@ -425,7 +425,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		for _, mbl := range bl.MiniBlocks {
 			var miner_hash crypto.Hash
 			copy(miner_hash[:], mbl.KeyHash[:])
-			if !chain.IsAddressHashValid(miner_hash) {
+			if !chain.IsAddressHashValid(true, miner_hash) {
 				err = fmt.Errorf("miner address not registered")
 				return err, false
 			}

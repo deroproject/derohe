@@ -52,12 +52,12 @@ const MAX_RINGSIZE = 128 // <= 128,  ringsize will be accepted
 // Minimum FEE calculation constants are here
 const FEE_PER_KB = uint64(100) // .00100 dero per kb
 
-const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(800) // atlantis mainnet botstrapped at 200 MH/s
-const MAINNET_MINIMUM_DIFFICULTY = uint64(800)   // 800 H/s
+const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(80000000) // atlantis mainnet botstrapped at 80 MH/s
+const MAINNET_MINIMUM_DIFFICULTY = uint64(800000000)   // 80 MH/s
 
 // testnet bootstraps at 1 MH
-const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(10000) // testnet bootstrap at 100 H/s
-const TESTNET_MINIMUM_DIFFICULTY = uint64(10000)   // 100 H/s
+const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(50000) // testnet bootstrap at 50KH/s
+const TESTNET_MINIMUM_DIFFICULTY = uint64(10000)   // 10KH/s
 
 // this single parameter controls lots of various parameters
 // within the consensus, it should never go below 7
@@ -97,7 +97,7 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x40, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x44, 0x00, 0x00, 0x00}),
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
 	Wallet_RPC_Default_Port: 40403,

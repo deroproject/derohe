@@ -105,7 +105,7 @@ func (l *leaf) Get(store *Store, keyhash [HASHSIZE]byte) ([]byte, error) {
 		return l.value, nil
 	}
 
-	return nil, xerrors.Errorf("%w: collision, keyhash %x not found", ErrNotFound, keyhash)
+	return nil, xerrors.Errorf("%w: collision, keyhash %x not found, keyhash in ram %x", ErrNotFound, keyhash,l.keyhash)
 }
 
 func (l *leaf) Delete(store *Store, keyhash [HASHSIZE]byte) (bool, bool, error) {

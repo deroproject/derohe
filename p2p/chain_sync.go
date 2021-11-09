@@ -173,6 +173,8 @@ func (connection *Connection) process_object_response(response Objects, sent int
 		processing_complete <- true
 	}()
 
+	defer globals.Recover(2)
+
 	for i := 0; i < len(response.CBlocks); i++ { // process incoming full blocks
 		var cbl block.Complete_Block // parse incoming block and deserialize it
 		var bl block.Block

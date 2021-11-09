@@ -467,12 +467,12 @@ func (chain *Blockchain) Create_new_block_template_mining(miniblock_miner_addres
 
 	var miner_hash crypto.Hash
 	copy(miner_hash[:], mbl.KeyHash[:])
-	if !chain.IsAddressHashValid(miner_hash) {
+	if !chain.IsAddressHashValid(false, miner_hash) {
 		logger.V(3).Error(err, "unregistered miner %s", miner_hash)
 		err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
 		return
 	}
-	
+
 	miniblock_blob = fmt.Sprintf("%x", mbl.Serialize())
 
 	return
@@ -527,20 +527,20 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		return
 	}
 
-	var miner_hash crypto.Hash
-	copy(miner_hash[:], mbl.KeyHash[:])
-	if !chain.IsAddressHashValid(miner_hash) {
-		logger.V(3).Error(err, "unregistered miner %s", miner_hash)
-		err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
-		return
-	}
-
 	//fmt.Printf("received miniblock %x block %x\n", miniblock_blob, bl.Serialize())
 
 	// lets try to check pow to detect whether the miner is cheating
 	if !chain.VerifyMiniblockPoW(&bl, mbl) {
 		logger.V(1).Error(err, "Error ErrInvalidPoW ")
 		err = errormsg.ErrInvalidPoW
+		return
+	}
+
+	var miner_hash crypto.Hash
+	copy(miner_hash[:], mbl.KeyHash[:])
+	if !chain.IsAddressHashValid(true, miner_hash) {
+		logger.V(3).Error(err, "unregistered miner %s", miner_hash)
+		err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
 		return
 	}
 
@@ -675,14 +675,16 @@ func (chain *Blockchain) ExpandMiniBlockTip(hash crypto.Hash) (result crypto.Has
 }
 
 // it is USED by consensus and p2p whether the miners has is valid
-func (chain *Blockchain) IsAddressHashValid(hashes ...crypto.Hash) (found bool) {
+func (chain *Blockchain) IsAddressHashValid(skip_cache bool, hashes ...crypto.Hash) (found bool) {
 
-	for _, hash := range hashes { // check whether everything could be satisfied via cache
-		if _, found := chain.cache_IsAddressHashValid.Get(fmt.Sprintf("%s", hash)); found {
-			goto hard_way // do things the hard way
+	if skip_cache {
+		for _, hash := range hashes { // check whether everything could be satisfied via cache
+			if _, found := chain.cache_IsAddressHashValid.Get(fmt.Sprintf("%s", hash)); !found {
+				goto hard_way // do things the hard way
+			}
 		}
+		return true
 	}
-	return true
 
 hard_way:
 	// the block may just have been mined, so we evaluate roughly 25 past blocks to cross check
