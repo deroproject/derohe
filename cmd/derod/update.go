@@ -85,7 +85,7 @@ func (d *socks_dialer) DialContext(ctx context.Context, network, address string)
 func dial_random_read_response(in []byte) (out []byte, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while checking updates", "stack", debug.Stack())
+			logger.V(2).Error(nil, "Recovered while checking updates", "r", r, "stack", debug.Stack())
 		}
 	}()
 
@@ -154,7 +154,7 @@ func check_update() {
 	// add panic handler, in case DNS acts rogue and tries to attack
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(2).Error(r.(error), "Recovered while checking updates", "stack", debug.Stack())
+			logger.V(2).Error(nil, "Recovered while checking updates", r, "r", "stack", debug.Stack())
 		}
 	}()
 

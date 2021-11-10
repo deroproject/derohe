@@ -307,7 +307,7 @@ func (c *Connection) processChunkedBlock(request Objects, isnotified bool, wasch
 	}
 
 	// object is already is in our chain, we need not relay it
-	if chain.Is_Block_Topological_order(blid) {
+	if chain.Is_Block_Topological_order(blid) || chain.Is_Block_Tip(blid) {
 		return nil
 	}
 
@@ -396,24 +396,7 @@ func (c *Connection) processChunkedBlock(request Objects, isnotified bool, wasch
 	}
 
 	// make sure connection does not timeout and be killed while processing huge blocks
-	processing_complete := make(chan bool)
-	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-processing_complete:
-				return // complete the loop
-			case <-ticker.C: // give the chain some more time to respond
-				atomic.StoreInt64(&c.LastObjectRequestTime, time.Now().Unix())
-			}
-		}
-	}()
-
-	defer func() {
-		processing_complete <- true
-	}()
-
+	atomic.StoreInt64(&c.LastObjectRequestTime, time.Now().Unix())
 	// check if we can add ourselves to chain
 	if err, ok := chain.Add_Complete_Block(&cbl); ok { // if block addition was successfil
 		// notify all peers

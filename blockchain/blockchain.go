@@ -184,6 +184,10 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 	chain.Initialise_Chain_From_DB() // load the chain from the disk
 
+	if chain.Pruned >= 1 {
+		logger.Info("Chain Pruned till", "topoheight", chain.Pruned)
+	}
+
 	metrics.Version = config.Version.String()
 	go metrics.Dump_metrics_data_directly(logger, globals.Arguments["--node-tag"]) // enable metrics if someone needs them
 
@@ -245,7 +249,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 		// safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while adding new block", "blid", block_hash, "stack", fmt.Sprintf("%s", string(debug.Stack())))
+			logger.V(1).Error(nil, "Recovered while adding new block", "blid", block_hash, "r", r, "stack", fmt.Sprintf("%s", string(debug.Stack())))
 			result = false
 			err = errormsg.ErrPanic
 		}
@@ -257,7 +261,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						logger.V(1).Error(r.(error), "Recovered while instrumenting", "stack", debug.Stack())
+						logger.V(1).Error(nil, "Recovered while instrumenting", "r", r, "stack", debug.Stack())
 					}
 				}()
 				metrics.Set.GetOrCreateCounter("blockchain_tx_total").Add(len(cbl.Bl.Tx_hashes))
@@ -869,7 +873,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 	func() {
 		if r := recover(); r != nil {
-			logger.Error(r.(error), "Mempool House Keeping triggered panic", "height", block_height)
+			logger.Error(nil, "Mempool House Keeping triggered panic", "r", r, "height", block_height)
 		}
 
 		purge_count := chain.MiniBlocks.PurgeHeight(chain.Get_Stable_Height()) // purge all miniblocks upto this height
@@ -934,9 +938,6 @@ func (chain *Blockchain) Initialise_Chain_From_DB() {
 	defer chain.Unlock()
 
 	chain.Pruned = chain.LocatePruneTopo()
-	if chain.Pruned >= 1 {
-		logger.Info("Chain Pruned till", "topoheight", chain.Pruned)
-	}
 
 	// find the tips from the chain , first by reaching top height
 	// then downgrading to top-10 height
@@ -992,9 +993,18 @@ func (chain *Blockchain) Get_Stable_Height() int64 {
 func (chain *Blockchain) Get_TIPS() (tips []crypto.Hash) {
 	for _, x := range chain.Tips {
 		tips = append(tips, x)
-
 	}
 	return tips
+}
+
+// check whether the block is a tip
+func (chain *Blockchain) Is_Block_Tip(blid crypto.Hash) (result bool) {
+	for k := range chain.Tips {
+		if blid == k {
+			return true
+		}
+	}
+	return false
 }
 
 func (chain *Blockchain) Get_Difficulty() uint64 {

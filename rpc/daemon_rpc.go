@@ -226,18 +226,22 @@ type (
 	GetSC_Params struct {
 		SCID       string   `json:"scid"`
 		Code       bool     `json:"code,omitempty"`       // if true code will be returned
+		Variables  bool     `json:"variables,omitempty"`  // if true all SC variables will be returned
 		TopoHeight int64    `json:"topoheight,omitempty"` // all queries are related to this topoheight
 		KeysUint64 []uint64 `json:"keysuint64,omitempty"`
 		KeysString []string `json:"keysstring,omitempty"`
 		KeysBytes  [][]byte `json:"keysbytes,omitempty"` // all keys can also be represented as bytes
 	}
 	GetSC_Result struct {
-		ValuesUint64 []string `json:"valuesuint64,omitempty"`
-		ValuesString []string `json:"valuesstring,omitempty"`
-		ValuesBytes  []string `json:"valuesbytes,omitempty"`
-		Balance      uint64   `json:"balance"`
-		Code         string   `json:"code"`
-		Status       string   `json:"status"`
+		ValuesUint64       []string               `json:"valuesuint64,omitempty"`
+		ValuesString       []string               `json:"valuesstring,omitempty"`
+		ValuesBytes        []string               `json:"valuesbytes,omitempty"`
+		VariableStringKeys map[string]interface{} `json:"stringkeys,omitempty"`
+		VariableUint64Keys map[uint64]interface{} `json:"uint64keys,omitempty"`
+		Balances           map[string]uint64      `json:"balances,omitempty"`
+		Balance            uint64                 `json:"balance"`
+		Code               string                 `json:"code"`
+		Status             string                 `json:"status"`
 	}
 )
 

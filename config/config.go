@@ -53,7 +53,7 @@ const MAX_RINGSIZE = 128 // <= 128,  ringsize will be accepted
 const FEE_PER_KB = uint64(100) // .00100 dero per kb
 
 const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(80000000) // atlantis mainnet botstrapped at 80 MH/s
-const MAINNET_MINIMUM_DIFFICULTY = uint64(800000000)   // 80 MH/s
+const MAINNET_MINIMUM_DIFFICULTY = uint64(800000000)  // 80 MH/s
 
 // testnet bootstraps at 1 MH
 const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(50000) // testnet bootstrap at 50KH/s

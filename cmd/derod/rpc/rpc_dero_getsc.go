@@ -42,6 +42,10 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 		}
 	}()
 
+	result.VariableStringKeys = map[string]interface{}{}
+	result.VariableUint64Keys = map[uint64]interface{}{}
+	result.Balances = map[string]uint64{}
+
 	scid := crypto.HashHexToHash(p.SCID)
 
 	topoheight := chain.Load_TOPO_HEIGHT()
@@ -71,7 +75,9 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 				}
 			*/
 
-			if sc_data_tree, err := ss.GetTree(string(scid[:])); err == nil {
+			var sc_data_tree *graviton.Tree
+			sc_data_tree, err = ss.GetTree(string(scid[:]))
+			if err == nil {
 				var zerohash crypto.Hash
 				if balance_bytes, err := sc_data_tree.Get(zerohash[:]); err == nil {
 					if len(balance_bytes) == 8 {
@@ -86,6 +92,37 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 							result.Code = "Unmarshal error"
 						} else {
 							result.Code = v.ValueString
+						}
+					}
+				}
+				if p.Variables { // user requested all variables
+					cursor := sc_data_tree.Cursor()
+					var k, v []byte
+					for k, v, err = cursor.First(); err == nil; k, v, err = cursor.Next() {
+						var vark, varv dvm.Variable
+
+						if nil == vark.UnmarshalBinary(k) && nil == varv.UnmarshalBinary(v) {
+							switch vark.Type {
+							case dvm.Uint64:
+								if varv.Type == dvm.Uint64 {
+									result.VariableUint64Keys[vark.ValueUint64] = varv.ValueUint64
+								} else {
+									result.VariableUint64Keys[vark.ValueUint64] = fmt.Sprintf("%x", []byte(varv.ValueString))
+								}
+
+							case dvm.String:
+								if varv.Type == dvm.Uint64 {
+									result.VariableStringKeys[vark.ValueString] = varv.ValueUint64
+								} else {
+									result.VariableStringKeys[vark.ValueString] = fmt.Sprintf("%x", []byte(varv.ValueString))
+								}
+							default:
+								err = fmt.Errorf("UNKNOWN Data type")
+								return
+							}
+
+						} else if len(k) == 32 && len(v) == 8 { // it's SC balance
+							result.Balances[fmt.Sprintf("%x", k)] = binary.BigEndian.Uint64(v)
 						}
 					}
 				}
@@ -108,7 +145,7 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 					case dvm.Uint64:
 						result.ValuesUint64 = append(result.ValuesUint64, fmt.Sprintf("%d", v.ValueUint64))
 					case dvm.String:
-						result.ValuesUint64 = append(result.ValuesUint64, fmt.Sprintf("%s", v.ValueString))
+						result.ValuesUint64 = append(result.ValuesUint64, fmt.Sprintf("%x", []byte(v.ValueString)))
 					default:
 						result.ValuesUint64 = append(result.ValuesUint64, "UNKNOWN Data type")
 					}
@@ -131,7 +168,7 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 					case dvm.Uint64:
 						result.ValuesString = append(result.ValuesUint64, fmt.Sprintf("%d", v.ValueUint64))
 					case dvm.String:
-						result.ValuesString = append(result.ValuesString, fmt.Sprintf("%s", v.ValueString))
+						result.ValuesString = append(result.ValuesString, fmt.Sprintf("%x", []byte(v.ValueString)))
 					default:
 						result.ValuesString = append(result.ValuesString, "UNKNOWN Data type")
 					}

@@ -505,7 +505,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 	// safety so if anything wrong happens, verification fails
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while accepting new block", "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while accepting new block", "r", r, "stack", debug.Stack())
 			err = fmt.Errorf("Error while parsing block")
 		}
 	}()

@@ -282,7 +282,7 @@ func (w *Wallet_Memory) DecodeEncryptedBalanceNow(el *crypto.ElGamal) uint64 {
 func (w *Wallet_Memory) GetSelfEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64) (r rpc.GetEncryptedBalance_Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while connecting", "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while connecting", "r", r, "stack", debug.Stack())
 			err = fmt.Errorf("Recovered while connecting", "stack", debug.Stack())
 		}
 	}()
@@ -301,7 +301,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while connecting", "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while connecting", "r", r, "stack", debug.Stack())
 			err = fmt.Errorf("Recovered while connecting", "stack", debug.Stack())
 		}
 	}()
@@ -437,6 +437,12 @@ func (w *Wallet_Memory) Random_ring_members(scid crypto.Hash) (alist []string) {
 
 // sync history of wallet from blockchain
 func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.V(1).Error(nil, "Recovered while syncing connecting", "r", r, "stack", debug.Stack())
+		}
+	}()
+
 	if w.getEncryptedBalanceresult(scid).Registration < 0 { // unregistered so skip
 		return
 	}
@@ -705,6 +711,11 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 			if tx.TransactionType == transaction.REGISTRATION {
 				continue
+			}
+
+			// if daemon was syncing/or disk corrupption, it may not give data, so skip
+			if len(tx_result.Txs) == 0 {
+				return fmt.Errorf("Daemon did not expandd tx %s", bl.Tx_hashes[i].String())
 			}
 
 			// since balance might change with tx, we track within tx using this

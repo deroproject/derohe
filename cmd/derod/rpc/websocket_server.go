@@ -256,7 +256,7 @@ func ws_handler(w http.ResponseWriter, r *http.Request) {
 
 		// safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while processing websocket request", "stack", debug.Stack())
+			logger.V(2).Error(nil, "Recovered while processing websocket request", "r", r, "stack", debug.Stack())
 		}
 		if ws_server != nil {
 			client_connections.Delete(ws_server)

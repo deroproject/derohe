@@ -219,11 +219,7 @@ func P2P_engine() {
 // will block until the connection dies or is killed
 func connect_with_endpoint(endpoint string, sync_node bool) {
 
-	defer func() {
-		if r := recover(); r != nil {
-			logger.V(2).Error(r.(error), "Recovered while connecting", "stack", fmt.Sprintf("%s", string(debug.Stack())))
-		}
-	}()
+	defer globals.Recover(2)
 
 	remote_ip, err := net.ResolveTCPAddr("tcp", endpoint)
 	if err != nil {
@@ -415,7 +411,7 @@ func P2P_Server_v2() {
 
 func handle_connection_panic(c *Connection) {
 	if r := recover(); r != nil {
-		logger.V(1).Error(r.(error), "Recovered while handling connection", "stack", debug.Stack())
+		logger.V(2).Error(nil, "Recovered while handling connection", "r", r, "stack", debug.Stack())
 		c.exit()
 	}
 }
@@ -442,10 +438,9 @@ func process_connection(conn net.Conn, remote_addr *net.TCPAddr, incoming, sync_
 			c.logger = logger.WithName("outgoing").WithName(remote_addr.String())
 		}
 		go func() {
-			//defer globals.Recover()
 			defer func() {
 				if r := recover(); r != nil {
-					logger.V(1).Error(r.(error), "Recovered while handling connection", "stack", debug.Stack())
+					logger.V(1).Error(nil, "Recovered while handling connection", "r", r, "stack", debug.Stack())
 					conn.Close()
 				}
 			}()

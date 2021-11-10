@@ -115,7 +115,7 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 	var tx_hash crypto.Hash
 	defer func() { // safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while verifying tx", "txid", tx_hash, "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while verifying tx", "txid", tx_hash, "r", r, "stack", debug.Stack())
 			err = fmt.Errorf("Stack Trace %s", debug.Stack())
 		}
 	}()
@@ -277,7 +277,7 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 	var tx_hash crypto.Hash
 	defer func() { // safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
-			logger.V(1).Error(r.(error), "Recovered while verifying tx", "txid", tx_hash, "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while verifying tx", "txid", tx_hash, "r", r, "stack", debug.Stack())
 			err = fmt.Errorf("Stack Trace %s", debug.Stack())
 		}
 	}()

@@ -270,6 +270,8 @@ type txinfo struct {
 	SC_Keys            map[string]string // SC key value of
 	SC_Args            rpc.Arguments     // rpc.Arguments
 	SC_Code            string            // install SC
+	SC_State           rpc.GetSC_Result  // current SC state
+	SC_Install         bool
 
 	Assets []Asset
 }
@@ -576,6 +578,22 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 	info.SC_Balance = tx_result.Txs[0].Balance
 	info.SC_Balance_string = fmt.Sprintf("%.05f", float64(uint64(info.SC_Balance)/100000))
 	info.SC_Code = tx_result.Txs[0].Code
+
+	if tx.TransactionType == transaction.SC_TX && len(info.SC_Code) >= 1 {
+
+		if len(info.SC_Code) >= 1 {
+			info.SC_Install = true
+		}
+		var p = rpc.GetSC_Params{SCID: txhash, Variables: true}
+		var r rpc.GetSC_Result
+
+		if err = rpc_client.Call("DERO.GetSC", p, &r); err != nil {
+			return fmt.Errorf("gettransa rpc failed err %s", err)
+		} else {
+			info.SC_State = r
+		}
+	}
+
 	//info.Ring = strings.Join(info.OutAddress, " ")
 
 	//fmt.Printf("tx_result %+v\n",tx_result.Txs)

@@ -734,7 +734,7 @@ func broadcast_Tx(tx *transaction.Transaction, PeerID uint64, sent int64) (relay
 			go func(connection *Connection) {
 				defer func() {
 					if r := recover(); r != nil {
-						connection.logger.V(1).Error(r.(error), "Recovere3d while sending tx", "stack", debug.Stack())
+						connection.logger.V(1).Error(nil, "Recovere3d while sending tx", "r", r, "stack", debug.Stack())
 					}
 				}()
 

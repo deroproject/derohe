@@ -153,29 +153,13 @@ try_again:
 
 func (connection *Connection) process_object_response(response Objects, sent int64, syncing bool) error {
 	var err error
-
-	// make sure connection does not timeout and be killed while processing huge blocks
-	processing_complete := make(chan bool)
-	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-processing_complete:
-				return // complete the loop
-			case <-ticker.C: // give the chain some more time to respond
-				atomic.StoreInt64(&connection.LastObjectRequestTime, time.Now().Unix())
-			}
-		}
-	}()
-
-	defer func() {
-		processing_complete <- true
-	}()
-
 	defer globals.Recover(2)
 
 	for i := 0; i < len(response.CBlocks); i++ { // process incoming full blocks
+		// make sure connection does not timeout and be killed while processing huge blocks
+
+		atomic.StoreInt64(&connection.LastObjectRequestTime, time.Now().Unix())
+
 		var cbl block.Complete_Block // parse incoming block and deserialize it
 		var bl block.Block
 		// lets deserialize block first and see whether it is the requested object
@@ -190,6 +174,10 @@ func (connection *Connection) process_object_response(response Objects, sent int
 		// give the chain some more time to respond
 		atomic.StoreInt64(&connection.LastObjectRequestTime, time.Now().Unix())
 
+		// do not try to add blocks too much into future
+		if syncing && int64(bl.Height) > chain.Get_Height()+4 {
+			continue
+		}
 		// check whether the object was requested one
 
 		// complete the txs

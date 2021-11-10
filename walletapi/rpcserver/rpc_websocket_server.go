@@ -138,7 +138,7 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 		var ws_server *jrpc2.Server
 		defer func() {
 			if r := recover(); r != nil { // safety so if anything wrong happens, verification fails
-				rpcserver.logger.V(1).Error(r.(error), "Recovered while processing websocket request", "stack", debug.Stack())
+				rpcserver.logger.V(1).Error(nil, "Recovered while processing websocket request", "r", r, "stack", debug.Stack())
 			}
 			if ws_server != nil {
 				client_connections.Delete(ws_server)

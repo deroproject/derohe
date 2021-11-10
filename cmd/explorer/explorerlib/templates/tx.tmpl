@@ -31,16 +31,54 @@
 
 {{end}}
 
+
+{{if .info.SC_Install }}
+
+<div class="center" style="border: 1px;width: 100%;overflow: hidden; text-overflow: ellipsis;">
+    <H5 style="margin:5px">SCID current reserves </H5>
+
+   <table class="center" style="width: 80%; margin-top:10px;border: 1px">
+                    <tr>
+                        <td>SCID</td> <td style="width: 20%">Amount(in atomic units)</td>
+                    </tr>
+
+                    {{range $k, $v := .info.SC_State.Balances}} 
+                      <tr>
+                          <td>{{ $k }}</td> <td>  {{ $v }}  </td>
+                      </tr>
+                    {{end}}
+    </table>
+
+    <H5 style="margin:5px">SCID string variables </H5>
+    <table class="center" style="border: 1px;width: 80%; margin-top:10px;overflow: hidden; text-overflow: ellipsis;">
+                    <tr>
+                        <td>key</td> <td style="width: 20%;text-align:left">value</td>
+                    </tr>
+                    {{range $k, $v := .info.SC_State.VariableStringKeys}} 
+                      <tr>
+                          <td>{{ $k }}</td> <td style="width: 20%;text-align:left;overflow: hidden; text-overflow: ellipsis;">  {{ $v }}  </td>
+                      </tr>
+                    {{end}}
+    </table>
+    <H5 style="margin:5px">SCID uint64 variables </H5>
+    <table class="center" style="border: 1px;width: 80%; margin-top:10px">
+                    <tr>
+                        <td>key</td> <td style="width: 20%;text-align:left">value</td>
+                    </tr>
+                    {{range $k, $v := .info.SC_State.VariableUint64Keys}} 
+                      <tr>
+                          <td>{{ $k }}</td> <td style="width: 20%;text-align:left;overflow: hidden; text-overflow: ellipsis;">  {{ $v }}  </td>
+                      </tr>
+                    {{end}}
+    </table>
+
+</div>
+{{end}}
+
 {{if or (eq .info.TransactionType "NORMAL")  (eq .info.TransactionType "BURN")  (eq .info.TransactionType "SC") }}
 
                 <H5 style="margin:5px">Tx RootHash: {{.info.RootHash}}  built height : {{.info.HeightBuilt}} </H5>
 
-                {{if .info.PayID32}} 
-                 <H5 style="margin:5px">PaymentID: {{.info.PayID32}}</H5>
-                {{end}}
-                {{if .info.PayID8}} 
-                 <H5 style="margin:5px">Encrypted PaymentID: {{.info.PayID8}}</H5>
-                {{end}}
   
                 <table class="center" style="width: 80%; margin-top:10px">
                     <tr>
