@@ -97,9 +97,10 @@ try_again:
 		goto try_again
 
 	} else if chain.Get_Height()-response.Common.Height != 0 && chain.Get_Height()-response.Start_height <= config.STABLE_LIMIT {
-		pop_count := chain.Load_TOPO_HEIGHT() - response.Start_topoheight
-		chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
-	} else { // we must somehow notify that deviation is way too much and manual interaction is necessary, so as any bug for chain deviationmay be detected
+		//pop_count := chain.Load_TOPO_HEIGHT() - response.Start_topoheight
+		//chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
+	} else if chain.Get_Height()-response.Start_height > config.STABLE_LIMIT { // we must somehow notify that deviation is way too much and manual interaction is necessary, so as any bug for chain deviationmay be detected
+		connection.logger.V(1).Error(nil, "we have or others have deviated too much.you may have to use --sync-node option", "our topoheight", chain.Load_TOPO_HEIGHT(), "peer topoheight start", response.Start_topoheight)
 		return
 	}
 
@@ -138,7 +139,7 @@ try_again:
 	}
 
 	// request alt-tips ( blocks if we are nearing the main tip )
-	if (response.Common.TopoHeight - chain.Load_TOPO_HEIGHT()) <= 5 {
+	/*if (response.Common.TopoHeight - chain.Load_TOPO_HEIGHT()) <= 5 {
 		for i := range response.TopBlocks {
 			if chain.Load_Block_Topological_order(response.TopBlocks[i]) == -1 {
 				//connection.Send_ObjectRequest([]crypto.Hash{response.TopBlocks[i]}, []crypto.Hash{})
@@ -147,7 +148,7 @@ try_again:
 			}
 
 		}
-	}
+	}*/
 
 }
 

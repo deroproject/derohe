@@ -484,8 +484,15 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		if len(tx_checklist) != len(bl.Tx_hashes) { // block has duplicate tx, reject
 			block_logger.Error(fmt.Errorf("duplicate TX"), "Incomplete block", "duplicate count", len(bl.Tx_hashes)-len(tx_checklist))
 			return errormsg.ErrInvalidBlock, false
-
 		}
+
+		for i, tx := range cbl.Txs {
+			if tx.Height >= bl.Height {
+				block_logger.Error(fmt.Errorf("Invalid TX Height"), "TX height cannot be more than block", "txid", cbl.Txs[i].GetHash().String())
+				return errormsg.ErrInvalidBlock, false
+			}
+		}
+
 		// now lets loop through complete block, matching each tx
 		// detecting any duplicates using txid hash
 		for i := 0; i < len(cbl.Txs); i++ {
@@ -586,6 +593,20 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		var check_data cbl_verify // used to verify sanity of new block
 		for i := 0; i < len(cbl.Txs); i++ {
 			if !(cbl.Txs[i].IsCoinbase() || cbl.Txs[i].IsRegistration()) { // all other tx must go through this check
+
+				for _, p := range cbl.Txs[i].Payloads { // make sure tx is expanded
+					if p.Statement.RingSize != uint64(len(p.Statement.Publickeylist_compressed)) {
+						if err = chain.Transaction_NonCoinbase_Expand(cbl.Txs[i]); err != nil {
+							return err, false
+						}
+					}
+					// if still the tx is not expanded, give err
+					if p.Statement.RingSize != uint64(len(p.Statement.Publickeylist_compressed)) {
+						err = fmt.Errorf("TXB is not expanded. cannot cbl_verify expected %d  Actual %d", p.Statement.RingSize, len(p.Statement.Publickeylist_compressed))
+						block_logger.Error(err, "Invalid TX within block", "txid", cbl.Txs[i].GetHash())
+						return
+					}
+				}
 				if err = check_data.check(cbl.Txs[i], false); err == nil {
 					check_data.check(cbl.Txs[i], true) // keep in record for future tx
 				} else {

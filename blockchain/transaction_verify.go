@@ -413,12 +413,12 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 		return fmt.Errorf("mentioned balance tree not found, cannot verify TX")
 	}
 
-	if _, ok := transaction_valid_cache.Load(tx_hash); ok {
+	/*if _, ok := transaction_valid_cache.Load(tx_hash); ok {
 		logger.V(1).Info("Found in cache, skipping verification", "txid", tx_hash)
 		return nil
 	} else {
 		//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
-	}
+	}*/
 
 	//logger.Infof("dTX  state tree has been found")
 

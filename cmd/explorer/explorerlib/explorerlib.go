@@ -588,7 +588,7 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 		var r rpc.GetSC_Result
 
 		if err = rpc_client.Call("DERO.GetSC", p, &r); err != nil {
-			return fmt.Errorf("gettransa rpc failed err %s", err)
+			logger.V(1).Error(err, "DERO.GetSC failed")
 		} else {
 			info.SC_State = r
 		}

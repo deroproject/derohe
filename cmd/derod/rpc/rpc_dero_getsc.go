@@ -38,7 +38,7 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
+			err = fmt.Errorf("panic occured. stack trace r %s %s", r, debug.Stack())
 		}
 	}()
 
@@ -101,29 +101,35 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 					for k, v, err = cursor.First(); err == nil; k, v, err = cursor.Next() {
 						var vark, varv dvm.Variable
 
-						if nil == vark.UnmarshalBinary(k) && nil == varv.UnmarshalBinary(v) {
-							switch vark.Type {
-							case dvm.Uint64:
-								if varv.Type == dvm.Uint64 {
-									result.VariableUint64Keys[vark.ValueUint64] = varv.ValueUint64
-								} else {
-									result.VariableUint64Keys[vark.ValueUint64] = fmt.Sprintf("%x", []byte(varv.ValueString))
+						_ = vark
+						_ = varv
+						_ = k
+						_ = v
+						/*
+							fmt.Printf("key '%x'  value '%x'\n", k,v)
+							if len(k) == 32 && len(v) == 8 { // it's SC balance
+								result.Balances[fmt.Sprintf("%x", k)] = binary.BigEndian.Uint64(v)
+							} else if nil == vark.UnmarshalBinary(k) && nil == varv.UnmarshalBinary(v) {
+								switch vark.Type {
+								case dvm.Uint64:
+									if varv.Type == dvm.Uint64 {
+										result.VariableUint64Keys[vark.ValueUint64] = varv.ValueUint64
+									} else {
+										result.VariableUint64Keys[vark.ValueUint64] = fmt.Sprintf("%x", []byte(varv.ValueString))
+									}
+
+								case dvm.String:
+									if varv.Type == dvm.Uint64 {
+										result.VariableStringKeys[vark.ValueString] = varv.ValueUint64
+									} else {
+										result.VariableStringKeys[vark.ValueString] = fmt.Sprintf("%x", []byte(varv.ValueString))
+									}
+								default:
+									err = fmt.Errorf("UNKNOWN Data type")
+									return
 								}
 
-							case dvm.String:
-								if varv.Type == dvm.Uint64 {
-									result.VariableStringKeys[vark.ValueString] = varv.ValueUint64
-								} else {
-									result.VariableStringKeys[vark.ValueString] = fmt.Sprintf("%x", []byte(varv.ValueString))
-								}
-							default:
-								err = fmt.Errorf("UNKNOWN Data type")
-								return
-							}
-
-						} else if len(k) == 32 && len(v) == 8 { // it's SC balance
-							result.Balances[fmt.Sprintf("%x", k)] = binary.BigEndian.Uint64(v)
-						}
+							} */
 					}
 				}
 

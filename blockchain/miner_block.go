@@ -217,6 +217,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	// first of lets find the tx fees collected by consuming txs from mempool
 	tx_hash_list_sorted := chain.Mempool.Mempool_List_TX_SortedInfo() // hash of all tx expected to be included within this block , sorted by fees
 
+	logger.V(8).Info("mempool returned tx list", "tx_list", tx_hash_list_sorted)
 	var pre_check cbl_verify // used to verify sanity of new block
 
 	i := 0
@@ -238,10 +239,21 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 							sizeoftxs += tx_hash_list_sorted[i].Size
 							cbl.Txs = append(cbl.Txs, tx)
 							tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
+							logger.V(8).Info("tx selecting for mining ", "txlist", tx_hash_list_sorted[i].Hash)
+						} else {
+							logger.V(8).Info("not selecting tx due to pre_check failure", "txid", tx_hash_list_sorted[i].Hash)
 						}
+					} else {
+						logger.V(8).Info("not selecting tx due to nonce failure", "txid", tx_hash_list_sorted[i].Hash)
 					}
+				} else {
+					logger.V(8).Info("not selecting tx due to height difference", "txid", tx_hash_list_sorted[i].Hash)
 				}
+			} else {
+				logger.V(8).Info("not selecting tx due to height", "txid", tx_hash_list_sorted[i].Hash)
 			}
+		} else {
+			logger.V(8).Info("not selecting tx  since tx is nil", "txid", tx_hash_list_sorted[i].Hash)
 		}
 	}
 	// any left over transactions, should be randomly selected

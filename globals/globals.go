@@ -211,10 +211,12 @@ func Initialize() {
 }
 
 // used to recover in case of panics
-func Recover(level int) {
+func Recover(level int) (err error) {
 	if r := recover(); r != nil {
+		err = fmt.Errorf("Recovered r:%+v stack %s", r, fmt.Sprintf("%s", string(debug.Stack())))
 		Logger.V(level).Error(nil, "Recovered ", "error", r, "stack", fmt.Sprintf("%s", string(debug.Stack())))
 	}
+	return
 }
 
 // tells whether we are in mainnet mode

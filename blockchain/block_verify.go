@@ -46,7 +46,7 @@ func (b *cbl_verify) check(tx *transaction.Transaction, insert_for_future bool) 
 			b.data[p.SCID] = map[[33]byte]uint64{}
 		}
 		if p.Statement.RingSize != uint64(len(p.Statement.Publickeylist_compressed)) {
-			return fmt.Errorf("TX is not expanded. cannot cbl_verify")
+			return fmt.Errorf("TX is not expanded. cannot cbl_verify expected %d  Actual %d", p.Statement.RingSize, len(p.Statement.Publickeylist_compressed))
 		}
 
 		for j, pkc := range p.Statement.Publickeylist_compressed {
