@@ -18,7 +18,6 @@ package p2p
 
 import "fmt"
 import "bytes"
-import "math/big"
 
 import "sync/atomic"
 import "time"
@@ -67,8 +66,6 @@ func (connection *Connection) dispatch_test_handshake() {
 		connection.exit()
 		return
 	}
-
-	connection.CDIFF.Store(new(big.Int).SetUint64(1))
 
 	connection.request_time.Store(time.Now())
 	connection.SpeedIn = ratecounter.NewRateCounter(60 * time.Second)

@@ -82,7 +82,6 @@ try_again:
 	// we have a response, see if its valid and try to add to get the blocks
 
 	connection.logger.V(2).Info("Peer wants to give chain", "from topoheight", response.Start_height)
-	_ = config.STABLE_LIMIT
 
 	// we do not need reorganisation if deviation is less than  or equak to 7 blocks
 	// only pop blocks if the system has somehow deviated more than 7 blocks

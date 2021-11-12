@@ -20,7 +20,6 @@ import "fmt"
 import "bytes"
 import "sort"
 import "sync"
-import "math/big"
 import "math/rand"
 import "runtime/debug"
 import "encoding/binary"
@@ -47,24 +46,20 @@ const TX_VALIDITY_HEIGHT = 11
 type BlockScore struct {
 	BLID crypto.Hash
 	//MiniCount int
-	Height                int64    // block height
-	Cumulative_Difficulty *big.Int // used to score blocks on cumulative difficulty
+	Height int64 // block height
 }
 
-// Heighest node weight is ordered first,  the condition is reverted see eg. at https://golang.org/pkg/sort/#Slice
-//  if weights are equal, nodes are sorted by their block ids which will never collide , hopefullly
+// Heighest height is ordered first,  the condition is reverted see eg. at https://golang.org/pkg/sort/#Slice
+//  if heights are equal, nodes are sorted by their block ids which will never collide , hopefullly
 // block ids are sorted by lowest byte first diff
-func sort_descending_by_cumulative_difficulty(tips_scores []BlockScore) {
-
+func sort_descending_by_height_blid(tips_scores []BlockScore) {
 	sort.Slice(tips_scores, func(i, j int) bool {
-		if tips_scores[i].Cumulative_Difficulty.Cmp(tips_scores[j].Cumulative_Difficulty) != 0 { // if diffculty mismatch use them
-
-			if tips_scores[i].Cumulative_Difficulty.Cmp(tips_scores[j].Cumulative_Difficulty) > 0 { // if i diff >  j diff
+		if tips_scores[i].Height != tips_scores[j].Height { // if height mismatch use them
+			if tips_scores[i].Height > tips_scores[j].Height {
 				return true
 			} else {
 				return false
 			}
-
 		} else { // cumulative difficulty is same, we must check minerblocks
 			return bytes.Compare(tips_scores[i].BLID[:], tips_scores[j].BLID[:]) == -1
 		}
@@ -72,9 +67,7 @@ func sort_descending_by_cumulative_difficulty(tips_scores []BlockScore) {
 }
 
 func sort_ascending_by_height(tips_scores []BlockScore) {
-	// base is the lowest height
 	sort.Slice(tips_scores, func(i, j int) bool { return tips_scores[i].Height < tips_scores[j].Height })
-
 }
 
 // this will sort the tips based on cumulative difficulty and/or block ids
@@ -91,10 +84,9 @@ func (chain *Blockchain) SortTips(tips []crypto.Hash) (sorted []crypto.Hash) {
 	tips_scores := make([]BlockScore, len(tips), len(tips))
 	for i := range tips {
 		tips_scores[i].BLID = tips[i]
-		tips_scores[i].Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(tips[i])
+		tips_scores[i].Height = chain.Load_Block_Height(tips[i])
 	}
-
-	sort_descending_by_cumulative_difficulty(tips_scores)
+	sort_descending_by_height_blid(tips_scores)
 
 	for i := range tips_scores {
 		sorted = append(sorted, tips_scores[i].BLID)
@@ -232,7 +224,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 			if int64(tx.Height) < height {
 				//	fmt.Printf("sanity back %d(%d) nonce check %s\n", height - int64(tx.Height), TX_VALIDITY_HEIGHT, chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version,tx,bl.Tips) )
 				if height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
-					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips, false) {
+					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips) {
 						if nil == pre_check.check(tx, false) {
 							pre_check.check(tx, true)
 							//rlog.Tracef(1, "Adding Top  Sorted tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
@@ -277,7 +269,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 		if tx != nil {
 			if int64(tx.Height) < height {
 				if height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
-					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips, false) {
+					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips) {
 
 						if nil == pre_check.check(tx, false) {
 							pre_check.check(tx, true)

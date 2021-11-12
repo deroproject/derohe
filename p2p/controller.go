@@ -365,6 +365,7 @@ func P2P_Server_v2() {
 	l, err := net.Listen("tcp", default_address) // listen as simple TCP server
 	if err != nil {
 		logger.Error(err, "Could not listen", "address", default_address)
+		return
 	}
 	defer l.Close()
 	P2P_Port = int(l.Addr().(*net.TCPAddr).Port)

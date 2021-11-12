@@ -28,16 +28,15 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 
 // used to parse incoming packet for for command , so as a repective command command could be triggered
 type Common_Struct struct {
-	Height                int64       `cbor:"HEIGHT"`
-	TopoHeight            int64       `cbor:"THEIGHT"`
-	StableHeight          int64       `cbor:"SHEIGHT"`
-	Cumulative_Difficulty string      `cbor:"CDIFF"`
-	StateHash             [32]byte    `cbor:"STATE"`
-	PeerList              []Peer_Info `cbor:"PLIST,omitempty"` // it will contain peerlist every 30 minutes
-	T0                    int64       `cbor:"T0,omitempty"`    // see https://en.wikipedia.org/wiki/Network_Time_Protocol
-	T1                    int64       `cbor:"T1,omitempty"`    // time when this was sent, in unixmicro
-	T2                    int64       `cbor:"T2,omitempty"`    // time when this was sent, in unixmicro
-	Top_Version           uint64      `cbor:"HF"`              // this basically represents the hard fork version
+	Height       int64       `cbor:"HEIGHT"`
+	TopoHeight   int64       `cbor:"THEIGHT"`
+	StableHeight int64       `cbor:"SHEIGHT"`
+	StateHash    [32]byte    `cbor:"STATE"`
+	PeerList     []Peer_Info `cbor:"PLIST,omitempty"` // it will contain peerlist every 30 minutes
+	T0           int64       `cbor:"T0,omitempty"`    // see https://en.wikipedia.org/wiki/Network_Time_Protocol
+	T1           int64       `cbor:"T1,omitempty"`    // time when this was sent, in unixmicro
+	T2           int64       `cbor:"T2,omitempty"`    // time when this was sent, in unixmicro
+	Top_Version  uint64      `cbor:"HF"`              // this basically represents the hard fork version
 }
 
 type Dummy struct { // empty strcut returned
@@ -139,11 +138,10 @@ type Tree_Changes struct {
 }
 
 type Complete_Block struct {
-	Block                 []byte         `cbor:"BLOCK,omitempty"`
-	Txs                   [][]byte       `cbor:"TXS,omitempty"`
-	Difficulty            string         `cbor:"DIFF,omitempty"`    // Diff
-	Cumulative_Difficulty string         `cbor:"CDIFF,omitempty"`   // CDiff
-	Changes               []Tree_Changes `cbor:"CHANGES,omitempty"` // changes to state tree
+	Block      []byte         `cbor:"BLOCK,omitempty"`
+	Txs        [][]byte       `cbor:"TXS,omitempty"`
+	Difficulty string         `cbor:"DIFF,omitempty"`    // Diff
+	Changes    []Tree_Changes `cbor:"CHANGES,omitempty"` // changes to state tree
 }
 
 type Block_Chunk struct {

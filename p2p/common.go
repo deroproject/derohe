@@ -1,8 +1,6 @@
 package p2p
 
-import "fmt"
 import "time"
-import "math/big"
 import "sync/atomic"
 
 import "github.com/deroproject/derohe/globals"
@@ -10,19 +8,17 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 
 // fill the common part from our chain
 func fill_common(common *Common_Struct) {
+	var err error
 	common.Height = chain.Get_Height()
 	//common.StableHeight = chain.Get_Stable_Height()
 	common.TopoHeight = chain.Load_TOPO_HEIGHT()
-	//common.Top_ID, _ = chain.Load_BL_ID_at_Height(common.Height - 1)
 
-	high_block, err := chain.Load_Block_Topological_order_at_index(common.TopoHeight)
+	version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
 	if err != nil {
-		common.Cumulative_Difficulty = "0"
-	} else {
-		common.Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(high_block).String()
+		panic(err)
 	}
 
-	if common.StateHash, err = chain.Load_Merkle_Hash(common.TopoHeight); err != nil {
+	if common.StateHash, err = chain.Load_Merkle_Hash(version); err != nil {
 		panic(err)
 	}
 
@@ -61,18 +57,6 @@ func (connection *Connection) update(common *Common_Struct) {
 	atomic.StoreInt64(&connection.TopoHeight, common.TopoHeight) // satify race detector GOD
 
 	//connection.Top_ID = common.Top_ID
-	if common.Cumulative_Difficulty != "" {
-		connection.Cumulative_Difficulty = common.Cumulative_Difficulty
-
-		var x *big.Int
-		x = new(big.Int)
-		if _, ok := x.SetString(connection.Cumulative_Difficulty, 10); !ok { // if Cumulative_Difficulty could not be parsed, kill connection
-			connection.logger.Error(fmt.Errorf("Could not Parse Difficulty in common"), "", "cdiff", connection.Cumulative_Difficulty)
-			connection.exit()
-		}
-
-		connection.CDIFF.Store(x) // do it atomically
-	}
 
 	if connection.Top_Version != common.Top_Version {
 		atomic.StoreUint64(&connection.Top_Version, common.Top_Version) // satify race detector GOD

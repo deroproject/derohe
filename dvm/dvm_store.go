@@ -178,9 +178,6 @@ func (dkey DataKey) MarshalBinaryPanic() (ser []byte) {
 
 // these are used by lowest layers
 func (v Variable) MarshalBinary() (data []byte, err error) {
-
-	data = append(data, byte(v.Type)) // add object type
-
 	switch v.Type {
 	case Invalid:
 		return
@@ -193,6 +190,7 @@ func (v Variable) MarshalBinary() (data []byte, err error) {
 	default:
 		panic("unknown variable type not implemented")
 	}
+	data = append(data, byte(v.Type)) // add object type
 	return
 }
 func (v Variable) MarshalBinaryPanic() (ser []byte) {
@@ -204,24 +202,24 @@ func (v Variable) MarshalBinaryPanic() (ser []byte) {
 }
 
 func (v *Variable) UnmarshalBinary(buf []byte) (err error) {
-	if len(buf) < 1 || Vtype(buf[0]) == Invalid {
+	if len(buf) < 1 {
 		return fmt.Errorf("invalid, probably corruption")
 	}
 
-	switch Vtype(buf[0]) {
+	switch Vtype(buf[len(buf)-1]) {
 	case Invalid:
 		return fmt.Errorf("Invalid cannot be deserialized")
 	case Uint64:
 		v.Type = Uint64
 		var n int
-		v.ValueUint64, n = binary.Uvarint(buf[1:]) // uint64 data type
+		v.ValueUint64, n = binary.Uvarint(buf[:len(buf)-1]) // uint64 data type
 		if n <= 0 {
 			panic("corruption in DB")
 			return fmt.Errorf("corruption in DB")
 		}
 	case String:
 		v.Type = String
-		v.ValueString = string(buf[1:])
+		v.ValueString = string(buf[:len(buf)-1])
 		return nil
 
 	default:

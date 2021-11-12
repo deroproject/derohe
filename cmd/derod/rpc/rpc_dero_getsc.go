@@ -105,31 +105,31 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 						_ = varv
 						_ = k
 						_ = v
-						/*
-							fmt.Printf("key '%x'  value '%x'\n", k,v)
-							if len(k) == 32 && len(v) == 8 { // it's SC balance
-								result.Balances[fmt.Sprintf("%x", k)] = binary.BigEndian.Uint64(v)
-							} else if nil == vark.UnmarshalBinary(k) && nil == varv.UnmarshalBinary(v) {
-								switch vark.Type {
-								case dvm.Uint64:
-									if varv.Type == dvm.Uint64 {
-										result.VariableUint64Keys[vark.ValueUint64] = varv.ValueUint64
-									} else {
-										result.VariableUint64Keys[vark.ValueUint64] = fmt.Sprintf("%x", []byte(varv.ValueString))
-									}
 
-								case dvm.String:
-									if varv.Type == dvm.Uint64 {
-										result.VariableStringKeys[vark.ValueString] = varv.ValueUint64
-									} else {
-										result.VariableStringKeys[vark.ValueString] = fmt.Sprintf("%x", []byte(varv.ValueString))
-									}
-								default:
-									err = fmt.Errorf("UNKNOWN Data type")
-									return
+						fmt.Printf("key '%x'  value '%x'\n", k, v)
+						if len(k) == 32 && len(v) == 8 { // it's SC balance
+							result.Balances[fmt.Sprintf("%x", k)] = binary.BigEndian.Uint64(v)
+						} else if k[len(k)-1] >= 0x3 && k[len(k)-1] < 0x80 && nil == vark.UnmarshalBinary(k) && nil == varv.UnmarshalBinary(v) {
+							switch vark.Type {
+							case dvm.Uint64:
+								if varv.Type == dvm.Uint64 {
+									result.VariableUint64Keys[vark.ValueUint64] = varv.ValueUint64
+								} else {
+									result.VariableUint64Keys[vark.ValueUint64] = fmt.Sprintf("%x", []byte(varv.ValueString))
 								}
 
-							} */
+							case dvm.String:
+								if varv.Type == dvm.Uint64 {
+									result.VariableStringKeys[vark.ValueString] = varv.ValueUint64
+								} else {
+									result.VariableStringKeys[vark.ValueString] = fmt.Sprintf("%x", []byte(varv.ValueString))
+								}
+							default:
+								err = fmt.Errorf("UNKNOWN Data type")
+								return
+							}
+
+						}
 					}
 				}
 

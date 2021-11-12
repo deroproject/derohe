@@ -29,7 +29,7 @@ func GetBlockHeaderByHash(ctx context.Context, p rpc.GetBlockHeaderByHash_Params
 		}
 	}()
 	hash := crypto.HashHexToHash(p.Hash)
-	if block_header, err := chain.GetBlockHeader(hash); err == nil { // if err return err
+	if block_header, err := GetBlockHeader(chain, hash); err == nil { // if err return err
 		return rpc.GetBlockHeaderByHash_Result{ // return success
 			Block_Header: block_header,
 			Status:       "OK",

@@ -89,7 +89,13 @@ func GetEncryptedBalance(ctx context.Context, p rpc.GetEncryptedBalance_Params) 
 			panic(err)
 		}
 	}
-	merkle_hash, err := chain.Load_Merkle_Hash(topoheight)
+
+	version, err := chain.ReadBlockSnapshotVersion(toporecord.BLOCK_ID)
+	if err != nil {
+		panic(err)
+	}
+
+	merkle_hash, err := chain.Load_Merkle_Hash(version)
 	if err != nil {
 		panic(err)
 	}
@@ -97,7 +103,12 @@ func GetEncryptedBalance(ctx context.Context, p rpc.GetEncryptedBalance_Params) 
 	// calculate top height merkle tree hash
 	//var dmerkle_hash crypto.Hash
 
-	dmerkle_hash, err := chain.Load_Merkle_Hash(chain.Load_TOPO_HEIGHT())
+	version, err = chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
+	if err != nil {
+		panic(err)
+	}
+
+	dmerkle_hash, err := chain.Load_Merkle_Hash(version)
 	if err != nil {
 		panic(err)
 	}

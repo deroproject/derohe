@@ -485,23 +485,24 @@ func main() {
 					continue
 				}
 				var timestamp uint64
-				diff, cdiff := new(big.Int), new(big.Int)
+				diff := new(big.Int)
 				if chain.Block_Exists(current_block_id) {
-
 					timestamp = chain.Load_Block_Timestamp(current_block_id)
-
-					cdiff = chain.Load_Block_Cumulative_Difficulty(current_block_id)
-
 					diff = chain.Load_Block_Difficulty(current_block_id)
 				}
 
-				balance_hash, err := chain.Load_Merkle_Hash(i)
+				version, err := chain.ReadBlockSnapshotVersion(current_block_id)
+				if err != nil {
+					panic(err)
+				}
+
+				balance_hash, err := chain.Load_Merkle_Hash(version)
 
 				if err != nil {
 					panic(err)
 				}
 
-				logger.Info("", "topo height", i, "height", chain.Load_Height_for_BL_ID(current_block_id), "timestamp", timestamp, "difficulty", diff.String(), "cdiff", cdiff.String())
+				logger.Info("", "topo height", i, "height", chain.Load_Height_for_BL_ID(current_block_id), "timestamp", timestamp, "difficulty", diff.String())
 				logger.Info("", "Block Id", current_block_id.String(), "balance_tree hash", balance_hash.String())
 				logger.Info("\n")
 
@@ -559,70 +560,55 @@ func main() {
 		case command == "print_block":
 
 			fmt.Printf("printing block\n")
+			var hash crypto.Hash
+
 			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
 				bl_raw, err := hex.DecodeString(strings.ToLower(line_parts[1]))
-
 				if err != nil {
-					fmt.Printf("err while decoding txid err %s\n", err)
+					fmt.Printf("err while decoding blid err %s\n", err)
 					continue
 				}
-				var hash crypto.Hash
 				copy(hash[:32], []byte(bl_raw))
-
-				bl, err := chain.Load_BL_FROM_ID(hash)
-				if err == nil {
-					fmt.Printf("Block ID : %s\n", hash)
-					fmt.Printf("Block : %x\n", bl.Serialize())
-					fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
-					fmt.Printf("cdifficulty: %s\n", chain.Load_Block_Cumulative_Difficulty(hash).String())
-					//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
-
-					json_bytes, err := json.Marshal(bl)
-
-					fmt.Printf("%s  err : %s\n", string(prettyprint_json(json_bytes)), err)
-				} else {
-					fmt.Printf("Err %s\n", err)
-				}
 			} else if len(line_parts) == 2 {
 				if s, err := strconv.ParseInt(line_parts[1], 10, 64); err == nil {
 					_ = s
 					// first load block id from topo height
 
-					hash, err := chain.Load_Block_Topological_order_at_index(s)
+					hash, err = chain.Load_Block_Topological_order_at_index(s)
 					if err != nil {
 						fmt.Printf("Skipping block at topo height %d due to error %s\n", s, err)
 						continue
 					}
-					bl, err := chain.Load_BL_FROM_ID(hash)
-					if err == nil {
-						fmt.Printf("Block ID : %s\n", hash)
-						fmt.Printf("Block : %x\n", bl.Serialize())
-						fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
-						fmt.Printf("cdifficulty: %s\n", chain.Load_Block_Cumulative_Difficulty(hash).String())
-						fmt.Printf("Height: %d\n", chain.Load_Height_for_BL_ID(hash))
-						fmt.Printf("TopoHeight: %d\n", s)
-
-						bhash, err := chain.Load_Merkle_Hash(s)
-
-						if err != nil {
-							panic(err)
-						}
-
-						fmt.Printf("BALANCE_TREE : %s\n", bhash)
-
-						//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
-
-						json_bytes, err := json.Marshal(bl)
-
-						fmt.Printf("%s  err : %s\n", string(prettyprint_json(json_bytes)), err)
-					} else {
-						fmt.Printf("Err %s\n", err)
-					}
-
-				} else {
-					fmt.Printf("print_block  needs a single block id as argument\n")
 				}
+			} else {
+				fmt.Printf("print_block  needs a single block id as argument\n")
+				break
 			}
+			bl, err := chain.Load_BL_FROM_ID(hash)
+			if err != nil {
+				fmt.Printf("Err %s\n", err)
+			}
+			fmt.Printf("%s\n", bl.String())
+			fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
+			fmt.Printf("TopoHeight: %d\n", chain.Load_Block_Topological_order(hash))
+
+			version, err := chain.ReadBlockSnapshotVersion(hash)
+			if err != nil {
+				panic(err)
+			}
+
+			bhash, err := chain.Load_Merkle_Hash(version)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("BALANCE_TREE : %s\n", bhash)
+
+			//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
+
+			//json_bytes, err := json.Marshal(bl)
+
+			//fmt.Printf("%s  err : %s\n", string(prettyprint_json(json_bytes)), err)
 
 		// can be used to debug/deserialize blocks
 		// it can be used for blocks not in chain
@@ -647,7 +633,7 @@ func main() {
 			}
 
 			// decode and print block as much as possible
-			fmt.Printf("Block ID : %s\n", bl.GetHash())
+			fmt.Printf("%s\n", bl.String())
 			fmt.Printf("Height: %d\n", bl.Height)
 			tips_found := true
 			for i := range bl.Tips {
@@ -658,8 +644,7 @@ func main() {
 					break
 				}
 			}
-			fmt.Printf("Tips: %d %+v\n", len(bl.Tips), bl.Tips)          // block height
-			fmt.Printf("Txs: %d %+v\n", len(bl.Tx_hashes), bl.Tx_hashes) // block height
+
 			expected_difficulty := new(big.Int).SetUint64(0)
 			if tips_found { // we can solve diffculty
 				expected_difficulty = chain.Get_Difficulty_At_Tips(bl.Tips)
@@ -947,7 +932,7 @@ func writenode(chain *blockchain.Blockchain, w *bufio.Writer, blid crypto.Hash, 
 	addr := rpc.NewAddressFromKeys(&acckey)
 	addr.Mainnet = globals.IsMainnet()
 
-	w.WriteString(fmt.Sprintf("L%s  [ fillcolor=%s label = \"%s %d height %d score %d stored %d order %d\nminer %s\"  ];\n", blid.String(), color, blid.String(), 0, chain.Load_Height_for_BL_ID(blid), 0, chain.Load_Block_Cumulative_Difficulty(blid), chain.Load_Block_Topological_order(blid), addr.String()))
+	w.WriteString(fmt.Sprintf("L%s  [ fillcolor=%s label = \"%s %d height %d score %d  order %d\nminer %s\"  ];\n", blid.String(), color, blid.String(), 0, chain.Load_Height_for_BL_ID(blid), 0, chain.Load_Block_Topological_order(blid), addr.String()))
 	w.WriteString(fmt.Sprintf("}\n"))
 
 	if err != nil {

@@ -390,31 +390,37 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 			// an SCID can generate it's token infinitely
 			if transfer.Asset != scid && total_per_asset[transfer.Asset]+transfer.Amount <= total_per_asset[transfer.Asset] {
 				err = fmt.Errorf("Balance calculation overflow")
+				break
 			} else {
 				total_per_asset[transfer.Asset] = total_per_asset[transfer.Asset] + transfer.Amount
 			}
 		}
 
-		for asset, value := range total_per_asset {
-			stored_value, _ := chain.LoadSCAssetValue(w_sc_data_tree, scid, asset)
-			// an SCID can generate it's token infinitely
-			if asset != scid && stored_value-value > stored_value {
-				err = fmt.Errorf("Balance calculation underflow")
-			}
+		if err == nil {
+			for asset, value := range total_per_asset {
+				stored_value, _ := chain.LoadSCAssetValue(w_sc_data_tree, scid, asset)
+				// an SCID can generate it's token infinitely
+				if asset != scid && stored_value-value > stored_value {
+					err = fmt.Errorf("Balance calculation underflow stored_value %d  transferring %d\n", stored_value, value)
+					break
+				}
 
-			var new_value [8]byte
-			binary.BigEndian.PutUint64(new_value[:], stored_value-value)
-			chain.StoreSCValue(w_sc_data_tree, scid, asset[:], new_value[:])
+				var new_value [8]byte
+				binary.BigEndian.PutUint64(new_value[:], stored_value-value)
+				chain.StoreSCValue(w_sc_data_tree, scid, asset[:], new_value[:])
+			}
 		}
 
 		//also check whether all destinations are registered
-		for _, transfer := range w_sc_data_tree.transfere {
-			if _, err = balance_tree.Get([]byte(transfer.Address)); err == nil || xerrors.Is(err, graviton.ErrNotFound) {
-				// everything is okay
-			} else {
-				err = fmt.Errorf("account is unregistered")
-				logger.V(1).Error(err, "account is unregistered", "txhash", txhash, "scid", scid, "address", transfer.Address)
-				break
+		if err == nil {
+			for _, transfer := range w_sc_data_tree.transfere {
+				if _, err = balance_tree.Get([]byte(transfer.Address)); err == nil || xerrors.Is(err, graviton.ErrNotFound) {
+					// everything is okay
+				} else {
+					err = fmt.Errorf("account is unregistered")
+					logger.V(1).Error(err, "account is unregistered", "txhash", txhash, "scid", scid, "address", transfer.Address)
+					break
+				}
 			}
 		}
 	}
@@ -456,6 +462,9 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 	}
 
 	for k, v := range w_sc_data_tree.entries { // commit entire data to tree
+		if _, ok := globals.Arguments["--debug"]; ok && globals.Arguments["--debug"] != nil && chain.simulator {
+			logger.V(1).Info("Writing", "txid", txhash, "scid", scid, "key", fmt.Sprintf("%x", k), "value", fmt.Sprintf("%x", v))
+		}
 		if err = w_sc_data_tree.tree.Put([]byte(k), v); err != nil {
 			return
 		}
@@ -491,7 +500,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 		}
 
 		if curbtree == nil {
-			panic("tree cannot be nil at htis point in time")
+			panic("tree cannot be nil at this point in time")
 		}
 
 		addr_bytes := []byte(transfer.Address)

@@ -153,7 +153,8 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 
 	//fmt.Printf("tx store %v\n", tx_store)
 
-	if err = chain.Transaction_NonCoinbase_Expand(&tx); err != nil {
+	// we can skip proof check, here
+	if err = chain.Expand_Transaction_NonCoinbase(&tx); err != nil {
 		return
 	}
 	signer, err := extract_signer(&tx)

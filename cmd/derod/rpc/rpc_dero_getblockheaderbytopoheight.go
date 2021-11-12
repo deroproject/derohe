@@ -41,7 +41,7 @@ func GetBlockHeaderByTopoHeight(ctx context.Context, p rpc.GetBlockHeaderByTopoH
 		return
 	}
 
-	block_header, err := chain.GetBlockHeader(hash)
+	block_header, err := GetBlockHeader(chain, hash)
 	if err != nil { // if err return err
 		err = fmt.Errorf("User requested %d height block, chain  topo height %d but err occured %s", p.TopoHeight, chain.Load_TOPO_HEIGHT(), err)
 		return

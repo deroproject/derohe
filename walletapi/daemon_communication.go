@@ -59,6 +59,8 @@ import "github.com/creachadair/jrpc2"
 // this global variable should be within wallet structure
 var Connected bool = false
 
+var simulator bool // turns on simulator, which has 0 fees
+
 // there should be no global variables, so multiple wallets can run at the same time with different assset
 
 var endpoint string
@@ -151,6 +153,10 @@ func test_connectivity() (err error) {
 		logger.Error(err, "Mainnet/Testnet mismatch")
 		return
 	}
+
+	if strings.ToLower(info.Network) == "simulator" {
+		simulator = true
+	}
 	logger.Info("successfully connected to daemon")
 	return nil
 }
@@ -213,7 +219,7 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash
 		//rlog.Debugf("wallet topo height %d daemon online topo height %d\n", w.account.TopoHeight, w.Daemon_TopoHeight)
 		previous := w.getEncryptedBalanceresult(scid).Data
 
-		if _, _, e, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
+		if _, _, _, e, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
 
 			//fmt.Printf("data '%s' previous '%s' scid %s\n",w.account.Balance_Result[scid].Data , previous,scid)
 			if w.getEncryptedBalanceresult(scid).Data != previous {
@@ -282,8 +288,8 @@ func (w *Wallet_Memory) DecodeEncryptedBalanceNow(el *crypto.ElGamal) uint64 {
 func (w *Wallet_Memory) GetSelfEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64) (r rpc.GetEncryptedBalance_Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(nil, "Recovered while connecting", "r", r, "stack", debug.Stack())
-			err = fmt.Errorf("Recovered while connecting", "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while GetSelfEncryptedBalanceAtTopoHeight", "r", r, "stack", debug.Stack())
+			err = fmt.Errorf("Recovered while GetSelfEncryptedBalanceAtTopoHeight r %s stack %s", r, string(debug.Stack()))
 		}
 	}()
 
@@ -297,12 +303,12 @@ func (w *Wallet_Memory) GetSelfEncryptedBalanceAtTopoHeight(scid crypto.Hash, to
 // TODO in order to stop privacy leaks we must guess this information somehow on client side itself
 // maybe the server can broadcast a bloomfilter or something else from the mempool keyimages
 //
-func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (bits int, lastused uint64, e *crypto.ElGamal, err error) {
+func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (bits int, lastused uint64, blid crypto.Hash, e *crypto.ElGamal, err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(nil, "Recovered while connecting", "r", r, "stack", debug.Stack())
-			err = fmt.Errorf("Recovered while connecting", "stack", debug.Stack())
+			logger.V(1).Error(nil, "Recovered while GetEncryptedBalanceAtTopoHeight", "r", r, "stack", debug.Stack())
+			err = fmt.Errorf("Recovered while GetEncryptedBalanceAtTopoHeight  r %s stack %s", r, debug.Stack())
 		}
 	}()
 
@@ -395,7 +401,12 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 	var nb crypto.NonceBalance
 	nb.Unmarshal(hexdecoded)
 
-	return result.Bits, nb.NonceHeight, nb.Balance, nil
+	var block_hash crypto.Hash
+	if err = block_hash.UnmarshalText([]byte(result.BlockHash)); err != nil {
+		return
+	}
+
+	return result.Bits, nb.NonceHeight, block_hash, nb.Balance, nil
 }
 
 func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) (balance uint64) {
@@ -405,7 +416,7 @@ func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint u
 }
 
 func (w *Wallet_Memory) GetDecryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (balance uint64, noncetopo uint64, err error) {
-	_, noncetopo, encrypted_balance, err := w.GetEncryptedBalanceAtTopoHeight(scid, topoheight, accountaddr)
+	_, noncetopo, _, encrypted_balance, err := w.GetEncryptedBalanceAtTopoHeight(scid, topoheight, accountaddr)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -520,13 +531,13 @@ func (w *Wallet_Memory) synchistory_internal(scid crypto.Hash, start_topo, end_t
 	if start_topo == w.getEncryptedBalanceresult(scid).Registration {
 		start_balance_e = crypto.ConstructElGamal(w.account.Keys.Public.G1(), crypto.ElGamal_BASE_G)
 	} else {
-		_, _, start_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, start_topo, w.GetAddress().String())
+		_, _, _, start_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, start_topo, w.GetAddress().String())
 		if err != nil {
 			return err
 		}
 	}
 
-	_, _, end_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, end_topo, w.GetAddress().String())
+	_, _, _, end_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, end_topo, w.GetAddress().String())
 	if err != nil {
 		return err
 	}
@@ -566,7 +577,7 @@ func (w *Wallet_Memory) synchistory_internal_binary_search(scid crypto.Hash, sta
 			return w.synchistory_block(scid, end_topo)
 		}
 
-		_, _, median_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, median, w.GetAddress().String())
+		_, _, _, median_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, median, w.GetAddress().String())
 		if err != nil {
 			return err
 		}
@@ -653,13 +664,13 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 	if topo <= 0 || w.getEncryptedBalanceresult(scid).Registration == topo {
 		previous_balance_e = crypto.ConstructElGamal(w.account.Keys.Public.G1(), crypto.ElGamal_BASE_G)
 	} else {
-		_, _, previous_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo-1, w.GetAddress().String())
+		_, _, _, previous_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo-1, w.GetAddress().String())
 		if err != nil {
 			return err
 		}
 	}
 
-	_, _, current_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo, w.GetAddress().String())
+	_, _, _, current_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo, w.GetAddress().String())
 	if err != nil {
 		return err
 	}

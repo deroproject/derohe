@@ -51,7 +51,6 @@ func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error
 
 		}
 		cbl.Difficulty = chain.Load_Block_Difficulty(blid).String()
-		cbl.Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(blid).String()
 
 		// now we must load all the changes the block has done to the state tree
 		previous_sr, err := chain.Store.Topo_store.Read(topo - 1)

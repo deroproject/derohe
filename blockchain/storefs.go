@@ -106,39 +106,42 @@ func (s *storefs) ReadBlockDifficulty(h [32]byte) (*big.Int, error) {
 	return nil, os.ErrNotExist
 }
 
-func (s *storefs) ReadBlockCDifficulty(h [32]byte) (*big.Int, error) {
+func (chain *Blockchain) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
+	return chain.Store.Block_tx_store.ReadBlockSnapshotVersion(h)
+}
+func (s *storefs) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	filename_start := fmt.Sprintf("%x.block", h[:])
 	for _, file := range files {
 		if strings.HasPrefix(file.Name(), filename_start) {
 
-			diff := new(big.Int)
+			var diff uint64
 
 			parts := strings.Split(file.Name(), "_")
 			if len(parts) != 3 {
 				panic("such filename cannot occur")
 			}
 
-			_, err := fmt.Sscan(parts[2], diff)
+			_, err := fmt.Sscan(parts[2], &diff)
 			if err != nil {
-				return nil, err
+				return 0, err
 			}
 			return diff, nil
 		}
 	}
 
-	return nil, os.ErrNotExist
+	return 0, os.ErrNotExist
 }
 
-func (s *storefs) WriteBlock(h [32]byte, data []byte, difficulty *big.Int, cdiff *big.Int) (err error) {
+func (s *storefs) WriteBlock(h [32]byte, data []byte, difficulty *big.Int, ss_version uint64) (err error) {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
-	file := filepath.Join(dir, fmt.Sprintf("%x.block_%s_%s", h[:], difficulty.String(), cdiff.String()))
+	file := filepath.Join(dir, fmt.Sprintf("%x.block_%s_%d", h[:], difficulty.String(), ss_version))
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}

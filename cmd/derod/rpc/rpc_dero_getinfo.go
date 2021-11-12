@@ -39,7 +39,11 @@ func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 	result.TopoHeight = chain.Load_TOPO_HEIGHT()
 
 	{
-		balance_merkle_hash, err := chain.Load_Merkle_Hash(result.TopoHeight)
+		version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
+		if err != nil {
+			panic(err)
+		}
+		balance_merkle_hash, err := chain.Load_Merkle_Hash(version)
 		if err != nil {
 			panic(err)
 		}

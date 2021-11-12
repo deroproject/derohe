@@ -83,6 +83,7 @@ type Transaction_Prefix struct {
 	C            [32]byte      `json:"c"`             // used for registration
 	S            [32]byte      `json:"s"`             // used for registration
 	Height       uint64        `json:"height"`        // height at the state, used to cross-check state
+	BLID         [32]byte      `json:"blid"`          // which is used to build the tx
 	SCDATA       rpc.Arguments `json:"scdata"`        // all SC related data is provided here, an SC tx uses all the fields
 }
 
@@ -316,6 +317,11 @@ func (tx *Transaction) Deserialize(buf []byte) (err error) {
 			return fmt.Errorf("Invalid Height value  in Transaction\n")
 		}
 		buf = buf[done:]
+		if len(buf) < 32 {
+			return fmt.Errorf("Invalid BLID value  in Transaction\n")
+		}
+		copy(tx.BLID[:], buf[:32])
+		buf = buf[32:]
 
 		var asset_count uint64
 		asset_count, done = binary.Uvarint(buf)
@@ -419,6 +425,7 @@ func (tx *Transaction) SerializeHeader() []byte {
 	if tx.TransactionType == BURN_TX || tx.TransactionType == NORMAL || tx.TransactionType == SC_TX {
 		n = binary.PutUvarint(buf, uint64(tx.Height))
 		serialised_header.Write(buf[:n])
+		serialised_header.Write(tx.BLID[:])
 
 		n = binary.PutUvarint(buf, uint64(len(tx.Payloads)))
 		serialised_header.Write(buf[:n])

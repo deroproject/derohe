@@ -135,8 +135,8 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 										}
 									}
 
-									// expand the tx
-									err = chain.Transaction_NonCoinbase_Expand(&tx)
+									// expand the tx, no need to do proof checking
+									err = chain.Expand_Transaction_NonCoinbase(&tx)
 									if err != nil {
 										return result, err
 									}

@@ -51,7 +51,7 @@ func GetBlock(ctx context.Context, p rpc.GetBlock_Params) (result rpc.GetBlock_R
 		hash = crypto.HashHexToHash(p.Hash)
 	}
 
-	block_header, err := chain.GetBlockHeader(hash)
+	block_header, err := GetBlockHeader(chain, hash)
 	if err != nil { // if err return err
 		return
 	}

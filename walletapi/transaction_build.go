@@ -19,15 +19,20 @@ type GenerateProofFunc func(scid crypto.Hash, scid_index int, s *crypto.Statemen
 var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 
 // generate proof  etc
-func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int) *transaction.Transaction {
-
-	var tx transaction.Transaction
+func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int) *transaction.Transaction {
 
 	sender := w.account.Keys.Public.G1()
 	sender_secret := w.account.Keys.Secret.BigInt()
 
+	var retry_count int
+
+rebuild_tx:
+
+	var tx transaction.Transaction
+
 	tx.Version = 1
 	tx.Height = height
+	tx.BLID = block_hash
 	tx.TransactionType = transaction.NORMAL
 	/*
 		if burn_value >= 1 {
@@ -47,6 +52,14 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]by
 	umap := map[string][]byte{}
 
 	fees_done := false
+
+	if retry_count%len(rings[0]) == 0 {
+		max_bits += 3
+	}
+
+	if max_bits >= 240 {
+		panic("currently we cannot use more than 240 bits")
+	}
 
 	for t, _ := range transfers {
 
@@ -261,6 +274,20 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]by
 			fmt.Printf("TX verificat1ion failed, did u try sending more than you have !!!!!!!!!!\n")
 		}
 		scid_map_t[tx.Payloads[t].SCID] = scid_map_t[tx.Payloads[t].SCID] + 1
+	}
+
+	if tx.TransactionType == transaction.SC_TX {
+		if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) {
+			if rpc.SC_INSTALL == rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64)) {
+				txid := tx.GetHash()
+				if txid[31] < 0x80 { // last byte should be more than 0x80
+					if retry_count <= 20 {
+						//fmt.Printf("rebuilding tx %s retry_count %d\n", txid, retry_count)
+						goto rebuild_tx
+					}
+				}
+			}
+		}
 	}
 
 	// these 2 steps are only necessary, since blockchain doesn't accept unserialized txs

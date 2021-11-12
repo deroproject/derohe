@@ -96,25 +96,6 @@ func CheckPowHashBig(pow_hash crypto.Hash, big_difficulty_integer *big.Int) bool
 	return false
 }
 
-// this function finds a common base  which can be used to compare tips based on cumulative difficulty
-func (chain *Blockchain) find_best_tip_cumulative_difficulty(tips []crypto.Hash) (best crypto.Hash) {
-
-	tips_scores := make([]BlockScore, len(tips), len(tips))
-
-	for i := range tips {
-		tips_scores[i].BLID = tips[i] // we should chose the lowest weight
-		tips_scores[i].Cumulative_Difficulty = chain.Load_Block_Cumulative_Difficulty(tips[i])
-	}
-
-	sort_descending_by_cumulative_difficulty(tips_scores)
-
-	best = tips_scores[0].BLID
-	//   base_height = scores[0].Weight
-
-	return best
-
-}
-
 // confirms whether the actual tip difficulty is withing 9% deviation with reference
 // actual tip cannot be less than 91% of main tip
 // if yes tip is okay, else tip should be declared stale
@@ -218,13 +199,13 @@ func (chain *Blockchain) Get_Difficulty_At_Tips(tips []crypto.Hash) *big.Int {
 	}
 
 	//  take the time from the most heavy block
-	biggest_tip := chain.find_best_tip_cumulative_difficulty(tips)
-	biggest_difficulty := chain.Load_Block_Difficulty(biggest_tip)
-	parent_highest_time := chain.Load_Block_Timestamp(biggest_tip)
+
+	biggest_difficulty := chain.Load_Block_Difficulty(tips[0])
+	parent_highest_time := chain.Load_Block_Timestamp(tips[0])
 
 	// find parents parents tip from the most heavy block's parent
-	parent_past := chain.Get_Block_Past(biggest_tip)
-	past_biggest_tip := chain.find_best_tip_cumulative_difficulty(parent_past)
+	parent_past := chain.Get_Block_Past(tips[0])
+	past_biggest_tip := parent_past[0]
 	parent_parent_highest_time := chain.Load_Block_Timestamp(past_biggest_tip)
 
 	if biggest_difficulty.Cmp(MinimumDifficulty) < 0 {

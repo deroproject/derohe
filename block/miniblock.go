@@ -55,7 +55,7 @@ type MiniBlock struct {
 func (mbl MiniBlock) String() string {
 	r := new(strings.Builder)
 
-	fmt.Fprintf(r, "%d ", mbl.Version)
+	fmt.Fprintf(r, "%08x %d ", mbl.GetMiniID(), mbl.Version)
 	if mbl.Genesis {
 		fmt.Fprintf(r, "GENESIS height %d", int64(binary.BigEndian.Uint64(mbl.Check[:])))
 	} else {
@@ -63,11 +63,11 @@ func (mbl MiniBlock) String() string {
 	}
 
 	if mbl.PastCount == 1 {
-		fmt.Fprintf(r, "Past [%08x]", mbl.Past[0])
+		fmt.Fprintf(r, " Past [%08x]", mbl.Past[0])
 	} else {
-		fmt.Fprintf(r, "Past [%08x %08x]", mbl.Past[0], mbl.Past[1])
+		fmt.Fprintf(r, " Past [%08x %08x]", mbl.Past[0], mbl.Past[1])
 	}
-	fmt.Fprintf(r, "time %d", mbl.Timestamp)
+	fmt.Fprintf(r, " time %d", mbl.Timestamp)
 
 	return r.String()
 }

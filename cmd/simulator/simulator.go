@@ -399,7 +399,6 @@ func main() {
 					fmt.Printf("Block ID : %s\n", hash)
 					fmt.Printf("Block : %x\n", bl.Serialize())
 					fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
-					fmt.Printf("cdifficulty: %s\n", chain.Load_Block_Cumulative_Difficulty(hash).String())
 					//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
 
 					json_bytes, err := json.Marshal(bl)
@@ -423,11 +422,15 @@ func main() {
 						fmt.Printf("Block ID : %s\n", hash)
 						fmt.Printf("Block : %x\n", bl.Serialize())
 						fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
-						fmt.Printf("cdifficulty: %s\n", chain.Load_Block_Cumulative_Difficulty(hash).String())
 						fmt.Printf("Height: %d\n", chain.Load_Height_for_BL_ID(hash))
 						fmt.Printf("TopoHeight: %d\n", s)
 
-						bhash, err := chain.Load_Merkle_Hash(s)
+						version, err := chain.ReadBlockSnapshotVersion(hash)
+						if err != nil {
+							panic(err)
+						}
+
+						bhash, err := chain.Load_Merkle_Hash(version)
 
 						if err != nil {
 							panic(err)

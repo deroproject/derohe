@@ -89,11 +89,9 @@ type Connection struct {
 	Tag               string // tag for the other end
 	DaemonVersion     string
 	//Exit                  chan bool   // Exit marker that connection needs to be killed
-	ExitCounter           int32
-	State                 uint32       // state of the connection
-	Top_ID                crypto.Hash  // top block id of the connection
-	Cumulative_Difficulty string       // cumulative difficulty of top block of peer, this is NOT required
-	CDIFF                 atomic.Value //*big.Int    // NOTE: this field is used internally and is the parsed from Cumulative_Difficulty
+	ExitCounter int32
+	State       uint32      // state of the connection
+	Top_ID      crypto.Hash // top block id of the connection
 
 	logger            logr.Logger     // connection specific logger
 	logid             string          // formatted version of connection

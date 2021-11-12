@@ -270,10 +270,10 @@ func Test_Creation_TX(t *testing.T) {
 	wdst.Sync_Wallet_Memory_With_Daemon()
 
 	var zerohash crypto.Hash
-	if _, nonce, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 2, wsrc.GetAddress().String()); nonce != 2 {
+	if _, nonce, _, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 2, wsrc.GetAddress().String()); nonce != 2 {
 		t.Fatalf("nonce not valid. please dig. expected 2 actual %d", nonce)
 	}
-	if _, nonce, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 2, wdst.GetAddress().String()); nonce != 0 {
+	if _, nonce, _, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 2, wdst.GetAddress().String()); nonce != 0 {
 		t.Fatalf("nonce not valid. please dig. expected 0 actual %d", nonce)
 	}
 
@@ -361,10 +361,10 @@ func Test_Creation_TX(t *testing.T) {
 	wsrc.Sync_Wallet_Memory_With_Daemon()
 	wdst.Sync_Wallet_Memory_With_Daemon()
 
-	if _, nonce, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 11, wsrc.GetAddress().String()); nonce != 9 {
+	if _, nonce, _, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 11, wsrc.GetAddress().String()); nonce != 9 {
 		t.Fatalf("nonce not valid. please dig. expected 9 actual %d", nonce)
 	}
-	if _, nonce, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 11, wdst.GetAddress().String()); nonce != 11 {
+	if _, nonce, _, _, _ := wsrc.GetEncryptedBalanceAtTopoHeight(zerohash, 11, wdst.GetAddress().String()); nonce != 11 {
 		t.Fatalf("nonce not valid. please dig. expected 11 actual %d", nonce)
 	}
 

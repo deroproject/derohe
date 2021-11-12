@@ -30,7 +30,7 @@ func GetLastBlockHeader(ctx context.Context) (result rpc.GetLastBlockHeader_Resu
 		}
 	}()
 	top_hash := chain.Get_Top_ID()
-	block_header, err := chain.GetBlockHeader(top_hash)
+	block_header, err := GetBlockHeader(chain, top_hash)
 	if err != nil {
 		return
 	}

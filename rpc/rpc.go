@@ -11,8 +11,12 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 // this package defines interfaces and necessary glue code Digital Network, it exposes and provides encrypted RPC calls over DERO chain
 
 var enc_options = cbor.EncOptions{
-	Sort:    cbor.SortCTAP2,
-	TimeTag: cbor.EncTagRequired,
+	Sort:          cbor.SortCoreDeterministic,
+	ShortestFloat: cbor.ShortestFloat16,
+	NaNConvert:    cbor.NaNConvert7e00,
+	InfConvert:    cbor.InfConvertFloat16,
+	IndefLength:   cbor.IndefLengthForbidden,
+	TimeTag:       cbor.EncTagRequired,
 }
 
 var dec_options = cbor.DecOptions{

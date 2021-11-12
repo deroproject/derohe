@@ -111,7 +111,7 @@ func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, 
 }
 
 // this checks the nonces of a tx agains the current chain state, this basically does a comparision of state trees in limited form
-func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version int64, tx *transaction.Transaction, tips []crypto.Hash, mempool bool) (err error) {
+func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version int64, tx *transaction.Transaction, tips []crypto.Hash) (err error) {
 	var tx_hash crypto.Hash
 	defer func() { // safety so if anything wrong happens, verification fails
 		if r := recover(); r != nil {
@@ -129,44 +129,19 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 		return fmt.Errorf("no tips provided, cannot verify")
 	}
 
-	match_topo := int64(1)
-
 	// transaction needs to be expanded. this expansion needs  balance state
-	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height))
 
-	// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
-	if len(topos) < 1 {
-		return fmt.Errorf("TX could NOT be expanded")
+	version, err := chain.ReadBlockSnapshotVersion(tx.BLID)
+	if err != nil {
+		return err
 	}
 
-	for i := range topos {
-		hash, err := chain.Load_Merkle_Hash(topos[i])
-		if err != nil {
-			continue
-		}
-
-		if hash == tx.Payloads[0].Statement.Roothash {
-			match_topo = topos[i]
-			break // we have found the balance tree with which it was built now lets verify
-		}
-
-	}
-
-	if match_topo < 0 {
-		return fmt.Errorf("mentioned balance tree not found, cannot verify TX")
+	ss_tx, err := chain.Store.Balance_store.LoadSnapshot(version)
+	if err != nil {
+		return err
 	}
 
 	var tx_balance_tree *graviton.Tree
-	toporecord, err := chain.Store.Topo_store.Read(match_topo)
-	if err != nil {
-		return err
-	}
-
-	ss_tx, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-	if err != nil {
-		return err
-	}
-
 	if tx_balance_tree, err = ss_tx.GetTree(config.BALANCE_TREE); err != nil {
 		return err
 	}
@@ -178,20 +153,12 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 	// now we must solve the tips, against which the nonces will be verified
 	for _, tip := range tips {
 		var tip_balance_tree *graviton.Tree
-		topo := chain.Load_Block_Topological_order(tip)
-		if topo < 0 && mempool {
-			continue
-		}
-		if topo < 0 && !mempool { // mempool is slightly relaxed
-			return fmt.Errorf("tip not found in DB") // if this function is running in core, it should satisfy all tips
-		}
 
-		toporecord, err := chain.Store.Topo_store.Read(topo)
+		version, err := chain.ReadBlockSnapshotVersion(tip)
 		if err != nil {
 			return err
 		}
-
-		ss_tip, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+		ss_tip, err := chain.Store.Balance_store.LoadSnapshot(version)
 		if err != nil {
 			return err
 		}
@@ -253,16 +220,16 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 				}
 			}
 		}
-		if mempool { // if it's mempool, if it satisfies any of the tip, we assume it's okay
-			return nil
-		}
-
 	}
 
-	if mempool {
-		return fmt.Errorf("doesnot satisfy any of the tips")
-	}
 	return nil
+}
+
+func (chain *Blockchain) Verify_Transaction_NonCoinbase(tx *transaction.Transaction) (err error) {
+	return chain.verify_Transaction_NonCoinbase_internal(false, tx)
+}
+func (chain *Blockchain) Expand_Transaction_NonCoinbase(tx *transaction.Transaction) (err error) {
+	return chain.verify_Transaction_NonCoinbase_internal(true, tx)
 }
 
 // all non miner tx must be non-coinbase tx
@@ -272,7 +239,7 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 // if the transaction has passed the check it can be added to mempool, relayed or added to blockchain
 // the transaction has already been deserialized thats it
 // It also expands the transactions, using the repective state trie
-func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *transaction.Transaction) (err error) {
+func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool, tx *transaction.Transaction) (err error) {
 
 	var tx_hash crypto.Hash
 	defer func() { // safety so if anything wrong happens, verification fails
@@ -334,6 +301,11 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 			return fmt.Errorf("tx does not contains base")
 		}
 	}
+	for t := range tx.Payloads {
+		if tx.Payloads[t].Statement.Roothash != tx.Payloads[0].Statement.Roothash {
+			return fmt.Errorf("Roothash corrupted")
+		}
+	}
 
 	for t := range tx.Payloads {
 		// check sanity
@@ -367,44 +339,27 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 		tx.Payloads[t].Statement.CRn = tx.Payloads[t].Statement.CRn[:0]
 	}
 
-	match_topo := int64(1)
-
 	// transaction needs to be expanded. this expansion needs  balance state
-	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height))
-
-	// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
-	if len(topos) < 1 {
-		return fmt.Errorf("TX could NOT be expanded")
+	version, err := chain.ReadBlockSnapshotVersion(tx.BLID)
+	if err != nil {
+		return err
+	}
+	hash, err := chain.Load_Merkle_Hash(version)
+	if err != nil {
+		return err
 	}
 
-	for i := range topos {
-		hash, err := chain.Load_Merkle_Hash(topos[i])
-		if err != nil {
-			continue
-		}
-
-		if hash == tx.Payloads[0].Statement.Roothash {
-			match_topo = topos[i]
-			break // we have found the balance tree with which it was built now lets verify
-		}
-
+	if hash != tx.Payloads[0].Statement.Roothash {
+		return fmt.Errorf("Tx statement roothash mismatch")
 	}
+	// we have found the balance tree with which it was built now lets verify
 
-	if match_topo < 0 {
-		return fmt.Errorf("mentioned balance tree not found, cannot verify TX")
+	ss, err := chain.Store.Balance_store.LoadSnapshot(version)
+	if err != nil {
+		return err
 	}
 
 	var balance_tree *graviton.Tree
-	toporecord, err := chain.Store.Topo_store.Read(match_topo)
-	if err != nil {
-		return err
-	}
-
-	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-	if err != nil {
-		return err
-	}
-
 	if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
 		return err
 	}
@@ -412,13 +367,6 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 	if balance_tree == nil {
 		return fmt.Errorf("mentioned balance tree not found, cannot verify TX")
 	}
-
-	/*if _, ok := transaction_valid_cache.Load(tx_hash); ok {
-		logger.V(1).Info("Found in cache, skipping verification", "txid", tx_hash)
-		return nil
-	} else {
-		//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
-	}*/
 
 	//logger.Infof("dTX  state tree has been found")
 
@@ -498,15 +446,25 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 		}
 	}
 
+	if _, ok := transaction_valid_cache.Load(tx_hash); ok {
+		logger.V(2).Info("Found in cache, skipping verification", "txid", tx_hash)
+		return nil
+	} else {
+		//logger.Infof("TX not found in cache %s len %d ",tx_hash, len(tmp_buffer))
+	}
+
+	if skip_proof {
+		return nil
+	}
+
 	// at this point TX has been completely expanded, verify the tx statement
 	scid_map := map[crypto.Hash]int{}
 	for t := range tx.Payloads {
 
 		index := scid_map[tx.Payloads[t].SCID]
 		if !tx.Payloads[t].Proof.Verify(tx.Payloads[t].SCID, index, &tx.Payloads[t].Statement, tx.GetHash(), tx.Payloads[t].BurnValue) {
-
-			fmt.Printf("Statement %+v\n", tx.Payloads[t].Statement)
-			fmt.Printf("Proof %+v\n", tx.Payloads[t].Proof)
+			//			fmt.Printf("Statement %+v\n", tx.Payloads[t].Statement)
+			//			fmt.Printf("Proof %+v\n", tx.Payloads[t].Proof)
 
 			return fmt.Errorf("transaction statement %d verification failed", t)
 		}
@@ -531,126 +489,4 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase(hf_version int64, tx *tr
 
 	return nil
 
-}
-
-//this function is only called after tx has been thoroughly verified
-// It also expands the transactions, using the repective state trie
-// it does not expand for verification but only to extract public key
-func (chain *Blockchain) Transaction_NonCoinbase_Expand(tx *transaction.Transaction) (err error) {
-
-	for t := range tx.Payloads {
-		tx.Payloads[t].Statement.CLn = tx.Payloads[t].Statement.CLn[:0]
-		tx.Payloads[t].Statement.CRn = tx.Payloads[t].Statement.CRn[:0]
-	}
-
-	match_topo := int64(1)
-
-	// transaction needs to be expanded. this expansion needs  balance state
-	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height))
-	for i := range topos {
-		hash, err := chain.Load_Merkle_Hash(topos[i])
-		if err != nil {
-			continue
-		}
-
-		if hash == tx.Payloads[0].Statement.Roothash {
-			match_topo = topos[i]
-			break // we have found the balance tree with which it was built now lets verify
-		}
-	}
-
-	var balance_tree *graviton.Tree
-	toporecord, err := chain.Store.Topo_store.Read(match_topo)
-	if err != nil {
-		return err
-	}
-
-	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-	if err != nil {
-		return err
-	}
-
-	if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
-		return err
-	}
-
-	if balance_tree == nil {
-		return fmt.Errorf("mentioned balance tree not found, cannot expand TX")
-	}
-
-	trees := map[crypto.Hash]*graviton.Tree{}
-
-	var zerohash crypto.Hash
-	trees[zerohash] = balance_tree // initialize main tree by default
-
-	for t := range tx.Payloads {
-		tx.Payloads[t].Statement.Publickeylist_compressed = tx.Payloads[t].Statement.Publickeylist_compressed[:0]
-		tx.Payloads[t].Statement.Publickeylist = tx.Payloads[t].Statement.Publickeylist[:0]
-
-		var tree *graviton.Tree
-
-		if _, ok := trees[tx.Payloads[t].SCID]; ok {
-			tree = trees[tx.Payloads[t].SCID]
-		} else {
-
-			//	fmt.Printf("SCID loading %s tree\n", tx.Payloads[t].SCID)
-			tree, _ = ss.GetTree(string(tx.Payloads[t].SCID[:]))
-			trees[tx.Payloads[t].SCID] = tree
-		}
-
-		// now lets calculate CLn and CRn
-		for i := 0; i < int(tx.Payloads[t].Statement.RingSize); i++ {
-			key_pointer := tx.Payloads[t].Statement.Publickeylist_pointers[i*int(tx.Payloads[t].Statement.Bytes_per_publickey) : (i+1)*int(tx.Payloads[t].Statement.Bytes_per_publickey)]
-			_, key_compressed, balance_serialized, err := tree.GetKeyValueFromHash(key_pointer)
-
-			// if destination address could be found be found in main balance tree, assume its zero balance
-			needs_init := false
-			if err != nil && !tx.Payloads[t].SCID.IsZero() {
-				if xerrors.Is(err, graviton.ErrNotFound) { // if the address is not found, lookup in main tree
-					_, key_compressed, _, err = balance_tree.GetKeyValueFromHash(key_pointer)
-					if err != nil {
-						return fmt.Errorf("balance not obtained err %s\n", err)
-					}
-					needs_init = true
-				}
-			}
-			if err != nil {
-				return fmt.Errorf("balance not obtained err %s\n", err)
-			}
-
-			// decode public key and expand
-			{
-				var p bn256.G1
-				var pcopy [33]byte
-				copy(pcopy[:], key_compressed)
-				if err = p.DecodeCompressed(key_compressed[:]); err != nil {
-					return fmt.Errorf("key %d could not be decompressed", i)
-				}
-				tx.Payloads[t].Statement.Publickeylist_compressed = append(tx.Payloads[t].Statement.Publickeylist_compressed, pcopy)
-				tx.Payloads[t].Statement.Publickeylist = append(tx.Payloads[t].Statement.Publickeylist, &p)
-
-				if needs_init {
-					var nb crypto.NonceBalance
-					nb.Balance = crypto.ConstructElGamal(&p, crypto.ElGamal_BASE_G) // init zero balance
-					balance_serialized = nb.Serialize()
-				}
-			}
-
-			var ll, rr bn256.G1
-			nb := new(crypto.NonceBalance).Deserialize(balance_serialized)
-			ebalance := nb.Balance
-
-			ll.Add(ebalance.Left, tx.Payloads[t].Statement.C[i])
-			tx.Payloads[t].Statement.CLn = append(tx.Payloads[t].Statement.CLn, &ll)
-			rr.Add(ebalance.Right, tx.Payloads[t].Statement.D)
-			tx.Payloads[t].Statement.CRn = append(tx.Payloads[t].Statement.CRn, &rr)
-
-			echanges := crypto.ConstructElGamal(tx.Payloads[t].Statement.C[i], tx.Payloads[t].Statement.D)
-			nb = new(crypto.NonceBalance).Deserialize(balance_serialized)
-			nb.Balance = nb.Balance.Add(echanges)    // homomorphic addition of changes
-			tree.Put(key_compressed, nb.Serialize()) // reserialize and store temporarily, tree will be discarded after verification
-
-		}
-	}
-	return nil
 }

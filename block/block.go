@@ -20,6 +20,7 @@ import "fmt"
 
 import "time"
 import "bytes"
+import "strings"
 import "runtime/debug"
 import "encoding/hex"
 import "encoding/binary"
@@ -50,7 +51,6 @@ type Complete_Block struct {
 	Txs []*transaction.Transaction
 }
 
-// see spec here https://cryptonote.org/cns/cns003.txt
 // this function gets the block identifier hash
 // this has been simplified and varint length has been removed
 // keccak hash of entire block including miniblocks, gives the block id
@@ -65,6 +65,25 @@ func (bl *Block) GetHashWithoutMiniBlocks() (hash crypto.Hash) {
 // get timestamp, it has millisecond granularity
 func (bl *Block) GetTimestamp() time.Time {
 	return time.Unix(0, int64(bl.Timestamp*uint64(time.Millisecond)))
+}
+
+// stringifier
+func (bl Block) String() string {
+	r := new(strings.Builder)
+	fmt.Fprintf(r, "BLID:%s\n", bl.GetHash())
+	fmt.Fprintf(r, "Major version:%d Minor version: %d", bl.Major_Version, bl.Minor_Version)
+	fmt.Fprintf(r, "Height:%d\n", bl.Height)
+	fmt.Fprintf(r, "Timestamp:%d  (%s)\n", bl.Timestamp, bl.GetTimestamp())
+	for i := range bl.Tips {
+		fmt.Fprintf(r, "Past %d:%s\n", i, bl.Tips[i])
+	}
+	for i, mbl := range bl.MiniBlocks {
+		fmt.Fprintf(r, "Mini %d:%s\n", i, mbl)
+	}
+	for i, txid := range bl.Tx_hashes {
+		fmt.Fprintf(r, "tx %d:%s\n", i, txid)
+	}
+	return r.String()
 }
 
 // this function serializes a block and skips miniblocks is requested

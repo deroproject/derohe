@@ -84,33 +84,24 @@ func (s *storage) IsBalancesIntialized() bool {
 	return true
 }
 
-func (chain *Blockchain) StoreBlock(bl *block.Block) {
+func (chain *Blockchain) StoreBlock(bl *block.Block, snapshot_version uint64) {
 	hash := bl.GetHash()
 	serialized_bytes := bl.Serialize() // we are storing the miner transactions within
-	// calculate cumulative difficulty at last block
+
+	difficulty_of_current_block := new(big.Int)
 
 	if len(bl.Tips) == 0 { // genesis block has no parent
-		difficulty_of_current_block := new(big.Int).SetUint64(1) // this is never used, as genesis block is a sync block, only its cumulative difficulty is used
-		cumulative_difficulty := new(big.Int).SetUint64(1)       // genesis block cumulative difficulty is 1
-
-		err := chain.Store.Block_tx_store.WriteBlock(hash, serialized_bytes, difficulty_of_current_block, cumulative_difficulty)
-		if err != nil {
-			panic(fmt.Sprintf("error while writing block"))
-		}
+		difficulty_of_current_block.SetUint64(1) // this is never used, as genesis block is a sync block, only its cumulative difficulty is used
 	} else {
-
-		difficulty_of_current_block := chain.Get_Difficulty_At_Tips(bl.Tips)
-
-		cumulative_difficulty := chain.Load_Block_Cumulative_Difficulty(bl.Tips[0])
-		cumulative_difficulty.Add(cumulative_difficulty, difficulty_of_current_block)
-
-		err := chain.Store.Block_tx_store.WriteBlock(hash, serialized_bytes, difficulty_of_current_block, cumulative_difficulty)
-		if err != nil {
-			panic(fmt.Sprintf("error while writing block"))
-		}
-
+		difficulty_of_current_block = chain.Get_Difficulty_At_Tips(bl.Tips)
 	}
 
+	chain.Store.Block_tx_store.DeleteBlock(hash) // what should we do on error
+
+	err := chain.Store.Block_tx_store.WriteBlock(hash, serialized_bytes, difficulty_of_current_block, snapshot_version)
+	if err != nil {
+		panic(fmt.Sprintf("error while writing block"))
+	}
 }
 
 // loads a block from disk, deserializes it
@@ -245,14 +236,6 @@ func (chain *Blockchain) Load_Block_Difficulty(h crypto.Hash) *big.Int {
 	}
 }
 
-func (chain *Blockchain) Load_Block_Cumulative_Difficulty(h crypto.Hash) *big.Int {
-	if cdiff, err := chain.Store.Block_tx_store.ReadBlockCDifficulty(h); err != nil {
-		panic(err)
-	} else {
-		return cdiff
-	}
-}
-
 func (chain *Blockchain) Get_Top_ID() crypto.Hash {
 	var h crypto.Hash
 
@@ -326,18 +309,9 @@ func (chain *Blockchain) Load_Block_Topological_order_at_index(index_pos int64) 
 }
 
 //load store hash from 2 tree
-func (chain *Blockchain) Load_Merkle_Hash(index_pos int64) (hash crypto.Hash, err error) {
+func (chain *Blockchain) Load_Merkle_Hash(version uint64) (hash crypto.Hash, err error) {
 
-	toporecord, err := chain.Store.Topo_store.Read(index_pos)
-	if err != nil {
-		return hash, err
-	}
-	if toporecord.IsClean() {
-		err = fmt.Errorf("cannot query clean block")
-		return
-	}
-
-	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	ss, err := chain.Store.Balance_store.LoadSnapshot(version)
 	if err != nil {
 		return
 	}

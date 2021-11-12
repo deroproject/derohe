@@ -282,17 +282,6 @@ func (connection *Connection) bootstrap_chain() {
 			return
 		}
 
-		cdiff := new(big.Int)
-		if _, ok := cdiff.SetString(response.CBlocks[i].Cumulative_Difficulty, 10); !ok { // if Cumulative_Difficulty could not be parsed, kill connection
-			connection.logger.Error(fmt.Errorf("Could not Parse Difficulty in common"), "", "cdiff", response.CBlocks[i].Cumulative_Difficulty)
-			connection.exit()
-			return
-		}
-
-		if err = chain.Store.Block_tx_store.WriteBlock(bl.GetHash(), bl.Serialize(), diff, cdiff); err != nil {
-			panic(fmt.Sprintf("error while writing block"))
-		}
-
 		// now we must write all the state changes to gravition
 
 		var ss *graviton.Snapshot
@@ -328,6 +317,10 @@ func (connection *Connection) bootstrap_chain() {
 			if err != nil {
 				panic(err)
 			}
+		}
+
+		if err = chain.Store.Block_tx_store.WriteBlock(bl.GetHash(), bl.Serialize(), diff, commit_version); err != nil {
+			panic(fmt.Sprintf("error while writing block"))
 		}
 
 		connection.logger.V(2).Info("Writing version", "topoheight", request.TopoHeights[i], "keycount", write_count, "commit version ", commit_version)

@@ -26,7 +26,6 @@ import "sync"
 import "time"
 import "bytes"
 import "runtime/debug"
-import "math/big"
 import "strings"
 
 //import "runtime"
@@ -365,7 +364,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	// the block timestamp cannot be less than any of the parents
 	for i := range bl.Tips {
 		if chain.Load_Block_Timestamp(bl.Tips[i]) > bl.Timestamp {
-			fmt.Printf("timestamp prev %d  cur timestamp %d\n", chain.Load_Block_Timestamp(bl.Tips[i]), bl.Timestamp)
+			//fmt.Printf("timestamp prev %d  cur timestamp %d\n", chain.Load_Block_Timestamp(bl.Tips[i]), bl.Timestamp)
 
 			block_logger.Error(fmt.Errorf("Block timestamp is  less than its parent."), "rejecting block")
 			return errormsg.ErrInvalidTimestamp, false
@@ -462,8 +461,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				return err, false
 			}
 		}
-
-		// TODO we need to verify address  whether they are valid points on curve or not
 	}
 
 	// now we need to verify each and every tx in detail
@@ -526,7 +523,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	{
 		nonce_map := map[crypto.Hash]bool{}
 		for i := 0; i < len(cbl.Txs); i++ {
-
 			if cbl.Txs[i].TransactionType == transaction.NORMAL || cbl.Txs[i].TransactionType == transaction.BURN_TX || cbl.Txs[i].TransactionType == transaction.SC_TX {
 				for j := range cbl.Txs[i].Payloads {
 					if _, ok := nonce_map[cbl.Txs[i].Payloads[j].Proof.Nonce()]; ok {
@@ -535,7 +531,53 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 					}
 					nonce_map[cbl.Txs[i].Payloads[j].Proof.Nonce()] = true
 				}
+			}
+		}
+	}
 
+	// all blocks except genesis will have  history
+	// so make sure txs are connected
+	if bl.Height >= 1 && len(cbl.Txs) > 0 {
+		history := map[crypto.Hash]bool{}
+
+		var history_array []crypto.Hash
+		for i := range bl.Tips {
+			history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], 26)...)
+		}
+		for _, h := range history_array {
+			history[h] = true
+		}
+
+		block_height = chain.Calculate_Height_At_Tips(bl.Tips)
+		for i, tx := range cbl.Txs {
+			if cbl.Txs[i].TransactionType == transaction.NORMAL || cbl.Txs[i].TransactionType == transaction.BURN_TX || cbl.Txs[i].TransactionType == transaction.SC_TX {
+				if history[cbl.Txs[i].BLID] != true {
+					block_logger.Error(fmt.Errorf("Double Spend TX within block"), "unreferable history", "txid", cbl.Txs[i].GetHash())
+					return errormsg.ErrTXDoubleSpend, false
+				}
+				if tx.Height != uint64(chain.Load_Height_for_BL_ID(cbl.Txs[i].BLID)) {
+					block_logger.Error(fmt.Errorf("Double Spend TX within block"), "blid/height mismatch", "txid", cbl.Txs[i].GetHash())
+					return errormsg.ErrTXDoubleSpend, false
+				}
+
+				if block_height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
+
+				} else {
+					block_logger.Error(fmt.Errorf("Double Spend TX within block"), "long distance tx not supported", "txid", cbl.Txs[i].GetHash())
+					return errormsg.ErrTXDoubleSpend, false
+				}
+
+				if tx.TransactionType == transaction.SC_TX {
+					if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) {
+						if rpc.SC_INSTALL == rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64)) {
+							txid := tx.GetHash()
+							if txid[31] < 0x80 { // last byte should be more than 0x80
+								block_logger.Error(fmt.Errorf("Invalid SCID"), "SCID installing tx must end with >0x80 byte", "txid", cbl.Txs[i].GetHash())
+								return errormsg.ErrTXDoubleSpend, false
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -549,7 +591,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		hf_version := chain.Get_Current_Version_at_Height(chain.Calculate_Height_At_Tips(bl.Tips))
 		for i := 0; i < len(cbl.Txs); i++ {
 			go func(j int) {
-				if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, cbl.Txs[j], bl.Tips, false); err != nil { // transaction verification failed
+				if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, cbl.Txs[j], bl.Tips); err != nil { // transaction verification failed
 					atomic.AddInt32(&fail_count, 1) // increase fail count by 1
 					block_logger.Error(err, "tx nonce verification failed", "txid", cbl.Txs[j].GetHash())
 				}
@@ -570,10 +612,9 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		wg := sync.WaitGroup{}
 		wg.Add(len(cbl.Txs)) // add total number of tx as work
 
-		hf_version := chain.Get_Current_Version_at_Height(chain.Calculate_Height_At_Tips(bl.Tips))
 		for i := 0; i < len(cbl.Txs); i++ {
 			go func(j int) {
-				if err := chain.Verify_Transaction_NonCoinbase(hf_version, cbl.Txs[j]); err != nil { // transaction verification failed
+				if err := chain.Verify_Transaction_NonCoinbase(cbl.Txs[j]); err != nil { // transaction verification failed
 					atomic.AddInt32(&fail_count, 1) // increase fail count by 1
 					block_logger.Error(err, "tx verification failed", "txid", cbl.Txs[j].GetHash())
 				}
@@ -593,20 +634,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		var check_data cbl_verify // used to verify sanity of new block
 		for i := 0; i < len(cbl.Txs); i++ {
 			if !(cbl.Txs[i].IsCoinbase() || cbl.Txs[i].IsRegistration()) { // all other tx must go through this check
-
-				for _, p := range cbl.Txs[i].Payloads { // make sure tx is expanded
-					if p.Statement.RingSize != uint64(len(p.Statement.Publickeylist_compressed)) {
-						if err = chain.Transaction_NonCoinbase_Expand(cbl.Txs[i]); err != nil {
-							return err, false
-						}
-					}
-					// if still the tx is not expanded, give err
-					if p.Statement.RingSize != uint64(len(p.Statement.Publickeylist_compressed)) {
-						err = fmt.Errorf("TXB is not expanded. cannot cbl_verify expected %d  Actual %d", p.Statement.RingSize, len(p.Statement.Publickeylist_compressed))
-						block_logger.Error(err, "Invalid TX within block", "txid", cbl.Txs[i].GetHash())
-						return
-					}
-				}
 				if err = check_data.check(cbl.Txs[i], false); err == nil {
 					check_data.check(cbl.Txs[i], true) // keep in record for future tx
 				} else {
@@ -630,7 +657,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 	}
 
-	chain.StoreBlock(bl)
+	chain.StoreBlock(bl, 0)
 
 	// if the block is on a lower height tip, the block will not increase chain height
 	height := chain.Load_Height_for_BL_ID(block_hash)
@@ -645,8 +672,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 	}
 
-	// process tips only if increases the the height
-	if height_changed {
+	{
 
 		var full_order []crypto.Hash
 		var base_topo_index int64 // new topo id will start from here
@@ -667,6 +693,8 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 			current_topo_block := i + base_topo_index
 			previous_topo_block := current_topo_block - 1
+
+			_ = previous_topo_block
 
 			if current_topo_block == chain.Load_Block_Topological_order(full_order[i]) { // skip if same order
 				continue
@@ -712,14 +740,9 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				}
 			} else { // we already have a block before us, use it
 
-				record_version := uint64(0)
-				if previous_topo_block >= 0 {
-					toporecord, err := chain.Store.Topo_store.Read(previous_topo_block)
-
-					if err != nil {
-						panic(err)
-					}
-					record_version = toporecord.State_Version
+				record_version, err := chain.ReadBlockSnapshotVersion(full_order[i-1])
+				if err != nil {
+					panic(err)
 				}
 
 				ss, err = chain.Store.Balance_store.LoadSnapshot(record_version)
@@ -828,12 +851,10 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			}
 
 			//fmt.Printf("committed trees version  %d at topo %d\n", commit_version, current_topo_block)
-
-			chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
-
-			//rlog.Debugf("%d %s   topo_index %d  base topo %d", i, full_order[i], current_topo_block, base_topo_index)
-
-			// this tx must be stored, linked with this block
+			chain.StoreBlock(bl, commit_version)
+			if height_changed {
+				chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
+			}
 
 		}
 	}
@@ -1134,17 +1155,17 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	provided_fee := tx.Fees() // get fee from tx
 
 	//logger.WithFields(log.Fields{"txid": txhash}).Warnf("TX fees check disabled  provided fee %d calculated fee %d", provided_fee, calculated_fee)
-	if calculated_fee > provided_fee {
+	if !chain.simulator && calculated_fee > provided_fee {
 		err = fmt.Errorf("TX  %s rejected due to low fees  provided fee %d calculated fee %d", txhash, provided_fee, calculated_fee)
 		return err
 	}
 
-	if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, chain.Get_TIPS(), true); err != nil { // transaction verification failed
+	if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, chain.Get_TIPS()); err != nil { // transaction verification failed
 		logger.V(1).Error(err, "Incoming TX nonce verification failed", "txid", txhash)
 		return fmt.Errorf("Incoming TX %s nonce verification failed, err %s", txhash, err)
 	}
 
-	if err := chain.Verify_Transaction_NonCoinbase(hf_version, tx); err != nil {
+	if err := chain.Verify_Transaction_NonCoinbase(tx); err != nil {
 		logger.V(1).Error(err, "Incoming TX could not be verified", "txid", txhash)
 		return fmt.Errorf("Incoming TX %s could not be verified, err %s", txhash, err)
 	}
@@ -1361,27 +1382,6 @@ func (chain *Blockchain) Is_TX_Orphan(hash crypto.Hash) (result bool) {
 	return !result
 }
 
-// verifies whether we are lagging
-// return true if we need resync
-// returns false if we are good and resync is not required
-func (chain *Blockchain) IsLagging(peer_cdiff *big.Int) bool {
-
-	our_diff := new(big.Int).SetInt64(0)
-
-	high_block, err := chain.Load_Block_Topological_order_at_index(chain.Load_TOPO_HEIGHT())
-	if err != nil {
-		return false
-	} else {
-		our_diff = chain.Load_Block_Cumulative_Difficulty(high_block)
-	}
-	//fmt.Printf("P_cdiff %s cdiff %s  our top block %s", peer_cdiff.String(), our_diff.String(), high_block)
-
-	if our_diff.Cmp(peer_cdiff) < 0 {
-		return true // peer's cumulative difficulty is more than ours , active resync
-	}
-	return false
-}
-
 // this function will rewind the chain from the topo height one block at a time
 // this function also runs the client protocol in reverse and also deletes the block from the storage
 func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
@@ -1535,9 +1535,10 @@ func (chain *Blockchain) IsBlockSyncBlockHeightSpecific(blid crypto.Hash, chain_
 // blocks are ordered recursively, till we find a find a block  which is already in the chain
 func (chain *Blockchain) Generate_Full_Order_New(current_tip crypto.Hash, new_tip crypto.Hash) (order []crypto.Hash, topo int64) {
 
-	if chain.Load_Height_for_BL_ID(new_tip) != chain.Load_Height_for_BL_ID(current_tip)+1 {
+	/*if !(chain.Load_Height_for_BL_ID(new_tip) == chain.Load_Height_for_BL_ID(current_tip)+1 ||
+	   chain.Load_Height_for_BL_ID(new_tip) == chain.Load_Height_for_BL_ID(current_tip)) {
 		panic("dag can only grow one height at a time")
-	}
+	}*/
 
 	depth := 20
 	for ; ; depth += 20 {
@@ -1565,8 +1566,8 @@ func (chain *Blockchain) Generate_Full_Order_New(current_tip crypto.Hash, new_ti
 				}
 
 				if !found { // we have a contention point
-					topo = chain.Load_Block_Topological_order(new_history_rev[j-1]) + 1
-					order = append(order, new_history_rev[j:]...) //  order is already stored and store
+					topo = chain.Load_Block_Topological_order(new_history_rev[j-1])
+					order = append(order, new_history_rev[j-1:]...) //  order is already stored and store
 					return
 				}
 			}
