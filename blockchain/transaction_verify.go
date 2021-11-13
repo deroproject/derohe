@@ -350,7 +350,7 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 	}
 
 	if hash != tx.Payloads[0].Statement.Roothash {
-		return fmt.Errorf("Tx statement roothash mismatch")
+		return fmt.Errorf("Tx statement roothash mismatch expected %x actual %x", tx.Payloads[0].Statement.Roothash, hash[:])
 	}
 	// we have found the balance tree with which it was built now lets verify
 
@@ -473,19 +473,10 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 	}
 
 	// these transactions are done
-	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX {
+	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.SC_TX {
 		transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
 		return nil
 	}
-
-	// we reach here if tx proofs are valid
-	if tx.TransactionType != transaction.SC_TX {
-		return fmt.Errorf("non sc transaction should never reach here")
-	}
-
-	//if !tx.IsRegistrationValid() {
-	//	return fmt.Errorf("SC has invalid signature")
-	//}
 
 	return nil
 

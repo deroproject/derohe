@@ -622,7 +622,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 
 	cbl.Bl = &bl // the block is now complete, lets try to add it to chain
 
-	if !accept_limiter.Allow() { // if rate limiter allows, then add block to chain
+	if !chain.simulator && !accept_limiter.Allow() { // if rate limiter allows, then add block to chain
 		logger.Info("Block rejected by chain.", "blid", bl.GetHash())
 		return
 	}

@@ -47,8 +47,16 @@ func (connection *Connection) bootstrap_chain() {
 	// var err error
 	var zerohash crypto.Hash
 
+	// peer's chain is only 110 height, so do not bootstrap
+	if connection.TopoHeight-50-max_request_topoheights < 10 {
+		connection.logger.Info("fastsync cannot be done as peer's chain has low height")
+		connection.logger.Info("will do normal sync")
+		connection.sync_chain()
+		return
+	}
+
 	// we will request top 60 blocks
-	ctopo := connection.TopoHeight
+	ctopo := connection.TopoHeight - 50 // last 50 blocks have to be synced, this syncing will help us detect error
 	var topos []int64
 	for i := ctopo - (max_request_topoheights - 1); i < ctopo; i++ {
 		topos = append(topos, i)

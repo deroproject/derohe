@@ -225,8 +225,8 @@ func (t *LookupTable) Lookup(p *bn256.G1, previous_balance uint64) (balance uint
 
 	}
 
-	panic(fmt.Sprintf("balance not yet found, work done  %x", balance))
-	return balance
+	//panic(fmt.Sprintf("balance not yet found, work done  %x", balance))
+	//return balance
 }
 
 // this should be tuned by anyone using this package

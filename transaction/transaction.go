@@ -76,7 +76,7 @@ type Transaction_Prefix struct {
 	// thereby representing immense scalability and privacy both at the same time
 	// default dero network has id 0
 
-	TransactionType TransactionType `json:"version"`
+	TransactionType TransactionType `json:"txtype"`
 
 	Value        uint64        `json:"value"`         // represents value for premine, SC, BURN transactions
 	MinerAddress [33]byte      `json:"miner_address"` // miner address  // 33 bytes also used for registration
@@ -204,6 +204,16 @@ func (tx *Transaction) IsRegistration() (result bool) {
 
 func (tx *Transaction) IsPremine() (result bool) {
 	return tx.TransactionType == PREMINE
+}
+
+func (tx *Transaction) IsSC() (result bool) {
+	return tx.TransactionType == SC_TX
+}
+
+// if external proof is required
+func (tx *Transaction) IsProofRequired() (result bool) {
+	return (tx.IsCoinbase() || tx.IsRegistration() || tx.IsPremine()) == false
+
 }
 
 func (tx *Transaction) Fees() (fees uint64) {

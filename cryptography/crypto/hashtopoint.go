@@ -21,11 +21,8 @@ import "math/big"
 
 //import "crypto/rand"
 import "encoding/hex"
-
+import "golang.org/x/crypto/sha3"
 import "github.com/deroproject/derohe/cryptography/bn256"
-
-//import "golang.org/x/crypto/sha3"
-import "github.com/deroproject/derohe/cryptography/sha3"
 
 // the original try and increment method A Note on Hashing to BN Curves https://www.normalesup.org/~tibouchi/papers/bnhash-scis.pdf
 // see this for a simplified version https://github.com/clearmatics/mobius/blob/7ad988b816b18e22424728329fc2b166d973a120/contracts/bn256g1.sol
@@ -105,7 +102,7 @@ var CURVE_B = new(big.Int).SetUint64(3)
 // a = (p+1) / 4
 var CURVE_A = new(big.Int).Div(new(big.Int).Add(FIELD_ORDER, new(big.Int).SetUint64(1)), new(big.Int).SetUint64(4))
 
-func HashToPointNew(seed *big.Int) *bn256.G1 {
+func HashToPoint(seed *big.Int) *bn256.G1 {
 	y_squared := new(big.Int)
 	one := new(big.Int).SetUint64(1)
 
@@ -183,19 +180,9 @@ func isOnCurve(x, y *big.Int) bool {
 	return p_cubed.Cmp(new(big.Int).Exp(y, new(big.Int).SetUint64(2), FIELD_ORDER)) == 0
 }
 
+/*
 // this should be merged , simplified  just as simple as 25519
-func HashToPoint(seed *big.Int) *bn256.G1 {
-	/*
-	    var x, _ = new(big.Int).SetString("0d36fdf1852f1563df9c904374055bb2a4d351571b853971764b9561ae203a9e",16)
-	    var y, _ = new(big.Int).SetString("06efda2e606d7bafec34b82914953fa253d21ca3ced18db99c410e9057dccd50",16)
-
-
-
-	   fmt.Printf("hardcode point on curve %+v\n", isOnCurve(x,y))
-	   panic("done")
-	*/
-	return HashToPointNew(seed)
-
+func HashToPointOld(seed *big.Int) *bn256.G1 {
 	seed_reduced := new(big.Int)
 	seed_reduced.Mod(seed, FIELD_MODULUS)
 
@@ -247,4 +234,4 @@ func HashToPoint(seed *big.Int) *bn256.G1 {
 	}
 
 	return nil
-}
+}*/

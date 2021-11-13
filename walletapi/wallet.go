@@ -193,7 +193,7 @@ func (w *Wallet_Memory) GetRandomIAddress8() (addr rpc.Address) {
 	var dstport [8]byte
 	rand.Read(dstport[:])
 
-	addr.Arguments = rpc.Arguments{{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, binary.BigEndian.Uint64(dstport[:])}}
+	addr.Arguments = rpc.Arguments{{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: binary.BigEndian.Uint64(dstport[:])}}
 
 	return
 }

@@ -62,11 +62,8 @@ type Blockchain struct {
 
 	Tips map[crypto.Hash]crypto.Hash // current tips
 
-	dag_unsettled              map[crypto.Hash]bool // current unsettled dag
-	dag_past_unsettled_cache   *lru.Cache
-	dag_future_unsettled_cache *lru.Cache
-
 	mining_blocks_cache          *lru.Cache // used to cache blocks which have been supplied to mining
+	cache_IsMiniblockPowValid    *lru.Cache // used to cache mini blocks pow test result
 	cache_IsAddressHashValid     *lru.Cache // used to cache some outputs
 	cache_Get_Difficulty_At_Tips *lru.Cache // used to cache some outputs
 
@@ -81,8 +78,7 @@ type Blockchain struct {
 	Top_Block_Median_Size uint64 // median block size of current top block
 	Top_Block_Base_Reward uint64 // top block base reward
 
-	checkpints_disabled bool // are checkpoints disabled
-	simulator           bool // is simulator mode
+	simulator bool // is simulator mode
 
 	P2P_Block_Relayer     func(*block.Complete_Block, uint64) // tell p2p to broadcast any block this daemon hash found
 	P2P_MiniBlock_Relayer func(mbl block.MiniBlock, peerid uint64)
@@ -134,7 +130,9 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 	logger.Info("will use", "integrator_address", chain.integrator_address.String())
 
-	//chain.Tips = map[crypto.Hash]crypto.Hash{} // initialize Tips map
+	if chain.cache_IsMiniblockPowValid, err = lru.New(8192); err != nil { // temporary cache for miniblock difficulty
+		return nil, err
+	}
 	if chain.cache_Get_Difficulty_At_Tips, err = lru.New(8192); err != nil { // temporary cache for difficulty
 		return nil, err
 	}
@@ -143,10 +141,6 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 	}
 	if chain.mining_blocks_cache, err = lru.New(256); err != nil { // temporary cache for miniing blocks
 		return nil, err
-	}
-
-	if globals.Arguments["--disable-checkpoints"] != nil {
-		chain.checkpints_disabled = globals.Arguments["--disable-checkpoints"].(bool)
 	}
 
 	if params["--simulator"] == true {
@@ -745,6 +739,8 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 					panic(err)
 				}
 
+				logger.V(3).Info("reading block snapshot", "blid", full_order[i-1], "i", i, "record_version", record_version)
+
 				ss, err = chain.Store.Balance_store.LoadSnapshot(record_version)
 				if err != nil {
 					panic(err)
@@ -840,20 +836,23 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			}
 
 			// we are here, means everything is okay, lets commit the update balance tree
-
 			data_trees = append(data_trees, balance_tree, sc_meta)
-
 			//fmt.Printf("committing data trees %+v\n", data_trees)
-
 			commit_version, err := graviton.Commit(data_trees...)
 			if err != nil {
 				panic(err)
 			}
 
-			//fmt.Printf("committed trees version  %d at topo %d\n", commit_version, current_topo_block)
 			chain.StoreBlock(bl, commit_version)
 			if height_changed {
 				chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
+				if logger.V(3).Enabled() {
+					merkle_root, err := chain.Load_Merkle_Hash(commit_version)
+					if err != nil {
+						panic(err)
+					}
+					logger.V(3).Info("height changed storing topo", "i", i, "blid", full_order[i].String(), "topoheight", current_topo_block, "commit_version", commit_version, "committed_merkle", merkle_root)
+				}
 			}
 
 		}
@@ -992,9 +991,6 @@ func (chain *Blockchain) Initialise_Chain_From_DB() {
 	top := chain.Get_Top_ID()
 
 	chain.Tips[top] = top // we only can load a single tip from db
-
-	// get dag unsettled, it's only possible when we have the tips
-	// chain.dag_unsettled = chain.Get_DAG_Unsettled() // directly off the disk
 
 	logger.V(1).Info("Reloaded Chain from disk", "Tips", chain.Tips, "Height", chain.Height)
 }

@@ -96,28 +96,6 @@ func CheckPowHashBig(pow_hash crypto.Hash, big_difficulty_integer *big.Int) bool
 	return false
 }
 
-// confirms whether the actual tip difficulty is withing 9% deviation with reference
-// actual tip cannot be less than 91% of main tip
-// if yes tip is okay, else tip should be declared stale
-// both the tips should be in the store
-func (chain *Blockchain) validate_tips(reference, actual crypto.Hash) (result bool) {
-
-	reference_diff := chain.Load_Block_Difficulty(reference)
-	actual_diff := chain.Load_Block_Difficulty(actual)
-
-	// multiply by 91
-	reference91 := new(big.Int).Mul(reference_diff, new(big.Int).SetUint64(91))
-	// divide by 100
-	reference91.Div(reference91, new(big.Int).SetUint64(100))
-
-	if reference91.Cmp(actual_diff) < 0 {
-		return true
-	} else {
-		return false
-	}
-
-}
-
 // when creating a new block, current_time in utc + chain_block_time must be added
 // while verifying the block, expected time stamp should be replaced from what is in blocks header
 // in DERO atlantis difficulty is based on previous tips
@@ -239,6 +217,15 @@ func (chain *Blockchain) Get_Difficulty_At_Tips(tips []crypto.Hash) *big.Int {
 }
 
 func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock) bool {
+	var cachekey []byte
+	for i := range bl.Tips {
+		cachekey = append(cachekey, bl.Tips[i][:]...)
+	}
+	cachekey = append(cachekey, mbl.Serialize()...)
+	if _, ok := chain.cache_IsMiniblockPowValid.Get(fmt.Sprintf("%s", cachekey)); ok {
+		return true
+	}
+
 	PoW := mbl.GetPoWHash()
 	block_difficulty := chain.Get_Difficulty_At_Tips(bl.Tips)
 
@@ -248,6 +235,7 @@ func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock
 	}*/
 
 	if CheckPowHashBig(PoW, block_difficulty) == true {
+		chain.cache_IsMiniblockPowValid.Add(fmt.Sprintf("%s", cachekey), true) // set in cache
 		return true
 	}
 	return false

@@ -117,7 +117,6 @@ func (mbl *MiniBlock) HasPid(pid uint32) bool {
 
 	default:
 		panic("not supported")
-		return false
 	}
 
 }

@@ -55,13 +55,13 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 	//fmt.Printf("incoming transfer params %+v\n", p)
 
 	if p.SC_Code != "" {
-		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCACTION, rpc.DataUint64, uint64(rpc.SC_INSTALL)})
-		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCCODE, rpc.DataString, p.SC_Code})
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_INSTALL)})
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCCODE, DataType: rpc.DataString, Value: p.SC_Code})
 	}
 
 	if p.SC_ID != "" {
-		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCACTION, rpc.DataUint64, uint64(rpc.SC_CALL)})
-		p.SC_RPC = append(p.SC_RPC, rpc.Argument{rpc.SCID, rpc.DataHash, crypto.HashHexToHash(p.SC_ID)})
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_CALL)})
+		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCID, DataType: rpc.DataHash, Value: crypto.HashHexToHash(p.SC_ID)})
 	}
 
 	/*

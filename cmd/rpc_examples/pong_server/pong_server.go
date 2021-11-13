@@ -32,21 +32,21 @@ const PLUGIN_NAME = "pong_server"
 const DEST_PORT = uint64(0x1234567812345678)
 
 var expected_arguments = rpc.Arguments{
-	{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, DEST_PORT},
-	// { rpc.RPC_EXPIRY , rpc.DataTime, time.Now().Add(time.Hour).UTC()},
-	{rpc.RPC_COMMENT, rpc.DataString, "Purchase PONG"},
+	{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: DEST_PORT},
+	// { Name:rpc.RPC_EXPIRY , DataType:rpc.DataTime, Value:time.Now().Add(time.Hour).UTC()},
+	{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: "Purchase PONG"},
 	//{"float64", rpc.DataFloat64, float64(0.12345)},          // in atomic units
-	//	{rpc.RPC_NEEDS_REPLYBACK_ADDRESS,rpc.DataUint64,uint64(0)},  // this service will reply to incoming request,so needs the senders address
-	{rpc.RPC_VALUE_TRANSFER, rpc.DataUint64, uint64(12345)}, // in atomic units
+	//	{Name:rpc.RPC_NEEDS_REPLYBACK_ADDRESS,DataType:rpc.DataUint64,Value:uint64(0)},  // this service will reply to incoming request,so needs the senders address
+	{Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(12345)}, // in atomic units
 
 }
 
 // currently the interpreter seems to have a glitch if this gets initialized within the code
 // see limitations github.com/traefik/yaegi
 var response = rpc.Arguments{
-	{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, uint64(0)},
-	{rpc.RPC_SOURCE_PORT, rpc.DataUint64, DEST_PORT},
-	{rpc.RPC_COMMENT, rpc.DataString, "Successfully purchased pong (this could be serial/license key or download link or further)"},
+	{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: uint64(0)},
+	{Name: rpc.RPC_SOURCE_PORT, DataType: rpc.DataUint64, Value: DEST_PORT},
+	{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: "Successfully purchased pong (this could be serial/license key or download link or further)"},
 }
 
 var rpcClient = jsonrpc.NewClient("http://127.0.0.1:40403/json_rpc")

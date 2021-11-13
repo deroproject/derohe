@@ -66,11 +66,19 @@ func (s *storefs) DeleteBlock(h [32]byte) error {
 	}
 
 	filename_start := fmt.Sprintf("%x.block", h[:])
+	var found bool
 	for _, file := range files {
 		if strings.HasPrefix(file.Name(), filename_start) {
 			file := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]), file.Name())
-			return os.Remove(file)
+			err = os.Remove(file)
+			if err != nil {
+				return err
+			}
+			found = true
 		}
+	}
+	if found {
+		return nil
 	}
 
 	return os.ErrNotExist

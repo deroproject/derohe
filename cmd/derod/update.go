@@ -181,7 +181,7 @@ func check_update() {
 	m1.Id = dns.Id()
 	m1.RecursionDesired = true
 	m1.Question = make([]dns.Question, 1)
-	m1.Question[0] = dns.Question{config.DNS_UPDATE_CHECK, dns.TypeTXT, dns.ClassINET}
+	m1.Question[0] = dns.Question{Name: config.DNS_UPDATE_CHECK, Qtype: dns.TypeTXT, Qclass: dns.ClassINET}
 
 	packed, err := m1.Pack()
 	if err != nil {

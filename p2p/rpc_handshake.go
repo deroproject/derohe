@@ -143,6 +143,7 @@ func (connection *Connection) dispatch_test_handshake() {
 
 // mark connection active
 func (c *Connection) Active(req Dummy, dummy *Dummy) error {
+	defer handle_connection_panic(c)
 	c.update(&req.Common) // update common information
 	atomic.StoreUint32(&c.State, ACTIVE)
 	fill_common(&dummy.Common) // fill common info
@@ -151,6 +152,7 @@ func (c *Connection) Active(req Dummy, dummy *Dummy) error {
 
 // used to ping pong
 func (c *Connection) Ping(request Dummy, response *Dummy) error {
+	defer handle_connection_panic(c)
 	fill_common_T1(&request.Common)
 	c.update(&request.Common)                             // update common information
 	fill_common(&response.Common)                         // fill common info

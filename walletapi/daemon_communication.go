@@ -857,7 +857,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 									// enable sender side proofs
 									proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))
 									proof.Proof = true
-									proof.Arguments = rpc.Arguments{{"H", rpc.DataHash, crypto.Hash(shared_key)}, {rpc.RPC_VALUE_TRANSFER, rpc.DataUint64, uint64(entry.Amount - entry.Burn)}}
+									proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount - entry.Burn)}}
 									entry.Proof = proof.String()
 									entry.PayloadType = tx.Payloads[t].RPCType
 									switch tx.Payloads[t].RPCType {
@@ -915,7 +915,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 							// enable receiver side proofs
 							proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))
 							proof.Proof = true
-							proof.Arguments = rpc.Arguments{{"H", rpc.DataHash, crypto.Hash(shared_key)}, {rpc.RPC_VALUE_TRANSFER, rpc.DataUint64, uint64(entry.Amount)}}
+							proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount)}}
 							entry.Proof = proof.String()
 
 							entry.PayloadType = tx.Payloads[t].RPCType

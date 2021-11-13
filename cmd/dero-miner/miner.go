@@ -227,7 +227,7 @@ func main() {
 
 	if threads < 1 || iterations < 1 || threads > 2048 {
 		panic("Invalid parameters\n")
-		return
+		//return
 	}
 
 	// This tiny goroutine continuously updates status as required
@@ -331,7 +331,7 @@ func main() {
 	l.Refresh() // refresh the prompt
 
 	go func() {
-		var gracefulStop = make(chan os.Signal)
+		var gracefulStop = make(chan os.Signal, 1)
 		signal.Notify(gracefulStop, os.Interrupt) // listen to all signals
 		for {
 			sig := <-gracefulStop

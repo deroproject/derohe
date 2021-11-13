@@ -393,14 +393,10 @@ func MiniBlocks_FilterOnlyGenesis(mbls []MiniBlock, tips []crypto.Hash) (result 
 	case 2:
 		pid1 := binary.BigEndian.Uint32(tips[0][:])
 		pid2 := binary.BigEndian.Uint32(tips[1][:])
-
 		return MiniBlocks_Filter(baselist, []uint32{pid1, pid2})
 	default:
 		panic("only max 2 tips are supported")
-
 	}
-
-	return
 }
 
 /*

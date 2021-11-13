@@ -268,7 +268,7 @@ func main() {
 	l.Refresh() // refresh the prompt
 
 	go func() {
-		var gracefulStop = make(chan os.Signal)
+		var gracefulStop = make(chan os.Signal, 1)
 		signal.Notify(gracefulStop, os.Interrupt) // listen to all signals
 		for {
 			sig := <-gracefulStop

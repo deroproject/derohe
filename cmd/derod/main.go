@@ -52,14 +52,7 @@ import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/blockchain"
 import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
 
-//import "github.com/deroproject/derosuite/checkpoints"
 import "github.com/deroproject/derohe/cryptography/crypto"
-
-//import "github.com/deroproject/derosuite/cryptonight"
-
-//import "github.com/deroproject/derosuite/crypto/ringct"
-//import "github.com/deroproject/derohe/blockchain/rpcserver"
-//import "github.com/deroproject/derohe/walletapi"
 
 var command_line string = `derod 
 DERO : A secure, private blockchain with smart-contracts
@@ -184,9 +177,7 @@ func main() {
 		params["--integrator-address"] = globals.Arguments["--integrator-address"]
 	}
 
-	//params["--disable-checkpoints"] = globals.Arguments["--disable-checkpoints"].(bool)
 	chain, err := blockchain.Blockchain_Start(params)
-
 	if err != nil {
 		logger.Error(err, "Error starting blockchain")
 		return
@@ -201,11 +192,9 @@ func main() {
 	}
 
 	p2p.P2P_Init(params)
-
 	rpcserver, _ := derodrpc.RPCServer_Start(params)
 
 	// setup function pointers
-	// these pointers need to fixed
 	chain.P2P_Block_Relayer = func(cbl *block.Complete_Block, peerid uint64) {
 		p2p.Broadcast_Block(cbl, peerid)
 	}
@@ -236,6 +225,14 @@ func main() {
 
 			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
 			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
+
+			if our_height < 0 { // somehow the data folder got deleted/renamed/corrupted
+				logger.Error(nil, "Somehow the data directory is not accessible. shutting down")
+				l.Terminal.ExitRawMode()
+				l.Terminal.Print("\n\n")
+				os.Exit(-1)
+				return
+			}
 
 			// only update prompt if needed
 			if last_second != time.Now().Unix() || last_our_height != our_height || last_best_height != best_height || last_peer_count != peer_count || last_topo_height != topo_height || last_mempool_tx_count != mempool_tx_count || last_regpool_tx_count != regpool_tx_count {
@@ -299,31 +296,58 @@ func main() {
 	l.Refresh() // refresh the prompt
 
 	go func() {
-		var gracefulStop = make(chan os.Signal)
+		var gracefulStop = make(chan os.Signal, 1)
 		signal.Notify(gracefulStop, os.Interrupt) // listen to all signals
 		for {
 			sig := <-gracefulStop
 			logger.Info("received signal", "signal", sig)
-
 			if sig.String() == "interrupt" {
 				close(Exit_In_Progress)
+				return
 			}
 		}
 	}()
 
 	for {
+		if err = readline_loop(l, chain, logger); err == nil {
+			break
+		}
+	}
+
+	logger.Info("Exit in Progress, Please wait")
+	time.Sleep(100 * time.Millisecond) // give prompt update time to finish
+
+	rpcserver.RPCServer_Stop()
+	p2p.P2P_Shutdown() // shutdown p2p subsystem
+	chain.Shutdown()   // shutdown chain subsysem
+
+	for globals.Subsystem_Active > 0 {
+		logger.Info("Exit in Progress, Please wait.", "active subsystems", globals.Subsystem_Active)
+		time.Sleep(1000 * time.Millisecond)
+	}
+}
+
+func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger logr.Logger) (err error) {
+
+	defer func() {
+		err = globals.Recover(0)
+	}()
+
+restart_loop:
+	for {
 		line, err := l.Readline()
+		if err == io.EOF {
+			<-Exit_In_Progress
+			return nil
+		}
+
 		if err == readline.ErrInterrupt {
 			if len(line) == 0 {
 				logger.Info("Ctrl-C received, Exit in progress")
-				close(Exit_In_Progress)
-				break
+				return nil
 			} else {
 				continue
 			}
-		} else if err == io.EOF {
-			<-Exit_In_Progress
-			break
 		}
 
 		line = strings.TrimSpace(line)
@@ -338,84 +362,6 @@ func main() {
 		case line == "help":
 			usage(l.Stderr())
 
-		//
-		case command == "import_chain": // this migrates existing chain from DERO atlantis to DERO HE
-			/*
-				f, err := os.Open("/tmp/raw_export.txt")
-				if err != nil {
-					globals.Logger.Warnf("error opening  file  /tmp/raw_export.txt %s", err)
-					continue
-				}
-				reader := bufio.NewReader(f)
-
-				account, _ := walletapi.Generate_Keys_From_Random() // create a random address
-
-				for {
-					line, err = reader.ReadString('\n')
-
-					if err != nil || len(line) < 10 {
-						break
-					}
-
-					var txs []string
-
-					err = json.Unmarshal([]byte(line), &txs)
-
-					if err != nil {
-						fmt.Printf("err while unmarshalling json err %s", err)
-						continue
-					}
-
-					if len(txs) < 1 {
-						panic("TX cannot be zero")
-					}
-
-					cbl, bl := chain.Create_new_miner_block(account.GetAddress())
-
-					for i := range txs {
-
-						var tx transaction.Transaction
-
-						tx_bytes, err := hex.DecodeString(txs[i])
-						if err != nil {
-							globals.Logger.Warnf("TX could not be decoded")
-						}
-
-						err = tx.DeserializeHeader(tx_bytes)
-						if err != nil {
-							globals.Logger.Warnf("TX could not be Deserialized")
-						}
-
-						globals.Logger.Infof(" txhash  %s", tx.GetHash())
-						if i == 0 {
-							bl.Miner_TX = tx
-							cbl.Bl.Miner_TX = tx
-
-							if bl.Miner_TX.GetHash() != tx.GetHash() || cbl.Bl.Miner_TX.GetHash() != tx.GetHash() {
-								panic("miner TX hash mismatch")
-							}
-
-						} else {
-							bl.Tx_hashes = append(bl.Tx_hashes, tx.GetHash())
-							cbl.Bl.Tx_hashes = append(cbl.Bl.Tx_hashes, tx.GetHash())
-							cbl.Txs = append(cbl.Txs, &tx)
-						}
-					}
-
-					if err, ok := chain.Add_Complete_Block(cbl); ok {
-						globals.Logger.Warnf("Block Successfully accepted by chain at height %d", cbl.Bl.Miner_TX.Vin[0].(transaction.Txin_gen).Height)
-					} else {
-						globals.Logger.Warnf("Block rejected by chain at height %d, please investigate, err %s", cbl.Bl.Miner_TX.Vin[0].(transaction.Txin_gen).Height,err)
-						globals.Logger.Warnf("Stopping import")
-
-					}
-
-				}
-
-				globals.Logger.Infof("File imported Successfully")
-				f.Close()
-			*/
-
 		case command == "profile": // writes cpu and memory profile
 			// TODO enable profile over http rpc to enable better testing/tracking
 			cpufile, err := os.Create(filepath.Join(globals.GetDataDirectory(), "cpuprofile.prof"))
@@ -425,6 +371,7 @@ func main() {
 			}
 			if err := pprof.StartCPUProfile(cpufile); err != nil {
 				logger.Error(err, "could not start CPU profile")
+				continue
 			}
 			logger.Info("CPU profiling will be available after program exits.", "path", filepath.Join(globals.GetDataDirectory(), "cpuprofile.prof"))
 			defer pprof.StopCPUProfile()
@@ -582,7 +529,7 @@ func main() {
 				}
 			} else {
 				fmt.Printf("print_block  needs a single block id as argument\n")
-				break
+				continue
 			}
 			bl, err := chain.Load_BL_FROM_ID(hash)
 			if err != nil {
@@ -641,7 +588,7 @@ func main() {
 				if err != nil {
 					fmt.Printf("Tips %s not in our DB", bl.Tips[i])
 					tips_found = false
-					break
+					continue
 				}
 			}
 
@@ -687,15 +634,10 @@ func main() {
 			*/
 
 		case strings.ToLower(line) == "status":
-
-			// fmt.Printf("chain diff %d\n",chain.Get_Difficulty_At_Block(chain.Top_ID))
-			//fmt.Printf("chain nw rate %d\n", chain.Get_Network_HashRate())
 			inc, out := p2p.Peer_Direction_Count()
 
 			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
 			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
-
-			//supply := chain.Load_Already_Generated_Coins_for_Topo_Index(nil, chain.Load_TOPO_HEIGHT(nil))
 
 			supply := uint64(0)
 
@@ -733,7 +675,6 @@ func main() {
 
 		case strings.ToLower(line) == "peer_list": // print peer list
 			p2p.PeerList_Print()
-
 		case strings.ToLower(line) == "sync_info": // print active connections
 			p2p.Connection_Print()
 		case strings.ToLower(line) == "bye":
@@ -742,11 +683,11 @@ func main() {
 			fallthrough
 		case strings.ToLower(line) == "quit":
 			close(Exit_In_Progress)
-			goto exit
+			return nil
 		case command == "graphminifull": // renders the graph of miniblocks in memory
-			ioutil.WriteFile("/tmp/minidag.dot", []byte(chain.MiniBlocks.Graph()), 0644)
+			ioutil.WriteFile("/tmp/minidag_recent.dot", []byte(chain.MiniBlocks.Graph()), 0644)
 
-			logger.Info("Writing mini block graph (from memory) dot format  /tmp/minidag.dot\n")
+			logger.Info("Writing mini block graph (from memory) dot format  /tmp/minidag_recent.dot\n")
 
 		case command == "graphmini": // renders graphs of miniblocks within a block
 			topo := int64(0)
@@ -762,28 +703,23 @@ func main() {
 				continue
 			}
 
-			hash, err := chain.Load_Block_Topological_order_at_index(topo)
-			if err != nil {
-				fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
-				continue
-			}
-			bl, err := chain.Load_BL_FROM_ID(hash)
-			if err != nil {
-				fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
-				continue
-			}
-
-			tmp_collection := block.CreateMiniBlockCollection()
-			for _, tmbl := range bl.MiniBlocks {
-				if err, ok := tmp_collection.InsertMiniBlock(tmbl); !ok {
-					fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
-					continue
+			if hash, err := chain.Load_Block_Topological_order_at_index(topo); err == nil {
+				if bl, err := chain.Load_BL_FROM_ID(hash); err == nil {
+					tmp_collection := block.CreateMiniBlockCollection()
+					for _, tmbl := range bl.MiniBlocks {
+						if err, ok := tmp_collection.InsertMiniBlock(tmbl); !ok {
+							fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
+							break restart_loop
+						}
+					}
+					ioutil.WriteFile(fmt.Sprintf("/tmp/minidag_%d.dot", topo), []byte(tmp_collection.Graph()), 0644)
+					logger.Info("Writing mini block graph dot format  /tmp/minidag.dot", "topo", topo)
 				}
 			}
 
-			ioutil.WriteFile("/tmp/minidag.dot", []byte(tmp_collection.Graph()), 0644)
-
-			logger.Info("Writing mini block graph dot format  /tmp/minidag.dot", "topo", topo)
+			if err != nil {
+				fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
+			}
 
 		case command == "graph":
 			start := int64(0)
@@ -820,14 +756,12 @@ func main() {
 			WriteBlockChainTree(chain, "/tmp/graph.dot", start, stop)
 
 		case command == "pop":
-
 			switch len(line_parts) {
 			case 1:
 				chain.Rewind_Chain(1)
 			case 2:
 				pop_count := 0
 				if s, err := strconv.Atoi(line_parts[1]); err == nil {
-					//fmt.Printf("%T, %v", s, s)
 					pop_count = s
 
 					if chain.Rewind_Chain(int(pop_count)) {
@@ -893,19 +827,9 @@ func main() {
 			logger.Info(fmt.Sprintf("you said: %s", strconv.Quote(line)))
 		}
 	}
-exit:
 
-	logger.Info("Exit in Progress, Please wait")
-	time.Sleep(100 * time.Millisecond) // give prompt update time to finish
+	return fmt.Errorf("can never reach here")
 
-	rpcserver.RPCServer_Stop()
-	p2p.P2P_Shutdown() // shutdown p2p subsystem
-	chain.Shutdown()   // shutdown chain subsysem
-
-	for globals.Subsystem_Active > 0 {
-		logger.Info("Exit in Progress, Please wait.", "active subsystems", globals.Subsystem_Active)
-		time.Sleep(1000 * time.Millisecond)
-	}
 }
 
 func writenode(chain *blockchain.Blockchain, w *bufio.Writer, blid crypto.Hash, start_height int64) { // process a node, recursively
@@ -993,12 +917,10 @@ func prettyprint_json(b []byte) []byte {
 
 func usage(w io.Writer) {
 	io.WriteString(w, "commands:\n")
-	//io.WriteString(w, completer.Tree("    "))
 	io.WriteString(w, "\t\033[1mhelp\033[0m\t\tthis help\n")
 	io.WriteString(w, "\t\033[1mdiff\033[0m\t\tShow difficulty\n")
 	io.WriteString(w, "\t\033[1mprint_bc\033[0m\tPrint blockchain info in a given blocks range, print_bc <begin_height> <end_height>\n")
 	io.WriteString(w, "\t\033[1mprint_block\033[0m\tPrint block, print_block <block_hash> or <block_height>\n")
-	io.WriteString(w, "\t\033[1mprint_height\033[0m\tPrint local blockchain height\n")
 	io.WriteString(w, "\t\033[1mprint_tx\033[0m\tPrint transaction, print_tx <transaction_hash>\n")
 	io.WriteString(w, "\t\033[1mstatus\033[0m\t\tShow general information\n")
 	io.WriteString(w, "\t\033[1mpeer_list\033[0m\tPrint peer list\n")
@@ -1020,34 +942,8 @@ func usage(w io.Writer) {
 }
 
 var completer = readline.NewPrefixCompleter(
-	/*	readline.PcItem("mode",
-			readline.PcItem("vi"),
-			readline.PcItem("emacs"),
-		),
-		readline.PcItem("login"),
-		readline.PcItem("say",
-			readline.PcItem("hello"),
-			readline.PcItem("bye"),
-		),
-		readline.PcItem("setprompt"),
-		readline.PcItem("setpassword"),
-		readline.PcItem("bye"),
-	*/
 	readline.PcItem("help"),
-	/*	readline.PcItem("go",
-			readline.PcItem("build", readline.PcItem("-o"), readline.PcItem("-v")),
-			readline.PcItem("install",
-				readline.PcItem("-v"),
-				readline.PcItem("-vv"),
-				readline.PcItem("-vvv"),
-			),
-			readline.PcItem("test"),
-		),
-		readline.PcItem("sleep"),
-	*/
 	readline.PcItem("diff"),
-	//readline.PcItem("dev_verify_pool"),
-	//readline.PcItem("dev_verify_chain_doublespend"),
 	readline.PcItem("mempool_flush"),
 	readline.PcItem("mempool_delete_tx"),
 	readline.PcItem("mempool_print"),
@@ -1057,11 +953,8 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("peer_list"),
 	readline.PcItem("print_bc"),
 	readline.PcItem("print_block"),
-	readline.PcItem("print_height"),
-	readline.PcItem("print_tx"),
+	//	readline.PcItem("print_tx"),
 	readline.PcItem("status"),
-	readline.PcItem("start_mining"),
-	readline.PcItem("stop_mining"),
 	readline.PcItem("sync_info"),
 	readline.PcItem("version"),
 	readline.PcItem("bye"),

@@ -90,7 +90,7 @@ func simulator_chain_start() (*blockchain.Blockchain, *derodrpc.RPCServer, map[s
 
 	if err != nil {
 		panic(err)
-		return nil, nil, nil
+		//	return nil, nil, nil
 	}
 
 	params["chain"] = chain

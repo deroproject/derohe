@@ -16,9 +16,8 @@
 
 package crypto
 
-//import "golang.org/x/crypto/sha3"
+import "golang.org/x/crypto/sha3"
 import "encoding/binary"
-import "github.com/deroproject/derohe/cryptography/sha3"
 
 // quick keccak wrapper
 func Keccak256(data ...[]byte) (result Hash) {

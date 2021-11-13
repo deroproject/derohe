@@ -226,7 +226,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				break
 			}
 
-			arguments = append(arguments, rpc.Argument{rpc.RPC_DESTINATION_PORT, rpc.DataUint64, a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
+			arguments = append(arguments, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
 			// arguments = append(arguments, rpc.Argument{"Comment", rpc.DataString, "holygrail of all data is now working if you can see this"})
 
 			if a.Arguments.Has(rpc.RPC_EXPIRY, rpc.DataTime) { // but only it is present
@@ -252,28 +252,28 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				switch arg.DataType {
 				case rpc.DataString:
 					if v, err := ReadString(l, arg.Name, arg.Value.(string)); err == nil {
-						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
 						return
 					}
 				case rpc.DataInt64:
 					if v, err := ReadInt64(l, arg.Name, arg.Value.(int64)); err == nil {
-						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
 						return
 					}
 				case rpc.DataUint64:
 					if v, err := ReadUint64(l, arg.Name, arg.Value.(uint64)); err == nil {
-						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
 						return
 					}
 				case rpc.DataFloat64:
 					if v, err := ReadFloat64(l, arg.Name, arg.Value.(float64)); err == nil {
-						arguments = append(arguments, rpc.Argument{arg.Name, arg.DataType, v})
+						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
 						return
@@ -310,13 +310,13 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			logger.Info("This RPC has requested your address.")
 			logger.Info("If you are expecting something back, it needs to be sent")
 			logger.Info("Your address will remain completely invisible to external entities(only sender/receiver can see your address)")
-			arguments = append(arguments, rpc.Argument{rpc.RPC_REPLYBACK_ADDRESS, rpc.DataAddress, wallet.GetAddress()})
+			arguments = append(arguments, rpc.Argument{Name: rpc.RPC_REPLYBACK_ADDRESS, DataType: rpc.DataAddress, Value: wallet.GetAddress()})
 		}
 
 		// if no arguments, use space by embedding a small comment
 		if len(arguments) == 0 { // allow user to enter Comment
 			if v, err := ReadString(l, "Comment", ""); err == nil {
-				arguments = append(arguments, rpc.Argument{"Comment", rpc.DataString, v})
+				arguments = append(arguments, rpc.Argument{Name: "Comment", DataType: rpc.DataString, Value: v})
 			} else {
 				logger.Error(fmt.Errorf("%s could not be parsed (type %s),", "Comment", rpc.DataString), "")
 				return

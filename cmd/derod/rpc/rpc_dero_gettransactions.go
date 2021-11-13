@@ -166,13 +166,6 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 				continue
 			}
 		}
-
-		{ // we could not fetch the tx, return an empty string
-			result.Txs_as_hex = append(result.Txs_as_hex, "")
-			err = fmt.Errorf("TX NOT FOUND %s", hash)
-			return
-		}
-
 	}
 
 	result.Status = "OK"

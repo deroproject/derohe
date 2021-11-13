@@ -210,7 +210,7 @@ func ping_loop() {
 					var request, response Dummy
 					fill_common(&request.Common) // fill common info
 
-					if c.peer_sent_time.Add(10 * time.Minute).Before(time.Now()) {
+					if c.peer_sent_time.Add(5 * time.Second).Before(time.Now()) {
 						c.peer_sent_time = time.Now()
 						request.Common.PeerList = get_peer_list()
 					}
@@ -833,7 +833,7 @@ func trigger_sync() {
 			//connection.Unlock()
 			if islagging {
 
-				if connection.Pruned > chain.Load_Block_Topological_order(chain.Get_Top_ID()) {
+				if connection.Pruned > chain.Load_Block_Topological_order(chain.Get_Top_ID()) && chain.Get_Height() != 0 {
 					connection.logger.V(1).Info("We cannot resync with the peer, since peer chain is pruned", "height", connection.Height, "pruned", connection.Pruned)
 					continue
 				}
