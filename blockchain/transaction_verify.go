@@ -129,8 +129,15 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 		return fmt.Errorf("no tips provided, cannot verify")
 	}
 
-	// transaction needs to be expanded. this expansion needs  balance state
+	tips_string := tx_hash.String()
+	for _, tip := range tips {
+		tips_string += fmt.Sprintf("%s", tip.String())
+	}
+	if _, found := chain.cache_IsNonceValidTips.Get(tips_string); found {
+		return nil
+	}
 
+	// transaction needs to be expanded. this expansion needs  balance state
 	version, err := chain.ReadBlockSnapshotVersion(tx.BLID)
 	if err != nil {
 		return err
@@ -222,6 +229,7 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 		}
 	}
 
+	chain.cache_IsNonceValidTips.Add(tips_string, true) // set in cache
 	return nil
 }
 

@@ -120,7 +120,7 @@ func GetEncryptedBalance(ctx context.Context, p rpc.GetEncryptedBalance_Params) 
 		Bits:                     bits, // no. of bbits required
 		Height:                   toporecord.Height,
 		Topoheight:               topoheight,
-		BlockHash:                fmt.Sprintf("%x", toporecord.BLOCK_ID),
+		BlockHash:                toporecord.BLOCK_ID,
 		Merkle_Balance_TreeHash:  fmt.Sprintf("%x", merkle_hash[:]),
 		DHeight:                  chain.Get_Height(),
 		DTopoheight:              chain.Load_TOPO_HEIGHT(),

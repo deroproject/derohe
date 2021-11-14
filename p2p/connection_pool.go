@@ -807,7 +807,6 @@ func trigger_sync() {
 
 	for _, value := range unique_map {
 		clist = append(clist, value)
-
 	}
 
 	// sort the list random

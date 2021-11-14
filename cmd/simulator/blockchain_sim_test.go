@@ -367,8 +367,8 @@ func Test_Creation_TX(t *testing.T) {
 	t.Logf("dst pre %d   post %d", pre_transfer_dst_balance, post_transfer_dst_balance)
 	// we sent 1+1 from src
 	// we sent 1 from dst to src
-	if pre_transfer_src_balance-post_transfer_src_balance != 1 {
-		t.Fatalf("transfer failed.Invalid balance expected %d actual %d", 1, pre_transfer_src_balance-post_transfer_src_balance)
+	if pre_transfer_src_balance-post_transfer_src_balance != 1+dtx.Fees()+reverse_dtx.Fees() {
+		t.Fatalf("transfer failed.Invalid balance expected %d actual %d", 1, pre_transfer_src_balance-(post_transfer_src_balance+dtx.Fees()+reverse_dtx.Fees()))
 	}
 
 	//	fmt.Printf("balance src %v\n", wsrc.account.Balance_Mature)

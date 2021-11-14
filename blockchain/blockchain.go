@@ -64,6 +64,7 @@ type Blockchain struct {
 
 	mining_blocks_cache          *lru.Cache // used to cache blocks which have been supplied to mining
 	cache_IsMiniblockPowValid    *lru.Cache // used to cache mini blocks pow test result
+	cache_IsNonceValidTips       *lru.Cache // used to cache nonce tests on specific tips
 	cache_IsAddressHashValid     *lru.Cache // used to cache some outputs
 	cache_Get_Difficulty_At_Tips *lru.Cache // used to cache some outputs
 
@@ -136,6 +137,10 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 	if chain.cache_Get_Difficulty_At_Tips, err = lru.New(8192); err != nil { // temporary cache for difficulty
 		return nil, err
 	}
+	if chain.cache_IsNonceValidTips, err = lru.New(100 * 1024); err != nil { // temporary cache for nonce checks
+		return nil, err
+	}
+
 	if chain.cache_IsAddressHashValid, err = lru.New(100 * 1024); err != nil { // temporary cache for valid address
 		return nil, err
 	}
@@ -1227,12 +1232,7 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 		return
 	}
 
-	var blids_list []crypto.Hash
-
-	for i := uint64(1); i < 2*TX_VALIDITY_HEIGHT; i++ {
-		blids, _ := chain.Store.Topo_store.binarySearchHeight(int64(tx.Height + i))
-		blids_list = append(blids_list, blids...)
-	}
+	blids_list := chain.Find_Blocks_Height_Range(int64(tx.Height+1), int64(tx.Height+1)+2*TX_VALIDITY_HEIGHT)
 
 	var exist_list []crypto.Hash
 
@@ -1245,7 +1245,7 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 		for _, bltxhash := range bl.Tx_hashes {
 			if bltxhash == txhash {
 				exist_list = append(exist_list, blid)
-				break
+				//break , this is removed so as this case can be tested well
 			}
 		}
 	}

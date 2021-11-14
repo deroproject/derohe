@@ -384,12 +384,14 @@ func handle_set_command(l *readline.Instance, line string) {
 }
 
 // read an address with all goodies such as color encoding and other things in prompt
-func ReadAddress(l *readline.Instance) (a *rpc.Address, err error) {
+func ReadAddress(l *readline.Instance, wallet *walletapi.Wallet_Disk) (a *rpc.Address, err error) {
 	setPasswordCfg := l.GenPasswordConfig()
 	setPasswordCfg.EnableMask = false
 
 	prompt_mutex.Lock()
 	defer prompt_mutex.Unlock()
+
+	var linestr string
 
 	setPasswordCfg.SetListener(func(line []rune, pos int, key rune) (newLine []rune, newPos int, ok bool) {
 		error_message := ""
@@ -398,7 +400,11 @@ func ReadAddress(l *readline.Instance) (a *rpc.Address, err error) {
 		if len(line) >= 1 {
 			_, err := globals.ParseValidateAddress(string(line))
 			if err != nil {
-				error_message = " " //err.Error()
+				if linestr, err = wallet.NameToAddress(string(strings.TrimSpace(string(line)))); err != nil {
+					error_message = " " //err.Error()
+				} else {
+
+				}
 			}
 		}
 
@@ -407,7 +413,6 @@ func ReadAddress(l *readline.Instance) (a *rpc.Address, err error) {
 			l.SetPrompt(fmt.Sprintf("%sEnter Destination Address: ", color))
 		} else {
 			l.SetPrompt(fmt.Sprintf("%sEnter Destination Address: ", color))
-
 		}
 
 		l.Refresh()
@@ -418,7 +423,12 @@ func ReadAddress(l *readline.Instance) (a *rpc.Address, err error) {
 	if err != nil {
 		return
 	}
-	a, err = globals.ParseValidateAddress(string(line))
+	if linestr == "" {
+		a, err = globals.ParseValidateAddress(string(line))
+	} else {
+		a, err = globals.ParseValidateAddress(string(linestr))
+	}
+
 	l.SetPrompt(prompt)
 	l.Refresh()
 	return

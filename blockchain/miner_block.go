@@ -168,6 +168,16 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 
 	height := chain.Calculate_Height_At_Tips(bl.Tips) // we are 1 higher than previous highest tip
 
+	history := map[crypto.Hash]bool{}
+
+	var history_array []crypto.Hash
+	for i := range bl.Tips {
+		history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], 26)...)
+	}
+	for _, h := range history_array {
+		history[h] = true
+	}
+
 	var tx_hash_list_included []crypto.Hash // these tx will be included ( due to  block size limit )
 
 	sizeoftxs := uint64(0) // size of all non coinbase tx included within this block
@@ -222,7 +232,10 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 		tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash)
 		if tx != nil {
 			if int64(tx.Height) < height {
-				//	fmt.Printf("sanity back %d(%d) nonce check %s\n", height - int64(tx.Height), TX_VALIDITY_HEIGHT, chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version,tx,bl.Tips) )
+				if history[tx.BLID] != true {
+					logger.V(8).Info("not selecting tx since the reference with which it was made is not in history", "txid", tx_hash_list_sorted[i].Hash)
+					continue
+				}
 				if height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
 					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips) {
 						if nil == pre_check.check(tx, false) {
@@ -269,6 +282,10 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 		if tx != nil {
 			if int64(tx.Height) < height {
 				if height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
+					if history[tx.BLID] != true {
+						logger.V(8).Info("not selecting tx since the reference with which it was made is not in history", "txid", tx_hash_list_sorted[i].Hash)
+						continue
+					}
 					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips) {
 
 						if nil == pre_check.check(tx, false) {

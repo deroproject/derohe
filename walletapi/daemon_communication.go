@@ -248,6 +248,30 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon() (err error) {
 	return w.Sync_Wallet_Memory_With_Daemon_internal(scid)
 }
 
+func (w *Wallet_Memory) NameToAddress(name string) (addr string, err error) {
+	if name == "" {
+		return addr, fmt.Errorf("empty string is not a valid address")
+	}
+
+	if !IsDaemonOnline() {
+		err = fmt.Errorf("offline or not connected. cannot send transaction.")
+		return
+	}
+
+	var result rpc.NameToAddress_Result
+	if err = rpc_client.Call("DERO.NameToAddress", rpc.NameToAddress_Params{Name: name, TopoHeight: -1}, &result); err != nil {
+		return
+	}
+
+	if result.Status == "OK" {
+		addr = result.Address
+		return
+	} else {
+		err = fmt.Errorf("Err %s", result.Status)
+		return
+	}
+}
+
 // this is as simple as it gets
 // single threaded communication to relay TX to daemon
 // if this is successful, then daemon is in control
@@ -401,12 +425,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 	var nb crypto.NonceBalance
 	nb.Unmarshal(hexdecoded)
 
-	var block_hash crypto.Hash
-	if err = block_hash.UnmarshalText([]byte(result.BlockHash)); err != nil {
-		return
-	}
-
-	return result.Bits, nb.NonceHeight, block_hash, nb.Balance, nil
+	return result.Bits, nb.NonceHeight, result.BlockHash, nb.Balance, nil
 }
 
 func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) (balance uint64) {

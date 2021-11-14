@@ -267,3 +267,26 @@ func (chain *Blockchain) Load_Block_Topological_order(blid crypto.Hash) int64 {
 	}
 	return -1
 }
+
+// this function is not used in core
+func (chain *Blockchain) Find_Blocks_Height_Range(startheight, stopheight int64) (blids []crypto.Hash) {
+	_, topos_start := chain.Store.Topo_store.binarySearchHeight(startheight)
+
+	if stopheight > chain.Get_Height() {
+		stopheight = chain.Get_Height()
+	}
+	_, topos_end := chain.Store.Topo_store.binarySearchHeight(stopheight)
+
+	blid_map := map[crypto.Hash]bool{}
+	for i := topos_start[0]; i < topos_end[0]; i++ {
+		if toporecord, err := chain.Store.Topo_store.Read(i); err != nil {
+			panic(err)
+		} else {
+			blid_map[toporecord.BLOCK_ID] = true
+		}
+	}
+	for k := range blid_map {
+		blids = append(blids, k)
+	}
+	return
+}

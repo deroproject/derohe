@@ -89,7 +89,7 @@ type (
 type (
 	NameToAddress_Params struct {
 		Name       string `json:"name"`                 // Name for look up
-		TopoHeight uint64 `json:"topoheight,omitempty"` // lookup in reference to this topo height
+		TopoHeight int64  `json:"topoheight,omitempty"` // lookup in reference to this topo height
 	} // no params
 	NameToAddress_Result struct {
 		Name    string `json:"name"`
@@ -155,7 +155,7 @@ type (
 		Bits                     int         `json:"bits"`         // no. of bits required to access the public key from the chain
 		Height                   int64       `json:"height"`       // at what height is this balance
 		Topoheight               int64       `json:"topoheight"`   // at what topoheight is this balance
-		BlockHash                string      `json:"blockhash"`    // blockhash at this topoheight
+		BlockHash                crypto.Hash `json:"blockhash"`    // blockhash at this topoheight
 		Merkle_Balance_TreeHash  string      `json:"treehash"`
 		DHeight                  int64       `json:"dheight"`     //  daemon height
 		DTopoheight              int64       `json:"dtopoheight"` // daemon topoheight

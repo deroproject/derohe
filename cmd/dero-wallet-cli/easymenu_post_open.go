@@ -158,7 +158,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			break
 		}
 
-		a, err := ReadAddress(l)
+		a, err := ReadAddress(l, wallet)
 		if err != nil {
 			logger.Error(err, "error reading address")
 			break
@@ -200,7 +200,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 		}
 
 		// a , amount_to_transfer, err := collect_transfer_info(l,wallet)
-		a, err := ReadAddress(l)
+		a, err := ReadAddress(l, wallet)
 		if err != nil {
 			logger.Error(err, "error reading address")
 			break

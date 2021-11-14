@@ -330,7 +330,11 @@ func main() {
 func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger logr.Logger) (err error) {
 
 	defer func() {
-		err = globals.Recover(0)
+		if r := recover(); r != nil {
+			logger.V(0).Error(nil, "Recovered ", "error", r)
+			err = fmt.Errorf("crashed")
+		}
+
 	}()
 
 restart_loop:

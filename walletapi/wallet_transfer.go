@@ -163,9 +163,8 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	}
 
 	for t := range transfers {
-		saddress := transfers[t].Destination
 
-		if saddress == "" { // user skipped destination
+		if transfers[t].Destination == "" { // user skipped destination
 			if transfers[t].SCID.IsZero() {
 				err = fmt.Errorf("Main Destination cannot be empty")
 				return
@@ -182,7 +181,6 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 				}
 				for _, k := range w.Random_ring_members(scid) {
 					if k != w.GetAddress().String() {
-						saddress = k
 						transfers[t].Destination = k
 						i = 1000000 // break outer loop also
 						ring_count++
@@ -193,13 +191,16 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 
 		}
 
-		if saddress == "" {
+		if transfers[t].Destination == "" {
 			err = fmt.Errorf("could not obtain random ring member for scid %s", transfers[t].SCID)
 			return
 		}
-		if _, err = rpc.NewAddress(saddress); err != nil {
-			fmt.Printf("err processing address '%s' err '%s'\n", saddress, err)
-			return
+
+		// try to resolve name to address here
+		if _, err = rpc.NewAddress(transfers[t].Destination); err != nil {
+			if transfers[t].Destination, err = w.NameToAddress(transfers[t].Destination); err != nil {
+				return
+			}
 		}
 	}
 
@@ -231,6 +232,8 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		return
 	}
 	height := uint64(er.Height)
+	block_hash = er.BlockHash
+	topoheight = er.Topoheight
 	treehash := er.Merkle_Balance_TreeHash
 
 	treehash_raw, err := hex.DecodeString(treehash)

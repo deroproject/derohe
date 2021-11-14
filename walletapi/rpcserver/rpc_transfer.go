@@ -64,21 +64,6 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCID, DataType: rpc.DataHash, Value: crypto.HashHexToHash(p.SC_ID)})
 	}
 
-	/*
-		 // if you need to send tx now mostly for testing purpose use this
-		tx, err := w.wallet.TransferPayload0(p.Transfers, false, p.SC_RPC, false)
-		if err != nil {
-			rlog.Warnf("Error while building Transaction err %s\n", err)
-			return err
-
-		}
-
-		err = w.wallet.SendTransaction(tx)
-		if err != nil {
-			return err
-		}
-	*/
-
 	tx, err := w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, false)
 	if err != nil {
 		w.logger.V(1).Error(err, "Error building tx")
@@ -92,14 +77,5 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 
 	// we must return a txid if everything went alright
 	result.TXID = tx.GetHash().String()
-
-	/*
-		uid, err := w.wallet.PoolTransfer(p.Transfers, p.SC_RPC)
-		if err != nil {
-			return err
-
-		}
-		_ = uid
-	*/
 	return result, nil
 }
