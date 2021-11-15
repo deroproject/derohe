@@ -369,5 +369,5 @@ func ParseAmount(str string) (amount uint64, err error) {
 
 // gets a stack trace of all
 func StackTrace(all bool) string {
-	return ""
+	return string(debug.Stack())
 }

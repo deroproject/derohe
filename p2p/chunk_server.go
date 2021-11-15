@@ -11,6 +11,7 @@ import "github.com/fxamacker/cbor/v2"
 
 import "github.com/klauspost/reedsolomon"
 import "github.com/deroproject/derohe/block"
+import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/metrics"
@@ -24,23 +25,24 @@ var single_construction sync.Mutex // used to single threaded processing while r
 const MAX_CHUNKS uint8 = 255
 
 type Chunks_Per_Block_Data struct {
-	Chunks    [MAX_CHUNKS]*Block_Chunk // nil means we donot have the chunk
-	Created   time.Time                // when was this structure allocated
-	Processed bool                     // whether processing has completed successfully
-	Complete  bool                     // whether everything is complete
+	ChunkCollection [MAX_CHUNKS]*Block_Chunk // nil means we donot have the chunk
+	Created         time.Time                // when was this structure allocated
+	Processed       bool                     // whether processing has completed successfully
+	Complete        bool                     // whether everything is complete
+	Sent            int64                    // at what time, the original send sent it
+	bl              *block.Block             // this is used internally
 	sync.Mutex
 }
 
 // cleans up chunks every minute
 func chunks_clean_up() {
-
 	for {
 		time.Sleep(5 * time.Second) // cleanup every 5 seconds
 
 		chunk_map.Range(func(key, value interface{}) bool {
 
-			chunk := value.(*Chunks_Per_Block_Data)
-			if time.Now().Sub(chunk.Created) > time.Second*180 {
+			chunks_per_block := value.(*Chunks_Per_Block_Data)
+			if time.Now().Sub(chunks_per_block.Created) > time.Second*180 {
 				chunk_map.Delete(key)
 			}
 			return true
@@ -50,16 +52,13 @@ func chunks_clean_up() {
 
 // return whether chunk exist
 func is_chunk_exist(hhash [32]byte, cid uint8) *Block_Chunk {
-	chunksi, ok := chunk_map.Load(hhash)
+	chunksi, ok := chunk_map.Load(fmt.Sprintf("%x", hhash))
 	if !ok {
 		//debug.PrintStack()
 		return nil
 	}
-	chunks := chunksi.(*Chunks_Per_Block_Data)
-	chunks.Lock()
-	defer chunks.Unlock()
-
-	return chunks.Chunks[cid]
+	chunks_per_block := chunksi.(*Chunks_Per_Block_Data)
+	return chunks_per_block.ChunkCollection[cid]
 }
 
 // feed a chunk until we are able to fully decode a chunk
@@ -102,13 +101,33 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 		return nil
 	}
 
-	var bl block.Block
+	chunks_per_block := new(Chunks_Per_Block_Data)
+	if chunksi, ok := chunk_map.LoadOrStore(fmt.Sprintf("%x", chunk.HHash), chunks_per_block); ok {
+		chunks_per_block = chunksi.(*Chunks_Per_Block_Data)
 
-	var chunks *Chunks_Per_Block_Data
-	if chunksi, ok := chunk_map.Load(chunk.HHash); ok {
-		chunks = chunksi.(*Chunks_Per_Block_Data)
-	} else {
+		// make sure we are matching what is stored already
+		var existing *Block_Chunk
+		for j := range chunks_per_block.ChunkCollection {
+			if existing = chunks_per_block.ChunkCollection[j]; existing != nil {
+				break
+			}
+		}
+		if existing != nil { // compare current headers wuth what we have
+			if chunk.HHash != existing.HHash || len(chunk.CHUNK_HASH) != len(existing.CHUNK_HASH) {
+				return nil // this collision can never occur
+			}
+			for j := range chunk.CHUNK_HASH {
+				if chunk.CHUNK_HASH[j] != existing.CHUNK_HASH[j] {
+					return nil // again this is impossible
+				}
+			}
+		}
 
+	}
+
+	if chunks_per_block.bl == nil {
+
+		var bl block.Block
 		if err := bl.Deserialize(chunk.BLOCK); err != nil {
 			logger.V(1).Error(err, "error deserializing block")
 			return nil
@@ -134,39 +153,33 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 			}
 		}
 
-		chunks = new(Chunks_Per_Block_Data)
-		chunks.Created = time.Now()
-		chunk_map.Store(chunk.HHash, chunks)
+		chunks_per_block.Created = time.Now()
+		chunks_per_block.Sent = sent
+		chunks_per_block.bl = &bl
+		chunks_per_block.ChunkCollection[chunk.CHUNK_ID] = chunk
 	}
 
-	if chunks.Processed {
+	if chunks_per_block.Processed {
 		return nil
 	}
 
-	if chunks.Chunks[chunk.CHUNK_ID] == nil {
+	if chunks_per_block.ChunkCollection[chunk.CHUNK_ID] == nil {
+		chunks_per_block.ChunkCollection[chunk.CHUNK_ID] = chunk
 		broadcast_Chunk(chunk, 0, sent) // broadcast chunk INV
 	}
 
-	chunks.Lock()
-	defer chunks.Unlock()
-
-	if chunks.Processed {
-		return nil
-	}
-
-	chunks.Chunks[chunk.CHUNK_ID] = chunk
-
 	chunk_count := 0
-	for _, c := range chunks.Chunks {
+	for _, c := range chunks_per_block.ChunkCollection {
 		if c != nil {
 			chunk_count++
 		}
 	}
 
-	logger.V(3).Info("Have  chunks", "have", chunk_count, "total", chunk.CHUNK_COUNT)
+	logger.V(3).Info("Have  chunks", "have", chunk_count, "total", chunk.CHUNK_COUNT, "tx_count", len(chunks_per_block.bl.Tx_hashes))
 
 	var cbl Complete_Block
-	if len(bl.Tx_hashes) >= 1 { // if txs are present, then we need to join chunks, else we are already done
+	cbl.Block = chunk.BLOCK
+	if len(chunks_per_block.bl.Tx_hashes) >= 1 { // if txs are present, then we need to join chunks, else we are already done
 
 		if uint(chunk_count) < chunk.CHUNK_NEED { // we do not have enough chunks
 			return nil
@@ -174,10 +187,10 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 
 		var shards [][]byte
 		for i := 0; i < int(chunk.CHUNK_COUNT); i++ {
-			if chunks.Chunks[i] == nil {
+			if chunks_per_block.ChunkCollection[i] == nil {
 				shards = append(shards, nil)
 			} else {
-				shards = append(shards, chunks.Chunks[i].CHUNK_DATA)
+				shards = append(shards, chunks_per_block.ChunkCollection[i].CHUNK_DATA)
 			}
 		}
 
@@ -187,7 +200,6 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 			logger.V(3).Error(err, "error reconstructing data ")
 			return nil
 		}
-		chunks.Processed = true // we have successfully reconstructed data,so we give it a try
 
 		var writer bytes.Buffer
 
@@ -202,15 +214,19 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 		}
 	}
 
-	// first complete all our chunks, so as we can give to others
-	logger.V(2).Info("successfully reconstructed using chunks", "have", chunk_count, "total", chunk.CHUNK_COUNT)
+	chunks_per_block.Processed = true // we have successfully reconstructed data,so we give it a try
 
-	metrics.Set.GetOrCreateHistogram("block_propagation_duration_histogram_seconds").UpdateDuration(chunks.Created)
-
-	cbl.Block = chunk.BLOCK
 	object := Objects{CBlocks: []Complete_Block{cbl}}
 
-	if err := connection.processChunkedBlock(object, false, true, int(chunk.CHUNK_NEED), int(chunk.CHUNK_COUNT-chunk.CHUNK_NEED)); err != nil {
+	// first complete all our chunks, so as we can give to others
+	logger.V(2).Info("successfully reconstructed using chunks", "blid", chunks_per_block.bl.GetHash(), "have", chunk_count, "total", chunk.CHUNK_COUNT, "tx_count", len(cbl.Txs))
+
+	if chunks_per_block.Sent != 0 && chunks_per_block.Sent < globals.Time().UTC().UnixMicro() {
+		time_to_receive := float64(globals.Time().UTC().UnixMicro()-chunks_per_block.Sent) / 1000000
+		metrics.Set.GetOrCreateHistogram("block_propagation_duration_histogram_seconds").Update(time_to_receive)
+	}
+
+	if err := connection.processChunkedBlock(object, int(chunk.CHUNK_NEED), int(chunk.CHUNK_COUNT-chunk.CHUNK_NEED)); err != nil {
 		//fmt.Printf("error inserting block received using chunks, err %s", err)
 	}
 
@@ -221,9 +237,9 @@ func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
 func is_already_chunked_by_us(blid crypto.Hash, data_shard_count, parity_shard_count int) (hash [32]byte, chunk_count int) {
 	chunk_map.Range(func(key, value interface{}) bool {
 
-		chunk := value.(*Chunks_Per_Block_Data)
-		for _, c := range chunk.Chunks {
-			if c != nil && c.BLID == blid && int(c.CHUNK_NEED) == data_shard_count && int(c.CHUNK_COUNT-c.CHUNK_NEED) == parity_shard_count && chunk.Complete {
+		chunks_per_block := value.(*Chunks_Per_Block_Data)
+		for _, c := range chunks_per_block.ChunkCollection {
+			if c != nil && c.BLID == blid && int(c.CHUNK_NEED) == data_shard_count && int(c.CHUNK_COUNT-c.CHUNK_NEED) == parity_shard_count && chunks_per_block.Complete {
 				hash = c.HeaderHash()
 				chunk_count = data_shard_count + parity_shard_count
 				return false
@@ -253,13 +269,13 @@ func convert_block_to_chunks(cbl *block.Complete_Block, data_shard_count, parity
 		panic(err)
 	}
 
-	if hhash, count := is_already_chunked_by_us(blid, data_shard_count, parity_shard_count); count > 0 {
-		return hhash, count
-	}
+	//if hhash, count := is_already_chunked_by_us(blid, data_shard_count, parity_shard_count); count > 0 {
+	//	return hhash, count
+	//}
 	// loop through all the data chunks and overide from there
 	chunk_map.Range(func(key, value interface{}) bool {
 		chunk := value.(*Chunks_Per_Block_Data)
-		for _, c := range chunk.Chunks {
+		for _, c := range chunk.ChunkCollection {
 			if c != nil && c.BLID == blid {
 				if data_shard_count != int(c.CHUNK_NEED) || parity_shard_count != int(c.CHUNK_COUNT-c.CHUNK_NEED) {
 					data_shard_count = int(c.CHUNK_NEED)
@@ -321,12 +337,12 @@ func convert_block_to_chunks(cbl *block.Complete_Block, data_shard_count, parity
 	}
 	chunks := new(Chunks_Per_Block_Data)
 	for i := 0; i < data_shard_count+parity_shard_count; i++ {
-		chunks.Chunks[i] = &chunk[i]
+		chunks.ChunkCollection[i] = &chunk[i]
 	}
 	chunks.Created = time.Now()
 	chunks.Processed = true
 	chunks.Complete = true
 
-	chunk_map.Store(chunk[0].HeaderHash(), chunks)
-	return chunk[0].HeaderHash(), len(shards)
+	chunk_map.Store(fmt.Sprintf("%x", chunk[0].HHash), chunks)
+	return chunk[0].HeaderHash(), data_shard_count + parity_shard_count
 }

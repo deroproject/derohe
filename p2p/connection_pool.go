@@ -30,7 +30,6 @@ import "strings"
 import "math/rand"
 import "sync/atomic"
 import "runtime/debug"
-import "encoding/binary"
 
 import "github.com/go-logr/logr"
 
@@ -77,17 +76,15 @@ type Connection struct {
 	BytesOut              uint64 // total bytes out
 	Latency               int64  // time.Duration            // latency to this node when sending timed sync
 
-	Incoming          bool              // is connection incoming or outgoing
-	Addr              *net.TCPAddr      // endpoint on the other end
-	Port              uint32            // port advertised by other end as its server,if it's 0 server cannot accept connections
-	Peer_ID           uint64            // Remote peer id
-	SyncNode          bool              // whether the peer has been added to command line as sync node
-	Top_Version       uint64            // current hard fork version supported by peer
-	TXpool_cache      map[uint64]uint32 // used for ultra blocks in miner mode,cache where we keep TX which have been broadcasted to this peer
-	TXpool_cache_lock sync.RWMutex
-	ProtocolVersion   string
-	Tag               string // tag for the other end
-	DaemonVersion     string
+	Incoming        bool         // is connection incoming or outgoing
+	Addr            *net.TCPAddr // endpoint on the other end
+	Port            uint32       // port advertised by other end as its server,if it's 0 server cannot accept connections
+	Peer_ID         uint64       // Remote peer id
+	SyncNode        bool         // whether the peer has been added to command line as sync node
+	Top_Version     uint64       // current hard fork version supported by peer
+	ProtocolVersion string
+	Tag             string // tag for the other end
+	DaemonVersion   string
 	//Exit                  chan bool   // Exit marker that connection needs to be killed
 	ExitCounter int32
 	State       uint32      // state of the connection
@@ -104,6 +101,8 @@ type Connection struct {
 	SpeedOut     *ratecounter.RateCounter // average speed in last 60 secs
 	request_time atomic.Value             //time.Time                // used to track latency
 	writelock    sync.Mutex               // used to Serialize writes
+
+	previous_mbl []byte // single slot cache
 
 	peer_sent_time time.Time // contains last time when peerlist was sent
 
@@ -394,98 +393,39 @@ func Peer_Direction_Count() (Incoming uint64, Outgoing uint64) {
 	return
 }
 
-func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) {
+func broadcast_Block_tester(topo int64) (err error) {
 
-	//Broadcast_Block_Ultra(cbl,PeerID)
+	blid, err := chain.Load_Block_Topological_order_at_index(topo)
+	if err != nil {
+		return fmt.Errorf("err occurred topo %d err %s\n", topo, err)
+	}
+	var cbl block.Complete_Block
+	bl, err := chain.Load_BL_FROM_ID(blid)
+	if err != nil {
+		return err
+	}
 
-	Broadcast_Block_Coded(cbl, PeerID)
+	cbl.Bl = bl
+	for j := range bl.Tx_hashes {
+		var tx_bytes []byte
+		if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[j]); err != nil {
+			return err
+		}
+		var tx transaction.Transaction
+		if err = tx.Deserialize(tx_bytes); err != nil {
+			return err
+		}
 
+		cbl.Txs = append(cbl.Txs, &tx) // append all the txs
+
+	}
+
+	Broadcast_Block(&cbl, 0)
+	return nil
 }
 
-// broad cast a block to all connected peers
-// we can only broadcast a block which is in our db
-// this function is trigger from 2 points, one when we receive a unknown block which can be successfully added to chain
-// second from the blockchain which has to relay locally  mined blocks as soon as possible
-func Broadcast_Block_Ultra(cbl *block.Complete_Block, PeerID uint64) { // if peerid is provided it is skipped
-	var cblock_serialized Complete_Block
-
-	defer globals.Recover(3)
-
-	/*if IsSyncing() { // if we are syncing, do NOT broadcast the block
-		return
-	}*/
-
-	cblock_serialized.Block = cbl.Bl.Serialize()
-
-	for i := range cbl.Txs {
-		cblock_serialized.Txs = append(cblock_serialized.Txs, cbl.Txs[i].Serialize())
-	}
-
-	our_height := chain.Get_Height()
-	// build the request once and dispatch it to all possible peers
-	count := 0
-	unique_map := UniqueConnections()
-
-	for _, v := range unique_map {
-		select {
-		case <-Exit_Event:
-			return
-		default:
-		}
-		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID { // skip pre-handshake connections
-
-			// if the other end is > 50 blocks behind, do not broadcast block to hime
-			// this is an optimisation, since if the other end is syncing
-			// every peer will keep on broadcasting and thus making it more lagging
-			// due to overheads
-			peer_height := atomic.LoadInt64(&v.Height)
-			if (our_height - peer_height) > 25 {
-				continue
-			}
-
-			count++
-			go func(connection *Connection) {
-				defer globals.Recover(3)
-
-				{ // everyone needs ultra compact block if possible
-					var peer_specific_block Objects
-
-					var cblock Complete_Block
-					cblock.Block = cblock_serialized.Block
-
-					sent := 0
-					skipped := 0
-					connection.TXpool_cache_lock.RLock()
-					for i := range cbl.Bl.Tx_hashes {
-						// in ultra compact mode send a transaction only if we know that we have not sent that transaction earlier
-						// send only tx not found in cache
-
-						if _, ok := connection.TXpool_cache[binary.LittleEndian.Uint64(cbl.Bl.Tx_hashes[i][:])]; !ok {
-							cblock.Txs = append(cblock.Txs, cblock_serialized.Txs[i])
-							sent++
-
-						} else {
-							skipped++
-						}
-
-					}
-					connection.TXpool_cache_lock.RUnlock()
-
-					connection.logger.V(3).Info("Sending ultra block to peer ", "total", len(cbl.Bl.Tx_hashes), "tx skipped", skipped, "sent", sent)
-					peer_specific_block.CBlocks = append(peer_specific_block.CBlocks, cblock)
-					var dummy Dummy
-					fill_common(&peer_specific_block.Common) // fill common info
-					if err := connection.RConn.Client.Call("Peer.NotifyBlock", peer_specific_block, &dummy); err != nil {
-						return
-					}
-					connection.update(&dummy.Common) // update common information
-
-				}
-			}(v)
-		}
-
-	}
-	//rlog.Infof("Broadcasted block %s to %d peers", cbl.Bl.GetHash(), count)
+func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) {
+	Broadcast_Block_Coded(cbl, PeerID)
 }
 
 // broad cast a block to all connected peers in cut up in chunks with erasure coding
@@ -506,6 +446,8 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 
 	blid := cbl.Bl.GetHash()
 
+	logger.V(1).Info("Will broadcast block", "blid", blid, "tx_count", len(cbl.Bl.Tx_hashes), "txs", len(cbl.Txs))
+
 	hhash, chunk_count := convert_block_to_chunks(cbl, 16, 32)
 
 	our_height := chain.Get_Height()
@@ -521,7 +463,7 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 				return
 			default:
 			}
-			if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID { // skip pre-handshake connections
+			if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID && v.Peer_ID != GetPeerID() { // skip pre-handshake connections
 
 				// if the other end is > 50 blocks behind, do not broadcast block to hime
 				// this is an optimisation, since if the other end is syncing
@@ -588,7 +530,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 	count := 0
 	unique_map := UniqueConnections()
 
-	chash := chunk.HeaderHash()
+	hhash := chunk.HHash
 
 	for _, v := range unique_map {
 		select {
@@ -596,7 +538,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 			return
 		default:
 		}
-		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID { // skip pre-handshake connections
+		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID && v.Peer_ID != GetPeerID() { // skip pre-handshake connections
 
 			// if the other end is > 50 blocks behind, do not broadcast block to hime
 			// this is an optimisation, since if the other end is syncing
@@ -616,11 +558,11 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 				var chunkid [33 + 32]byte
 				copy(chunkid[:], chunk.BLID[:])
 				chunkid[32] = byte(chunk.CHUNK_ID)
-				copy(chunkid[33:], chash[:])
+				copy(chunkid[33:], hhash[:])
 				peer_specific_list.Sent = first_seen
 
 				peer_specific_list.Chunk_list = append(peer_specific_list.Chunk_list, chunkid)
-				connection.logger.V(3).Info("Sending erasure coded chunk to peer ", "cid", chunk.CHUNK_ID)
+				connection.logger.V(3).Info("Sending erasure coded chunk INV to peer ", "raw", fmt.Sprintf("%x", chunkid), "blid", fmt.Sprintf("%x", chunk.BLID), "cid", chunk.CHUNK_ID, "hhash", fmt.Sprintf("%x", hhash), "exists", nil != is_chunk_exist(hhash, uint8(chunk.CHUNK_ID)))
 				var dummy Dummy
 				fill_common(&peer_specific_list.Common) // fill common info
 				if err := connection.RConn.Client.Call("Peer.NotifyINV", peer_specific_list, &dummy); err != nil {
@@ -656,13 +598,15 @@ func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) {
 	count := 0
 	unique_map := UniqueConnections()
 
+	//connection.logger.V(4).Info("Sending mini block to peer ")
+
 	for _, v := range unique_map {
 		select {
 		case <-Exit_Event:
 			return
 		default:
 		}
-		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID { // skip pre-handshake connections
+		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID && v.Peer_ID != GetPeerID() { // skip pre-handshake connections
 
 			// if the other end is > 50 blocks behind, do not broadcast block to hime
 			// this is an optimisation, since if the other end is syncing
@@ -676,7 +620,7 @@ func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) {
 			count++
 			go func(connection *Connection) {
 				defer globals.Recover(3)
-				connection.logger.V(4).Info("Sending mini block to peer ")
+
 				var dummy Dummy
 				if err := connection.RConn.Client.Call("Peer.NotifyMiniBlock", peer_specific_block, &dummy); err != nil {
 					return
@@ -717,7 +661,7 @@ func broadcast_Tx(tx *transaction.Transaction, PeerID uint64, sent int64) (relay
 			return
 		default:
 		}
-		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID { // skip pre-handshake connections
+		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID && v.Peer_ID != GetPeerID() { // skip pre-handshake connections
 
 			// if the other end is > 50 blocks behind, do not broadcast block to hime
 			// this is an optimisation, since if the other end is syncing
@@ -736,29 +680,13 @@ func broadcast_Tx(tx *transaction.Transaction, PeerID uint64, sent int64) (relay
 					}
 				}()
 
-				resend := true
-				// disable cache if not possible due to options
-				// assuming the peer is good, he would like to obtain the tx ASAP
-
-				connection.TXpool_cache_lock.Lock()
-				if _, ok := connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])]; !ok {
-					connection.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])] = uint32(time.Now().Unix())
-					resend = true
-				} else {
-					resend = false
+				var dummy Dummy
+				fill_common(&dummy.Common) // fill common info
+				if err := connection.RConn.Client.Call("Peer.NotifyINV", request, &dummy); err != nil {
+					return
 				}
-				connection.TXpool_cache_lock.Unlock()
-
-				if resend {
-					var dummy Dummy
-					fill_common(&dummy.Common) // fill common info
-					if err := connection.RConn.Client.Call("Peer.NotifyINV", request, &dummy); err != nil {
-						return
-					}
-					connection.update(&dummy.Common) // update common information
-
-					atomic.AddInt32(&relayed_count, 1)
-				}
+				connection.update(&dummy.Common) // update common information
+				atomic.AddInt32(&relayed_count, 1)
 
 			}(v)
 		}
@@ -899,11 +827,12 @@ func Abs(n int64) int64 {
 // detect whether we are behind any of the connected peers and trigger sync ASAP
 // randomly with one of the peers
 func syncroniser() {
+	delay := time.NewTicker(time.Second)
 	for {
 		select {
 		case <-Exit_Event:
 			return
-		case <-time.After(1000 * time.Millisecond):
+		case <-delay.C:
 		}
 
 		calculate_network_time() // calculate time every sec

@@ -28,9 +28,10 @@ import "bytes"
 import "runtime/debug"
 import "strings"
 
-//import "runtime"
-//import "bufio"
+import "runtime"
+import "context"
 import "golang.org/x/crypto/sha3"
+import "golang.org/x/sync/semaphore"
 import "github.com/go-logr/logr"
 
 import "sync/atomic"
@@ -588,13 +589,19 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		wg.Add(len(cbl.Txs)) // add total number of tx as work
 
 		hf_version := chain.Get_Current_Version_at_Height(chain.Calculate_Height_At_Tips(bl.Tips))
+
+		sem := semaphore.NewWeighted(int64(runtime.NumCPU()))
+
 		for i := 0; i < len(cbl.Txs); i++ {
+			sem.Acquire(context.Background(), 1)
 			go func(j int) {
+				defer sem.Release(1)
+				defer wg.Done()
 				if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, cbl.Txs[j], bl.Tips); err != nil { // transaction verification failed
 					atomic.AddInt32(&fail_count, 1) // increase fail count by 1
 					block_logger.Error(err, "tx nonce verification failed", "txid", cbl.Txs[j].GetHash())
 				}
-				wg.Done()
+
 			}(i)
 		}
 
@@ -611,13 +618,18 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		wg := sync.WaitGroup{}
 		wg.Add(len(cbl.Txs)) // add total number of tx as work
 
+		sem := semaphore.NewWeighted(int64(runtime.NumCPU()))
+
 		for i := 0; i < len(cbl.Txs); i++ {
+			sem.Acquire(context.Background(), 1)
+
 			go func(j int) {
+				defer sem.Release(1)
+				defer wg.Done()
 				if err := chain.Verify_Transaction_NonCoinbase(cbl.Txs[j]); err != nil { // transaction verification failed
 					atomic.AddInt32(&fail_count, 1) // increase fail count by 1
 					block_logger.Error(err, "tx verification failed", "txid", cbl.Txs[j].GetHash())
 				}
-				wg.Done()
 			}(i)
 		}
 
@@ -1054,16 +1066,6 @@ func (chain *Blockchain) Get_Difficulty() uint64 {
 	return chain.Get_Difficulty_At_Tips(chain.Get_TIPS()).Uint64()
 }
 
-/*
-func (chain *Blockchain) Get_Cumulative_Difficulty() uint64 {
-
-	return 0 //chain.Load_Block_Cumulative_Difficulty(chain.Top_ID)
-}
-
-func (chain *Blockchain) Get_Median_Block_Size() uint64 { // get current cached median size
-	return chain.Median_Block_Size
-}
-*/
 func (chain *Blockchain) Get_Network_HashRate() uint64 {
 	return chain.Get_Difficulty()
 }
@@ -1162,7 +1164,7 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	}
 
 	if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, chain.Get_TIPS()); err != nil { // transaction verification failed
-		logger.V(1).Error(err, "Incoming TX nonce verification failed", "txid", txhash)
+		logger.V(1).Error(err, "Incoming TX nonce verification failed", "txid", txhash, "stacktrace", globals.StackTrace(false))
 		return fmt.Errorf("Incoming TX %s nonce verification failed, err %s", txhash, err)
 	}
 
@@ -1263,104 +1265,6 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 	return
 }
 
-/*
-
-
-// runs the client protocol which includes the following operations
-// if any TX are being duplicate or double-spend ignore them
-// mark all the valid transactions as valid
-// mark all invalid transactions  as invalid
-// calculate total fees based on valid TX
-// we need NOT check ranges/ring signatures here, as they have been done already by earlier steps
-func (chain *Blockchain) client_protocol(dbtx storage.DBTX, bl *block.Block, blid crypto.Hash, height int64, topoheight int64) (total_fees uint64) {
-	// run client protocol for all TXs
-	for i := range bl.Tx_hashes {
-		tx, err := chain.Load_TX_FROM_ID(dbtx, bl.Tx_hashes[i])
-		if err != nil {
-			panic(fmt.Errorf("Cannot load  tx for %x err %s ", bl.Tx_hashes[i], err))
-		}
-		// mark TX found in this block also  for explorer
-		chain.store_TX_in_Block(dbtx, blid, bl.Tx_hashes[i])
-
-		// check all key images as double spend, if double-spend detected mark invalid, else consider valid
-		if chain.Verify_Transaction_NonCoinbase_DoubleSpend_Check(dbtx, tx) {
-
-			chain.consume_keyimages(dbtx, tx, height) // mark key images as consumed
-			total_fees += tx.RctSignature.Get_TX_Fee()
-
-			chain.Store_TX_Height(dbtx, bl.Tx_hashes[i], topoheight) // link the tx with the topo height
-
-			//mark tx found in this block is valid
-			chain.mark_TX(dbtx, blid, bl.Tx_hashes[i], true)
-
-		} else { // TX is double spend or reincluded by 2 blocks simultaneously
-			rlog.Tracef(1,"Double spend TX is being ignored %s %s", blid, bl.Tx_hashes[i])
-			chain.mark_TX(dbtx, blid, bl.Tx_hashes[i], false)
-		}
-	}
-
-	return total_fees
-}
-
-// this undoes everything that is done by client protocol
-// NOTE: this will have any effect, only if client protocol has been run on this block earlier
-func (chain *Blockchain) client_protocol_reverse(dbtx storage.DBTX, bl *block.Block, blid crypto.Hash) {
-	// run client protocol for all TXs
-	for i := range bl.Tx_hashes {
-		tx, err := chain.Load_TX_FROM_ID(dbtx, bl.Tx_hashes[i])
-		if err != nil {
-			panic(fmt.Errorf("Cannot load  tx for %x err %s ", bl.Tx_hashes[i], err))
-		}
-		// only the  valid TX must be revoked
-		if chain.IS_TX_Valid(dbtx, blid, bl.Tx_hashes[i]) {
-			chain.revoke_keyimages(dbtx, tx) // mark key images as not used
-
-			chain.Store_TX_Height(dbtx, bl.Tx_hashes[i], -1) // unlink the tx with the topo height
-
-			//mark tx found in this block is invalid
-			chain.mark_TX(dbtx, blid, bl.Tx_hashes[i], false)
-
-		} else { // TX is double spend or reincluded by 2 blocks simultaneously
-			// invalid tx is related
-		}
-	}
-
-	return
-}
-
-// scavanger for transactions from rusty/stale tips to reinsert them into pool
-func (chain *Blockchain) transaction_scavenger(dbtx storage.DBTX, blid crypto.Hash) {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Warnf("Recovered while transaction scavenging, Stack trace below ")
-			logger.Warnf("Stack trace  \n%s", debug.Stack())
-		}
-	}()
-
-	logger.Debugf("scavenging transactions from blid %s", blid)
-	reachable_blocks := chain.BuildReachableBlocks(dbtx, []crypto.Hash{blid})
-	reachable_blocks[blid] = true // add self
-	for k, _ := range reachable_blocks {
-		if chain.Is_Block_Orphan(k) {
-			bl, err := chain.Load_BL_FROM_ID(dbtx, k)
-			if err == nil {
-				for i := range bl.Tx_hashes {
-					tx, err := chain.Load_TX_FROM_ID(dbtx, bl.Tx_hashes[i])
-					if err != nil {
-						rlog.Warnf("err while scavenging blid %s  txid %s err %s", k, bl.Tx_hashes[i], err)
-					} else {
-						// add tx to pool, it will do whatever is necessarry
-						chain.Add_TX_To_Pool(tx)
-					}
-				}
-			} else {
-				rlog.Warnf("err while scavenging blid %s err %s", k, err)
-			}
-		}
-	}
-}
-
-*/
 // Finds whether a  block is orphan
 // since we donot store any fields, we need to calculate/find the block as orphan
 // using an algorithm

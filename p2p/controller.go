@@ -266,11 +266,12 @@ func connect_with_endpoint(endpoint string, sync_node bool) {
 // maintains a persistant connection to endpoint
 // if connection drops, tries again after 4 secs
 func maintain_outgoing_priority_connection(endpoint string, sync_node bool) {
+	delay := time.NewTicker(4 * time.Second)
 	for {
 		select {
 		case <-Exit_Event:
 			return
-		case <-time.After(4 * time.Second):
+		case <-delay.C:
 		}
 		connect_with_endpoint(endpoint, sync_node)
 	}
@@ -278,12 +279,14 @@ func maintain_outgoing_priority_connection(endpoint string, sync_node bool) {
 
 // this will maintain connection to 1 seed node randomly
 func maintain_seed_node_connection() {
-	for {
 
+	delay := time.NewTicker(2 * time.Second)
+
+	for {
 		select {
 		case <-Exit_Event:
 			return
-		case <-time.After(2 * time.Second):
+		case <-delay.C:
 		}
 		endpoint := ""
 		if globals.IsMainnet() { // choose mainnet seed node
@@ -319,11 +322,13 @@ func maintain_connection_to_peers() {
 		logger.Info("Min outgoing peers", "min-peers", Min_Peers)
 	}
 
+	delay := time.NewTicker(time.Second)
+
 	for {
 		select {
 		case <-Exit_Event:
 			return
-		case <-time.After(1000 * time.Millisecond):
+		case <-delay.C:
 		}
 
 		// check number of connections, if limit is reached, trigger new connections if we have peers

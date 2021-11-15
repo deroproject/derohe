@@ -80,7 +80,7 @@ func (connection *Connection) update(common *Common_Struct) {
 
 	// parse delivered peer list as grey list
 	if len(common.PeerList) > 1 {
-		connection.logger.V(2).Info("Peer provides peers", "count", len(common.PeerList))
+		connection.logger.V(4).Info("Peer provides peers", "count", len(common.PeerList))
 		for i := range common.PeerList {
 			if i < 13 {
 				Peer_Add(&Peer{Address: common.PeerList[i].Addr, LastConnected: uint64(time.Now().UTC().Unix())})

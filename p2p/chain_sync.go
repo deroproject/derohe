@@ -168,7 +168,11 @@ func (connection *Connection) process_object_response(response Objects, sent int
 		if err != nil { // we have a block which could not be deserialized ban peer
 			connection.logger.V(2).Error(err, "Incoming block could not be deserilised")
 			connection.exit()
-			return nil
+			if syncing {
+				return nil
+			} else {
+				return err
+			}
 		}
 
 		// give the chain some more time to respond
@@ -188,7 +192,11 @@ func (connection *Connection) process_object_response(response Objects, sent int
 				connection.logger.V(2).Error(err, "Incoming TX could not be deserilised")
 				connection.exit()
 
-				return nil
+				if syncing {
+					return nil
+				} else {
+					return err
+				}
 			}
 			cbl.Txs = append(cbl.Txs, &tx)
 		}
@@ -198,12 +206,20 @@ func (connection *Connection) process_object_response(response Objects, sent int
 		if !ok && err == errormsg.ErrInvalidPoW {
 			connection.logger.V(2).Error(err, "This peer should be banned")
 			connection.exit()
-			return nil
+			if syncing {
+				return nil
+			} else {
+				return err
+			}
 		}
 
 		if !ok && err == errormsg.ErrPastMissing {
 			connection.logger.V(2).Error(err, "Incoming Block could not be added due to missing past, so skipping future block")
-			return nil
+			if syncing {
+				return nil
+			} else {
+				return err
+			}
 		}
 
 		if !ok {

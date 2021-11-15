@@ -68,7 +68,7 @@ func (connection *Connection) GetObject(request ObjectList, response *Objects) e
 		copy(hhash[:], request.Chunk_list[i][33:])
 
 		if chunk := is_chunk_exist(hhash, cid); chunk == nil {
-			return fmt.Errorf("no such chunk %x%x%x cid %d %2x", blid, cid, hhash, cid, cid)
+			return fmt.Errorf("no such chunk %x %x %x cid %d %2x", blid, cid, hhash, cid, cid)
 		} else { // we do have the chunk, pass it on
 			response.Chunks = append(response.Chunks, *chunk) // append the chunk
 		}

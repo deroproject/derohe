@@ -20,7 +20,6 @@ import "fmt"
 import "bytes"
 import "sort"
 import "sync"
-import "math/rand"
 import "runtime/debug"
 import "encoding/binary"
 
@@ -181,56 +180,38 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	var tx_hash_list_included []crypto.Hash // these tx will be included ( due to  block size limit )
 
 	sizeoftxs := uint64(0) // size of all non coinbase tx included within this block
-	//fees_collected := uint64(0)
-
-	_ = sizeoftxs
 
 	// add upto 100 registration tx each registration tx is 99 bytes, so 100 tx will take 9900 bytes or 10KB
 	{
 		tx_hash_list_sorted := chain.Regpool.Regpool_List_TX() // hash of all tx expected to be included within this block , sorted by fees
-
 		for i := range tx_hash_list_sorted {
-
-			tx := chain.Regpool.Regpool_Get_TX(tx_hash_list_sorted[i])
-			if tx != nil {
-				_, err = balance_tree.Get(tx.MinerAddress[:])
-				if err != nil {
+			if tx := chain.Regpool.Regpool_Get_TX(tx_hash_list_sorted[i]); tx != nil {
+				if _, err = balance_tree.Get(tx.MinerAddress[:]); err != nil {
 					if xerrors.Is(err, graviton.ErrNotFound) { // address needs registration
-
 						cbl.Txs = append(cbl.Txs, tx)
 						tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i])
-					} else {
-						return
 					}
 				}
 			}
-
 		}
 	}
 
 	hf_version := chain.Get_Current_Version_at_Height(height)
 	//rlog.Infof("Total tx in pool %d", len(tx_hash_list_sorted))
 
-	//reachable_key_images := chain.BuildReachabilityKeyImages(dbtx, &bl) // this requires only bl.Tips
-
-	// select 10%  tx based on fees
-	// select 90%  tx randomly
-	// random selection helps us to easily reach 80 TPS
+	// select tx based on fees
 	// first of lets find the tx fees collected by consuming txs from mempool
 	tx_hash_list_sorted := chain.Mempool.Mempool_List_TX_SortedInfo() // hash of all tx expected to be included within this block , sorted by fees
 
 	logger.V(8).Info("mempool returned tx list", "tx_list", tx_hash_list_sorted)
 	var pre_check cbl_verify // used to verify sanity of new block
 
-	i := 0
-	for ; i < len(tx_hash_list_sorted); i++ {
-
-		if (sizeoftxs + tx_hash_list_sorted[i].Size) > (10*config.STARGATE_HE_MAX_BLOCK_SIZE)/100 { // limit block to max possible
+	for i := range tx_hash_list_sorted {
+		if (sizeoftxs + tx_hash_list_sorted[i].Size) > (99*config.STARGATE_HE_MAX_BLOCK_SIZE)/100 { // limit block to max possible
 			break
 		}
 
-		tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash)
-		if tx != nil {
+		if tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash); tx != nil {
 			if int64(tx.Height) < height {
 				if history[tx.BLID] != true {
 					logger.V(8).Info("not selecting tx since the reference with which it was made is not in history", "txid", tx_hash_list_sorted[i].Hash)
@@ -240,11 +221,10 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips) {
 						if nil == pre_check.check(tx, false) {
 							pre_check.check(tx, true)
-							//rlog.Tracef(1, "Adding Top  Sorted tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
 							sizeoftxs += tx_hash_list_sorted[i].Size
 							cbl.Txs = append(cbl.Txs, tx)
 							tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
-							logger.V(8).Info("tx selecting for mining ", "txlist", tx_hash_list_sorted[i].Hash)
+							logger.V(8).Info("tx selected for mining ", "txlist", tx_hash_list_sorted[i].Hash)
 						} else {
 							logger.V(8).Info("not selecting tx due to pre_check failure", "txid", tx_hash_list_sorted[i].Hash)
 						}
@@ -261,48 +241,6 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 			logger.V(8).Info("not selecting tx  since tx is nil", "txid", tx_hash_list_sorted[i].Hash)
 		}
 	}
-	// any left over transactions, should be randomly selected
-	tx_hash_list_sorted = tx_hash_list_sorted[i:]
-
-	// do random shuffling, can we get away with len/2 random shuffling
-	rand.Shuffle(len(tx_hash_list_sorted), func(i, j int) {
-		tx_hash_list_sorted[i], tx_hash_list_sorted[j] = tx_hash_list_sorted[j], tx_hash_list_sorted[i]
-	})
-
-	// if we were crossing limit, transactions would be randomly selected
-	// otherwise they will sorted by fees
-
-	// now select as much as possible
-	for i := range tx_hash_list_sorted {
-		if (sizeoftxs + tx_hash_list_sorted[i].Size) > (config.STARGATE_HE_MAX_BLOCK_SIZE) { // limit block to max possible
-			break
-		}
-
-		tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash)
-		if tx != nil {
-			if int64(tx.Height) < height {
-				if height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
-					if history[tx.BLID] != true {
-						logger.V(8).Info("not selecting tx since the reference with which it was made is not in history", "txid", tx_hash_list_sorted[i].Hash)
-						continue
-					}
-					if nil == chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, bl.Tips) {
-
-						if nil == pre_check.check(tx, false) {
-							pre_check.check(tx, true)
-
-							//rlog.Tracef(1, "Adding Random tx %s to Complete_Block current size %.2f KB max possible %.2f KB\n", tx_hash_list_sorted[i].Hash, float32(sizeoftxs+tx_hash_list_sorted[i].Size)/1024.0, float32(config.STARGATE_HE_MAX_BLOCK_SIZE)/1024.0)
-							sizeoftxs += tx_hash_list_sorted[i].Size
-							cbl.Txs = append(cbl.Txs, tx)
-							tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// collect tx list + their fees
 
 	// now we have all major parts of block, assemble the block
 	bl.Major_Version = uint64(chain.Get_Current_Version_at_Height(height))
@@ -320,18 +258,12 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	// check whether the miner address is registered
-
-	_, err = balance_tree.Get(bl.Miner_TX.MinerAddress[:])
-	if err != nil {
+	if _, err = balance_tree.Get(bl.Miner_TX.MinerAddress[:]); err != nil {
 		if xerrors.Is(err, graviton.ErrNotFound) { // address needs registration
 			err = fmt.Errorf("miner address is not registered")
-			return
-		} else {
-			return
 		}
+		return
 	}
-
-	//bl.Prev_Hash = top_hash
 
 	for i := range tx_hash_list_included {
 		bl.Tx_hashes = append(bl.Tx_hashes, tx_hash_list_included[i])
@@ -615,26 +547,24 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 
 	for i := range bl.Tx_hashes {
 		var tx *transaction.Transaction
+		var tx_bytes []byte
 		if tx = chain.Mempool.Mempool_Get_TX(bl.Tx_hashes[i]); tx != nil {
 			cbl.Txs = append(cbl.Txs, tx)
 			continue
 		} else if tx = chain.Regpool.Regpool_Get_TX(bl.Tx_hashes[i]); tx != nil {
 			cbl.Txs = append(cbl.Txs, tx)
 			continue
-		}
-
-		var tx_bytes []byte
-		if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[i]); err != nil {
-			return
-		}
-
-		tx = &transaction.Transaction{}
-		if err = tx.Deserialize(tx_bytes); err != nil {
+		} else if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[i]); err == nil {
+			tx = &transaction.Transaction{}
+			if err = tx.Deserialize(tx_bytes); err != nil {
+				logger.V(1).Error(err, "Tx could not be loaded from disk", "txid", bl.Tx_hashes[i].String())
+				return
+			}
+			cbl.Txs = append(cbl.Txs, tx)
+		} else {
 			logger.V(1).Error(err, "Tx not found in pool or DB, rejecting submitted block", "txid", bl.Tx_hashes[i].String())
 			return
 		}
-		cbl.Txs = append(cbl.Txs, tx)
-
 	}
 
 	cbl.Bl = &bl // the block is now complete, lets try to add it to chain

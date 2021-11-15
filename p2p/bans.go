@@ -106,11 +106,13 @@ func save_ban_list() {
 
 // clean up ban list every 20 seconds
 func ban_clean_up_goroutine() {
+
+	delay := time.NewTicker(20 * time.Second)
 	for {
 		select {
 		case <-Exit_Event:
 			return
-		case <-time.After(20 * time.Second):
+		case <-delay.C:
 		}
 		ban_clean_up()
 	}

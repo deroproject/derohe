@@ -119,10 +119,8 @@ func (connection *Connection) dispatch_test_handshake() {
 		Peer_Add(&p)
 	}
 
-	connection.TXpool_cache = map[uint64]uint32{}
-
 	// parse delivered peer list as grey list
-	connection.logger.V(2).Info("Peer provides peers", "count", len(response.PeerList))
+	connection.logger.V(4).Info("Peer provides peers", "count", len(response.PeerList))
 	for i := range response.PeerList {
 		if i < 13 {
 			Peer_Add(&Peer{Address: response.PeerList[i].Addr, LastConnected: uint64(time.Now().UTC().Unix())})

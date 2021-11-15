@@ -34,6 +34,8 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 	var need ObjectList
 	var dirty = false
 
+	c.logger.V(3).Info("incoming INV", "request", request)
+
 	if len(request.Block_list) >= 1 { //  handle incoming blocks list
 		for i := range request.Block_list { //
 			if !chain.Is_Block_Topological_order(request.Block_list[i]) { // block is not in our chain
@@ -78,7 +80,7 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 
 			if !chain.Block_Exists(blid) { // check whether the block can be loaded from disk
 				if nil == is_chunk_exist(hhash, cid) { // if chunk does not exist
-					//					fmt.Printf("requesting chunk %d INV %x\n",cid, request.Chunk_list[i][:])
+					c.logger.V(3).Info("requesting INV chunk", "blid", fmt.Sprintf("%x", blid), "cid", cid, "hhash", fmt.Sprintf("%x", hhash), "raw", fmt.Sprintf("%x", request.Chunk_list[i]))
 					need.Chunk_list = append(need.Chunk_list, request.Chunk_list[i])
 					dirty = true
 				}
@@ -89,9 +91,8 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 	if dirty { //  request inventory only if we want it
 		var oresponse Objects
 		fill_common(&need.Common) // fill common info
-		//need.Sent = request.Sent // send time
 		if err = c.RConn.Client.Call("Peer.GetObject", need, &oresponse); err != nil {
-			c.logger.V(2).Error(err, "Call failed GetObject", err)
+			c.logger.V(2).Error(err, "Call failed GetObject", "need_objects", need)
 			c.exit()
 			return
 		} else { // process the response
@@ -108,56 +109,6 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 
 }
 
-// Peer has notified us of a new transaction
-func (c *Connection) NotifyTx(request Objects, response *Dummy) error {
-	defer handle_connection_panic(c)
-	var err error
-	var tx transaction.Transaction
-
-	c.update(&request.Common) // update common information
-
-	if len(request.CBlocks) != 0 {
-		err = fmt.Errorf("Notify TX cannot notify blocks")
-		c.logger.V(3).Error(err, "Should be banned")
-		c.exit()
-		return err
-	}
-
-	if len(request.Txs) != 1 {
-		err = fmt.Errorf("Notify TX can only notify 1 tx")
-		c.logger.V(3).Error(err, "Should be banned")
-		c.exit()
-		return err
-	}
-
-	err = tx.Deserialize(request.Txs[0])
-	if err != nil { // we have a tx which could not be deserialized ban peer
-		c.logger.V(3).Error(err, "Should be banned")
-		c.exit()
-		return err
-	}
-
-	// track transaction propagation
-	if request.Sent != 0 && request.Sent < globals.Time().UTC().UnixMicro() {
-		time_to_receive := float64(globals.Time().UTC().UnixMicro()-request.Sent) / 1000000
-		metrics.Set.GetOrCreateHistogram("tx_propagation_duration_histogram_seconds").Update(time_to_receive)
-	}
-
-	// try adding tx to pool
-	if err = chain.Add_TX_To_Pool(&tx); err == nil {
-		// add tx to cache  of the peer who sent us this tx
-		txhash := tx.GetHash()
-		c.TXpool_cache_lock.Lock()
-		c.TXpool_cache[binary.LittleEndian.Uint64(txhash[:])] = uint32(time.Now().Unix())
-		c.TXpool_cache_lock.Unlock()
-		broadcast_Tx(&tx, 0, request.Sent)
-	}
-
-	fill_common(&response.Common) // fill common info
-
-	return nil
-}
-
 // only miniblocks carry extra info, which leads to better time tracking
 func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err error) {
 	defer handle_connection_panic(c)
@@ -171,11 +122,17 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 	fill_common_T1(&request.Common)
 	c.update(&request.Common) // update common information
 
-	for i := range request.MiniBlocks {
+	var mbl_arrays [][]byte
+	if len(c.previous_mbl) > 0 {
+		mbl_arrays = append(mbl_arrays, c.previous_mbl)
+	}
+	mbl_arrays = append(mbl_arrays, request.MiniBlocks...)
+
+	for i := range mbl_arrays {
 		var mbl block.MiniBlock
 		var ok bool
 
-		if err = mbl.Deserialize(request.MiniBlocks[i]); err != nil {
+		if err = mbl.Deserialize(mbl_arrays[i]); err != nil {
 			return err
 		}
 
@@ -196,8 +153,10 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 
 		// first check whether the incoming minblock can be added to sub chains
 		if !chain.MiniBlocks.IsConnected(mbl) {
+			c.previous_mbl = mbl.Serialize()
 			c.logger.V(3).Error(err, "Disconnected miniblock")
-			return fmt.Errorf("Disconnected miniblock")
+			//return fmt.Errorf("Disconnected miniblock")
+			continue
 		}
 
 		var miner_hash crypto.Hash
@@ -254,7 +213,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 		if err, ok = chain.InsertMiniBlock(mbl); !ok {
 			return err
 		} else { // rebroadcast miniblock
-			broadcast_MiniBlock(mbl, c.Peer_ID, request.Sent) // do not send back to the original peer
+			defer broadcast_MiniBlock(mbl, c.Peer_ID, request.Sent) // do not send back to the original peer
 		}
 	}
 	fill_common(&response.Common)                         // fill common info
@@ -262,27 +221,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 	return nil
 }
 
-func (c *Connection) NotifyBlock(request Objects, response *Dummy) error {
-	defer handle_connection_panic(c)
-	var err error
-	if len(request.CBlocks) != 1 {
-		err = fmt.Errorf("Notify Block cannot only notify single block")
-		c.logger.V(3).Error(err, "Should be banned")
-		c.exit()
-		return err
-	}
-	c.update(&request.Common) // update common information
-
-	err = c.processChunkedBlock(request, true, false, 0, 0)
-	if err != nil { // we have a block which could not be deserialized ban peer
-		return err
-	}
-
-	fill_common(&response.Common) // fill common info
-	return nil
-}
-
-func (c *Connection) processChunkedBlock(request Objects, isnotified bool, waschunked bool, data_shard_count, parity_shard_count int) error {
+func (c *Connection) processChunkedBlock(request Objects, data_shard_count, parity_shard_count int) error {
 	var err error
 
 	var cbl block.Complete_Block // parse incoming block and deserialize it
@@ -297,14 +236,6 @@ func (c *Connection) processChunkedBlock(request Objects, isnotified bool, wasch
 	}
 
 	blid := bl.GetHash()
-
-	// track block propagation only if its notified
-	if isnotified { // otherwise its tracked in chunks
-		if request.Sent != 0 && request.Sent < globals.Time().UTC().UnixMicro() {
-			time_to_receive := float64(globals.Time().UTC().UnixMicro()-request.Sent) / 1000000
-			metrics.Set.GetOrCreateHistogram("block_propagation_duration_histogram_seconds").Update(time_to_receive)
-		}
-	}
 
 	// object is already is in our chain, we need not relay it
 	if chain.Is_Block_Topological_order(blid) || chain.Is_Block_Tip(blid) {
@@ -324,75 +255,9 @@ func (c *Connection) processChunkedBlock(request Objects, isnotified bool, wasch
 			}
 			cbl.Txs = append(cbl.Txs, &tx)
 		}
-
-		// fill all shards which we might be missing but only we received it in chunk
-		if waschunked {
-			convert_block_to_chunks(&cbl, data_shard_count, parity_shard_count)
-		}
-
 	} else { // the block is NOT complete, we consider it as an ultra compact block
-		c.logger.V(2).Info("Received an ultra compact  block", "blid", blid, "txcount", len(bl.Tx_hashes), "skipped", len(bl.Tx_hashes)-len(request.CBlocks[0].Txs))
-		for j := range request.CBlocks[0].Txs {
-			var tx transaction.Transaction
-			err = tx.Deserialize(request.CBlocks[0].Txs[j])
-			if err != nil { // we have a tx which could not be deserialized ban peer
-				c.logger.V(3).Error(err, "tx cannot be deserialized.Should be banned")
-				c.exit()
-				return err
-			}
-			chain.Add_TX_To_Pool(&tx) // add tx to pool
-		}
-
-		// lets build a complete block ( tx from db or mempool )
-		for i := range bl.Tx_hashes {
-
-			retry_count := 0
-		retry_tx:
-
-			if retry_count > 10 {
-				err = fmt.Errorf("TX %s could not be obtained after %d tries", bl.Tx_hashes[i], retry_count)
-				c.logger.V(3).Error(err, "Missing TX")
-			}
-			retry_count++
-
-			tx := chain.Mempool.Mempool_Get_TX(bl.Tx_hashes[i])
-			if tx != nil {
-				cbl.Txs = append(cbl.Txs, tx)
-				continue
-			} else {
-				tx = chain.Regpool.Regpool_Get_TX(bl.Tx_hashes[i])
-				if tx != nil {
-					cbl.Txs = append(cbl.Txs, tx)
-					continue
-				}
-			}
-
-			var tx_bytes []byte
-			if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[i]); err != nil {
-				// the tx mentioned in ultra compact block could not be found, request a full block
-
-				err = c.request_tx([][32]byte{bl.Tx_hashes[i]}, isnotified)
-				if err == nil {
-					goto retry_tx
-				}
-				//connection.Send_ObjectRequest([]crypto.Hash{blid}, []crypto.Hash{})
-				//logger.Debugf("Ultra compact block  %s missing TX %s, requesting full block", blid, bl.Tx_hashes[i])
-				return err
-			}
-
-			tx = &transaction.Transaction{}
-			if err = tx.Deserialize(tx_bytes); err != nil {
-				err = c.request_tx([][32]byte{bl.Tx_hashes[i]}, isnotified)
-				if err == nil {
-					goto retry_tx
-				}
-				// the tx mentioned in ultra compact block could not be found, request a full block
-				//connection.Send_ObjectRequest([]crypto.Hash{blid}, []crypto.Hash{})
-				//logger.Debugf("Ultra compact block  %s missing TX %s, requesting full block", blid, bl.Tx_hashes[i])
-				return err
-			}
-			cbl.Txs = append(cbl.Txs, tx) // tx is from disk
-		}
+		c.logger.V(2).Info("Received an ultra compact  block", "blid", blid, "txcount", len(bl.Tx_hashes), "skipped", len(bl.Tx_hashes)-len(request.CBlocks[0].Txs), "stacktrace", globals.StackTrace(false))
+		// how
 	}
 
 	// make sure connection does not timeout and be killed while processing huge blocks

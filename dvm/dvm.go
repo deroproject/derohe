@@ -590,7 +590,7 @@ func (dvm *DVM_Interpreter) interpret_PRINT(args []string) (newIP uint64, err er
 			}
 		}
 
-		_, err = fmt.Printf(strings.Trim(args[0], "\"")+"\n", params...)
+		//_, err = fmt.Printf(strings.Trim(args[0], "\"")+"\n", params...)
 	}
 	return
 }
