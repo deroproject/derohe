@@ -226,13 +226,13 @@ func main() {
 			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
 			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
 
-			if our_height < 0 { // somehow the data folder got deleted/renamed/corrupted
+			/*if our_height < 0 { // somehow the data folder got deleted/renamed/corrupted
 				logger.Error(nil, "Somehow the data directory is not accessible. shutting down")
 				l.Terminal.ExitRawMode()
 				l.Terminal.Print("\n\n")
 				os.Exit(-1)
 				return
-			}
+			}*/
 
 			// only update prompt if needed
 			if last_second != time.Now().Unix() || last_our_height != our_height || last_best_height != best_height || last_peer_count != peer_count || last_topo_height != topo_height || last_mempool_tx_count != mempool_tx_count || last_regpool_tx_count != regpool_tx_count {

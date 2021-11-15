@@ -154,7 +154,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 		// first check whether the incoming minblock can be added to sub chains
 		if !chain.MiniBlocks.IsConnected(mbl) {
 			c.previous_mbl = mbl.Serialize()
-			c.logger.V(3).Error(err, "Disconnected miniblock")
+			c.logger.V(3).Error(err, "Disconnected miniblock","mbl",mbl.String())
 			//return fmt.Errorf("Disconnected miniblock")
 			continue
 		}
