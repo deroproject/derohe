@@ -27,7 +27,7 @@ import "sync"
 import "sort"
 import "time"
 import "strings"
-import "math/rand"
+import "context"
 import "sync/atomic"
 import "runtime/debug"
 
@@ -35,13 +35,13 @@ import "github.com/go-logr/logr"
 
 import "github.com/dustin/go-humanize"
 
-import "github.com/paulbellamy/ratecounter"
-
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/metrics"
 import "github.com/deroproject/derohe/transaction"
+
+import "github.com/cenkalti/rpc2"
 
 // any connection incoming/outgoing can only be in this state
 //type Conn_State uint32
@@ -52,133 +52,136 @@ const (
 	ACTIVE                   = 2 // "Active"
 )
 
-type Queued_Command struct {
-	Command uint64 // we are waiting for this response
-	BLID    []crypto.Hash
-	TXID    []crypto.Hash
-	Topos   []int64
-}
-
 const MAX_CLOCK_DATA_SET = 16
 
 // This structure is used to do book keeping for the connection and keeps other DATA related to peer
 // golang restricts 64 bit uint64/int atomic on a 64 bit boundary
 // therefore all atomics are on the top
 type Connection struct {
+	Client  *rpc2.Client
+	Conn    net.Conn // actual object to talk
+	ConnTls net.Conn // tls layered conn
+
 	Height       int64       // last height sent by peer  ( first member alignments issues)
 	StableHeight int64       // last stable height
 	TopoHeight   int64       // topo height, current topo height, this is the only thing we require for syncing
 	StateHash    crypto.Hash // statehash at the top
 	Pruned       int64       // till where chain has been pruned on this node
 
-	LastObjectRequestTime int64  // when was the last item placed in object list
-	BytesIn               uint64 // total bytes in
-	BytesOut              uint64 // total bytes out
-	Latency               int64  // time.Duration            // latency to this node when sending timed sync
+	Created               time.Time // when was object created
+	LastObjectRequestTime int64     // when was the last item placed in object list
+	BytesIn               uint64    // total bytes in
+	BytesOut              uint64    // total bytes out
+	Latency               int64     // time.Duration            // latency to this node when sending timed sync
 
-	Incoming        bool         // is connection incoming or outgoing
-	Addr            *net.TCPAddr // endpoint on the other end
-	Port            uint32       // port advertised by other end as its server,if it's 0 server cannot accept connections
-	Peer_ID         uint64       // Remote peer id
-	SyncNode        bool         // whether the peer has been added to command line as sync node
-	Top_Version     uint64       // current hard fork version supported by peer
+	Incoming        bool     // is connection incoming or outgoing
+	Addr            net.Addr // endpoint on the other end
+	Port            uint32   // port advertised by other end as its server,if it's 0 server cannot accept connections
+	Peer_ID         uint64   // Remote peer id
+	SyncNode        bool     // whether the peer has been added to command line as sync node
+	Top_Version     uint64   // current hard fork version supported by peer
 	ProtocolVersion string
 	Tag             string // tag for the other end
 	DaemonVersion   string
-	//Exit                  chan bool   // Exit marker that connection needs to be killed
-	ExitCounter int32
-	State       uint32      // state of the connection
-	Top_ID      crypto.Hash // top block id of the connection
+	State           uint32      // state of the connection
+	Top_ID          crypto.Hash // top block id of the connection
 
-	logger            logr.Logger     // connection specific logger
-	logid             string          // formatted version of connection
-	Requested_Objects [][32]byte      // currently unused as we sync up with a single peer at a time
-	Conn              net.Conn        // actual object to talk
-	RConn             *RPC_Connection // object  for communication
-	//	Command_queue     *list.List               // New protocol is partly syncronous
-	Objects      chan Queued_Command      // contains all objects that are requested
-	SpeedIn      *ratecounter.RateCounter // average speed in last 60 seconds
-	SpeedOut     *ratecounter.RateCounter // average speed in last 60 secs
-	request_time atomic.Value             //time.Time                // used to track latency
-	writelock    sync.Mutex               // used to Serialize writes
+	logger logr.Logger // connection specific logger
 
-	previous_mbl []byte // single slot cache
+	Requested_Objects [][32]byte // currently unused as we sync up with a single peer at a time
 
-	peer_sent_time time.Time // contains last time when peerlist was sent
+	peer_sent_time   time.Time // contains last time when peerlist was sent
+	update_received  time.Time // last time when upated was received
+	ping_in_progress int32     // contains ping pending against this connection
+
+	ping_count int64
 
 	clock_index   int
 	clock_offsets [MAX_CLOCK_DATA_SET]time.Duration
 	delays        [MAX_CLOCK_DATA_SET]time.Duration
 	clock_offset  int64 // duration updated on every miniblock
 
+	onceexit sync.Once
+
 	Mutex sync.Mutex // used only by connection go routine
 }
 
-func (c *Connection) exit() {
-	c.RConn.Session.Close()
-
-}
-
-var connection_map sync.Map                      // map[string]*Connection{}
-var connection_per_ip_counter = map[string]int{} // only keeps the counter of counter of connections
-
-// for incoming connections we use their peer id to assertain uniquenesss
-// for outgoing connections, we use the tcp endpoint address, so as not more than 1 connection is done
-func Key(c *Connection) string {
-	if c.Incoming {
-		return fmt.Sprintf("%d", c.Peer_ID)
+func Address(c *Connection) string {
+	if c.Addr == nil {
+		return ""
 	}
-	return string(c.Addr.String()) // Simple []byte => string conversion
+	return ParseIPNoError(c.Addr.String())
 }
+
+func (c *Connection) exit() {
+	defer globals.Recover(0)
+	c.onceexit.Do(func() {
+		c.ConnTls.Close()
+		c.Conn.Close()
+		c.Client.Close()
+	})
+
+}
+
+// add connection to  map
+func Connection_Delete(c *Connection) {
+	connection_map.Range(func(k, value interface{}) bool {
+		v := value.(*Connection)
+		if c.Addr.String() == v.Addr.String() {
+			connection_map.Delete(Address(v))
+			return false
+		}
+		return true
+	})
+}
+
+func Connection_Pending_Clear() {
+	connection_map.Range(func(k, value interface{}) bool {
+		v := value.(*Connection)
+		if atomic.LoadUint32(&v.State) == HANDSHAKE_PENDING && time.Now().Sub(v.Created) > 10*time.Second { //and skip ourselves
+			v.exit()
+			v.logger.V(3).Info("Cleaning pending connection")
+		}
+
+		if time.Now().Sub(v.update_received).Round(time.Second).Seconds() > 20 {
+			v.exit()
+			Connection_Delete(v)
+			v.logger.Info("Purging connection due since idle")
+		}
+
+		if IsAddressInBanList(Address(v)) {
+			v.exit()
+			Connection_Delete(v)
+			v.logger.Info("Purging connection due to ban list")
+		}
+		return true
+	})
+}
+
+var connection_map sync.Map // map[string]*Connection{}
 
 // check whether an IP is in the map already
 func IsAddressConnected(address string) bool {
-
 	if _, ok := connection_map.Load(strings.TrimSpace(address)); ok {
 		return true
 	}
 	return false
 }
 
-// add connection to  map
+// add connection to  map, only if we are not connected already
 // we also check for limits for incoming connections
 // same ip max 8 ip ( considering NAT)
 //same Peer ID   4
-func Connection_Add(c *Connection) {
-	//connection_mutex.Lock()
-	//defer connection_mutex.Unlock()
-
-	ip_count := 0
-	peer_id_count := 0
-
-	incoming_ip := c.Addr.IP.String()
-	incoming_peer_id := c.Peer_ID
-
-	if c.Incoming { // we need extra protection for incoming for various attacks
-
-		connection_map.Range(func(k, value interface{}) bool {
-			v := value.(*Connection)
-			if v.Incoming {
-				if incoming_ip == v.Addr.IP.String() {
-					ip_count++
-				}
-
-				if incoming_peer_id == v.Peer_ID {
-					peer_id_count++
-				}
-			}
-			return true
-		})
-
-	}
-
-	if ip_count >= 8 || peer_id_count >= 4 {
-		c.logger.V(3).Info("IP address already has too many connections, exiting this connection", "ip", incoming_ip, "count", ip_count, "peerid", incoming_peer_id)
+func Connection_Add(c *Connection) bool {
+	if dup, ok := connection_map.LoadOrStore(Address(c), c); !ok {
+		c.Created = time.Now()
+		c.logger.V(3).Info("IP address being added", "ip", c.Addr.String())
+		return true
+	} else {
+		c.logger.V(3).Info("IP address already has one connection, exiting this connection", "ip", c.Addr.String(), "pre", dup.(*Connection).Addr.String())
 		c.exit()
-		return
+		return false
 	}
-
-	connection_map.Store(Key(c), c)
 }
 
 // unique connection list
@@ -199,34 +202,35 @@ func UniqueConnections() map[uint64]*Connection {
 
 // this function has infinite loop to keep ping every few sec
 func ping_loop() {
-	for {
-		time.Sleep(1 * time.Second)
-		connection_map.Range(func(k, value interface{}) bool {
-			c := value.(*Connection)
-			if atomic.LoadUint32(&c.State) != HANDSHAKE_PENDING && GetPeerID() != c.Peer_ID {
-				go func() {
-					defer globals.Recover(3)
-					var request, response Dummy
-					fill_common(&request.Common) // fill common info
+	connection_map.Range(func(k, value interface{}) bool {
+		c := value.(*Connection)
+		if atomic.LoadUint32(&c.State) != HANDSHAKE_PENDING && GetPeerID() != c.Peer_ID /*&& atomic.LoadInt32(&c.ping_in_progress) == 0*/ {
+			go func() {
+				defer globals.Recover(3)
+				atomic.AddInt32(&c.ping_in_progress, 1)
+				defer atomic.AddInt32(&c.ping_in_progress, -1)
 
-					if c.peer_sent_time.Add(5 * time.Second).Before(time.Now()) {
-						c.peer_sent_time = time.Now()
-						request.Common.PeerList = get_peer_list()
-					}
-					if err := c.RConn.Client.Call("Peer.Ping", request, &response); err != nil {
-						return
-					}
-					c.update(&response.Common) // update common information
-				}()
-			}
-			return true
-		})
-	}
-}
+				var request, response Dummy
+				fill_common(&request.Common) // fill common info
 
-// add connection to  map
-func Connection_Delete(c *Connection) {
-	connection_map.Delete(Key(c))
+				c.ping_count++
+				if c.ping_count%100 == 1 {
+					request.Common.PeerList = get_peer_list()
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+
+				if err := c.Client.CallWithContext(ctx, "Peer.Ping", request, &response); err != nil {
+					c.logger.V(2).Error(err, "ping failed")
+					c.exit()
+					return
+				}
+				c.update(&response.Common) // update common information
+			}()
+		}
+		return true
+	})
 }
 
 // prints all the connection info to screen
@@ -239,14 +243,20 @@ func Connection_Print() {
 		return true
 	})
 
-	logger.Info("Connection info for peers", "count", len(clist))
-
-	if globals.Arguments["--debug"].(bool) == true {
-		fmt.Printf("%-20s %-16s %-5s %-7s %-7s %-7s %23s %3s %5s %s %s %s %s %16s %16s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "Offset", "S/H/T", "DIR", "QUEUE", "     IN", "    OUT", " IN SPEED", " OUT SPEED", "Version", "Statehash")
-	} else {
-		fmt.Printf("%-20s %-16s %-5s %-7s %-7s %-7s %17s %3s %5s %s %s %s %s %16s %16s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "Offset", "H/T", "DIR", "QUEUE", "     IN", "    OUT", " IN SPEED", " OUT SPEED", "Version", "Statehash")
-
+	version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
+	if err != nil {
+		panic(err)
 	}
+
+	StateHash, err := chain.Load_Merkle_Hash(version)
+
+	if err != nil {
+		panic(err)
+	}
+
+	logger.Info("Connection info for peers", "count", len(clist), "our Statehash", StateHash)
+
+	fmt.Printf("%-30s %-16s %-5s %-7s %-7s %-7s %23s %3s %5s %s %s %16s %16s\n", "Remote Addr", "PEER ID", "PORT", " State", "Latency", "Offset", "S/H/T", "DIR", "QUEUE", "     IN", "    OUT", "Version", "Statehash")
 
 	// sort the list
 	sort.Slice(clist, func(i, j int) bool { return clist[i].Addr.String() < clist[j].Addr.String() })
@@ -290,15 +300,10 @@ func Connection_Print() {
 			fmt.Print(color_yellow)
 		}
 
-		if globals.Arguments["--debug"].(bool) == true {
-			hstring := fmt.Sprintf("%d/%d/%d", clist[i].StableHeight, clist[i].Height, clist[i].TopoHeight)
-			fmt.Printf("%-20s %16x %5d %7s %7s %7s %23s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), time.Duration(atomic.LoadInt64(&clist[i].clock_offset)).Round(time.Millisecond).String(), hstring, dir, clist[i].isConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:])
+		ctime := time.Now().Sub(clist[i].Created).Round(time.Second)
 
-		} else {
-			hstring := fmt.Sprintf("%d/%d", clist[i].Height, clist[i].TopoHeight)
-			fmt.Printf("%-20s %16x %5d %7s %7s %7s %17s %s %5d %7s %7s %8s %9s     %16s %s %x\n", clist[i].Addr.IP, clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), time.Duration(atomic.LoadInt64(&clist[i].clock_offset)).Round(time.Millisecond).String(), hstring, dir, clist[i].isConnectionSyncing(), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), humanize.Bytes(uint64(clist[i].SpeedIn.Rate()/60)), humanize.Bytes(uint64(clist[i].SpeedOut.Rate()/60)), version, tag, clist[i].StateHash[:8])
-
-		}
+		hstring := fmt.Sprintf("%d/%d/%d", clist[i].StableHeight, clist[i].Height, clist[i].TopoHeight)
+		fmt.Printf("%-30s %16x %5d %7s %7s %7s %23s %s %5d %7s %7s     %16s %s %x\n", Address(clist[i])+" ("+ctime.String()+")", clist[i].Peer_ID, clist[i].Port, state, time.Duration(atomic.LoadInt64(&clist[i].Latency)).Round(time.Millisecond).String(), time.Duration(atomic.LoadInt64(&clist[i].clock_offset)).Round(time.Millisecond).String(), hstring, dir, 0, humanize.Bytes(atomic.LoadUint64(&clist[i].BytesIn)), humanize.Bytes(atomic.LoadUint64(&clist[i].BytesOut)), version, tag, clist[i].StateHash[:])
 
 		fmt.Print(color_normal)
 	}
@@ -329,21 +334,6 @@ func Best_Peer_Height() (best_height, best_topo_height int64) {
 }
 
 // this function return peer count which have successful handshake
-func Disconnect_All() (Count uint64) {
-	return
-	/*
-		connection_mutex.Lock()
-		for _, v := range connection_map {
-			// v.Lock()
-			close(v.Exit) // close the connection
-			//v.Unlock()
-		}
-		connection_mutex.Unlock()
-		return
-	*/
-}
-
-// this function return peer count which have successful handshake
 func Peer_Count() (Count uint64) {
 	connection_map.Range(func(k, value interface{}) bool {
 		v := value.(*Connection)
@@ -355,29 +345,8 @@ func Peer_Count() (Count uint64) {
 	return
 }
 
-// this function returnw random connection which have successful handshake
-func Random_Connection(height int64) (c *Connection) {
-
-	var clist []*Connection
-
-	connection_map.Range(func(k, value interface{}) bool {
-		v := value.(*Connection)
-		if atomic.LoadInt64(&v.Height) >= height {
-			clist = append(clist, v)
-		}
-		return true
-	})
-
-	if len(clist) > 0 {
-		return clist[rand.Int()%len(clist)]
-	}
-
-	return nil
-}
-
 // this returns count of peers in both directions
 func Peer_Direction_Count() (Incoming uint64, Outgoing uint64) {
-
 	connection_map.Range(func(k, value interface{}) bool {
 		v := value.(*Connection)
 		if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && GetPeerID() != v.Peer_ID {
@@ -389,39 +358,7 @@ func Peer_Direction_Count() (Incoming uint64, Outgoing uint64) {
 		}
 		return true
 	})
-
 	return
-}
-
-func broadcast_Block_tester(topo int64) (err error) {
-
-	blid, err := chain.Load_Block_Topological_order_at_index(topo)
-	if err != nil {
-		return fmt.Errorf("err occurred topo %d err %s\n", topo, err)
-	}
-	var cbl block.Complete_Block
-	bl, err := chain.Load_BL_FROM_ID(blid)
-	if err != nil {
-		return err
-	}
-
-	cbl.Bl = bl
-	for j := range bl.Tx_hashes {
-		var tx_bytes []byte
-		if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(bl.Tx_hashes[j]); err != nil {
-			return err
-		}
-		var tx transaction.Transaction
-		if err = tx.Deserialize(tx_bytes); err != nil {
-			return err
-		}
-
-		cbl.Txs = append(cbl.Txs, &tx) // append all the txs
-
-	}
-
-	Broadcast_Block(&cbl, 0)
-	return nil
 }
 
 func Broadcast_Block(cbl *block.Complete_Block, PeerID uint64) {
@@ -491,7 +428,7 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 					connection.logger.V(3).Info("Sending erasure coded chunk to peer ", "cid", cid)
 					var dummy Dummy
 					fill_common(&peer_specific_list.Common) // fill common info
-					if err := connection.RConn.Client.Call("Peer.NotifyINV", peer_specific_list, &dummy); err != nil {
+					if err := connection.Client.Call("Peer.NotifyINV", peer_specific_list, &dummy); err != nil {
 						return
 					}
 					connection.update(&dummy.Common) // update common information
@@ -518,15 +455,10 @@ done:
 // this function is triggerred from 2 points, one when we receive a unknown block which can be successfully added to chain
 // second from the blockchain which has to relay locally  mined blocks as soon as possible
 func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // if peerid is provided it is skipped
-
 	defer globals.Recover(3)
 
-	/*if IsSyncing() { // if we are syncing, do NOT broadcast the block
-		return
-	}*/
-
 	our_height := chain.Get_Height()
-	// build the request once and dispatch it to all possible peers
+
 	count := 0
 	unique_map := UniqueConnections()
 
@@ -565,7 +497,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 				connection.logger.V(3).Info("Sending erasure coded chunk INV to peer ", "raw", fmt.Sprintf("%x", chunkid), "blid", fmt.Sprintf("%x", chunk.BLID), "cid", chunk.CHUNK_ID, "hhash", fmt.Sprintf("%x", hhash), "exists", nil != is_chunk_exist(hhash, uint8(chunk.CHUNK_ID)))
 				var dummy Dummy
 				fill_common(&peer_specific_list.Common) // fill common info
-				if err := connection.RConn.Client.Call("Peer.NotifyINV", peer_specific_list, &dummy); err != nil {
+				if err := connection.Client.Call("Peer.NotifyINV", peer_specific_list, &dummy); err != nil {
 					return
 				}
 				connection.update(&dummy.Common) // update common information
@@ -579,17 +511,17 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 // we can only broadcast a block which is in our db
 // this function is trigger from 2 points, one when we receive a unknown block which can be successfully added to chain
 // second from the blockchain which has to relay locally  mined blocks as soon as possible
-func Broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64) { // if peerid is provided it is skipped
-	broadcast_MiniBlock(mbl, PeerID, globals.Time().UTC().UnixMicro())
+func Broadcast_MiniBlock(mbls []block.MiniBlock, PeerID uint64) { // if peerid is provided it is skipped
+	broadcast_MiniBlock(mbls, PeerID, globals.Time().UTC().UnixMicro())
 }
-func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) { // if peerid is provided it is skipped
+func broadcast_MiniBlock(mbls []block.MiniBlock, PeerID uint64, first_seen int64) { // if peerid is provided it is skipped
 
 	defer globals.Recover(3)
 
-	miniblock_serialized := mbl.Serialize()
-
 	var peer_specific_block Objects
-	peer_specific_block.MiniBlocks = append(peer_specific_block.MiniBlocks, miniblock_serialized)
+	for _, mbl := range mbls {
+		peer_specific_block.MiniBlocks = append(peer_specific_block.MiniBlocks, mbl.Serialize())
+	}
 	fill_common(&peer_specific_block.Common) // fill common info
 	peer_specific_block.Sent = first_seen
 
@@ -622,7 +554,7 @@ func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) {
 				defer globals.Recover(3)
 
 				var dummy Dummy
-				if err := connection.RConn.Client.Call("Peer.NotifyMiniBlock", peer_specific_block, &dummy); err != nil {
+				if err := connection.Client.Call("Peer.NotifyMiniBlock", peer_specific_block, &dummy); err != nil {
 					return
 				}
 				connection.update(&dummy.Common) // update common information
@@ -682,7 +614,7 @@ func broadcast_Tx(tx *transaction.Transaction, PeerID uint64, sent int64) (relay
 
 				var dummy Dummy
 				fill_common(&dummy.Common) // fill common info
-				if err := connection.RConn.Client.Call("Peer.NotifyINV", request, &dummy); err != nil {
+				if err := connection.Client.Call("Peer.NotifyINV", request, &dummy); err != nil {
 					return
 				}
 				connection.update(&dummy.Common) // update common information
@@ -696,33 +628,6 @@ func broadcast_Tx(tx *transaction.Transaction, PeerID uint64, sent int64) (relay
 		//rlog.Debugf("Broadcasted tx %s to %d peers", txhash, relayed_count)
 	}
 	return
-}
-
-//var sync_in_progress bool
-
-// we can tell whether we are syncing by seeing the pending queue of expected response
-// if objects response are queued, we are syncing
-// if even one of the connection is syncing, then we are syncronising
-// returns a number how many blocks are queued
-func (connection *Connection) isConnectionSyncing() (count int) {
-	//connection.Lock()
-	//defer connection.Unlock()
-
-	if atomic.LoadUint32(&connection.State) == HANDSHAKE_PENDING { // skip pre-handshake connections
-		return 0
-	}
-
-	// check whether 15 secs have passed, if yes close the connection
-	// so we can try some other connection
-	if len(connection.Objects) > 0 {
-		if time.Now().Unix() >= (13 + atomic.LoadInt64(&connection.LastObjectRequestTime)) {
-			connection.exit()
-			return 0
-		}
-	}
-
-	return len(connection.Objects)
-
 }
 
 // trigger a sync with a random peer
@@ -800,22 +705,6 @@ func trigger_sync() {
 	}
 }
 
-//detect if something is queued to any of the peer
-// is something is queue we are syncing
-func IsSyncing() (result bool) {
-
-	syncing := false
-	connection_map.Range(func(k, value interface{}) bool {
-		v := value.(*Connection)
-		if v.isConnectionSyncing() != 0 {
-			syncing = true
-			return false
-		}
-		return true
-	})
-	return syncing
-}
-
 //go:noinline
 func Abs(n int64) int64 {
 	if n < 0 {
@@ -826,22 +715,18 @@ func Abs(n int64) int64 {
 
 // detect whether we are behind any of the connected peers and trigger sync ASAP
 // randomly with one of the peers
+
+var single_sync int32
+
 func syncroniser() {
-	delay := time.NewTicker(time.Second)
-	for {
-		select {
-		case <-Exit_Event:
-			return
-		case <-delay.C:
-		}
 
-		calculate_network_time() // calculate time every sec
+	defer atomic.AddInt32(&single_sync, -1)
 
-		if !IsSyncing() {
-			trigger_sync() // check whether we are out of sync
-		}
-
+	if atomic.AddInt32(&single_sync, 1) != 1 {
+		return
 	}
+	calculate_network_time() // calculate time every sec
+	trigger_sync()           // check whether we are out of sync
 }
 
 // update P2P time
@@ -892,59 +777,4 @@ func calculate_network_time() {
 	}
 
 	globals.ClockOffsetP2P = time.Duration(total / count)
-}
-
-// will return nil, if no peers available
-func random_connection() *Connection {
-	unique_map := UniqueConnections()
-
-	var clist []*Connection
-
-	for _, value := range unique_map {
-		clist = append(clist, value)
-	}
-
-	if len(clist) == 0 {
-		return nil
-	} else if len(clist) == 1 {
-		return clist[0]
-	}
-
-	// sort the list random
-	// do random shuffling, can we get away with len/2 random shuffling
-	globals.Global_Random.Shuffle(len(clist), func(i, j int) {
-		clist[i], clist[j] = clist[j], clist[i]
-	})
-
-	return clist[0]
-}
-
-// this will request a tx
-func (c *Connection) request_tx(txid [][32]byte, random bool) (err error) {
-	var need ObjectList
-	var oresponse Objects
-
-	need.Tx_list = append(need.Tx_list, txid...)
-
-	connection := c
-	if random {
-		connection = random_connection()
-	}
-	if connection == nil {
-		err = fmt.Errorf("No peer available")
-		return
-	}
-
-	fill_common(&need.Common) // fill common info
-	if err = c.RConn.Client.Call("Peer.GetObject", need, &oresponse); err != nil {
-		c.exit()
-		return
-	} else { // process the response
-		if err = c.process_object_response(oresponse, 0, false); err != nil {
-			return
-		}
-	}
-
-	return
-
 }

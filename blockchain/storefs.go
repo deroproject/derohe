@@ -24,6 +24,7 @@ import "strings"
 import "io/ioutil"
 import "math/big"
 import "path/filepath"
+import "github.com/deroproject/derohe/globals"
 
 type storefs struct {
 	basedir string
@@ -33,6 +34,7 @@ type storefs struct {
 // hex  block id (64 chars).block._ rewards (decimal) _ difficulty _ cumulative difficulty
 
 func (s *storefs) ReadBlock(h [32]byte) ([]byte, error) {
+	defer globals.Recover(0)
 	var dummy [32]byte
 	if h == dummy {
 		return nil, fmt.Errorf("empty block")
@@ -40,7 +42,7 @@ func (s *storefs) ReadBlock(h [32]byte) ([]byte, error) {
 
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func (s *storefs) ReadBlock(h [32]byte) ([]byte, error) {
 		if strings.HasPrefix(file.Name(), filename_start) {
 			//fmt.Printf("Reading block with filename %s\n", file.Name())
 			file := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]), file.Name())
-			return ioutil.ReadFile(file)
+			return os.ReadFile(file)
 		}
 	}
 
@@ -60,7 +62,7 @@ func (s *storefs) ReadBlock(h [32]byte) ([]byte, error) {
 func (s *storefs) DeleteBlock(h [32]byte) error {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
@@ -87,7 +89,7 @@ func (s *storefs) DeleteBlock(h [32]byte) error {
 func (s *storefs) ReadBlockDifficulty(h [32]byte) (*big.Int, error) {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +101,7 @@ func (s *storefs) ReadBlockDifficulty(h [32]byte) (*big.Int, error) {
 			diff := new(big.Int)
 
 			parts := strings.Split(file.Name(), "_")
-			if len(parts) != 3 {
+			if len(parts) != 4 {
 				panic("such filename cannot occur")
 			}
 
@@ -120,7 +122,7 @@ func (chain *Blockchain) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 func (s *storefs) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, err
 	}
@@ -128,28 +130,65 @@ func (s *storefs) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 	filename_start := fmt.Sprintf("%x.block", h[:])
 	for _, file := range files {
 		if strings.HasPrefix(file.Name(), filename_start) {
-
-			var diff uint64
-
+			var ssversion uint64
 			parts := strings.Split(file.Name(), "_")
-			if len(parts) != 3 {
+			if len(parts) != 4 {
 				panic("such filename cannot occur")
 			}
-
-			_, err := fmt.Sscan(parts[2], &diff)
+			_, err := fmt.Sscan(parts[2], &ssversion)
 			if err != nil {
 				return 0, err
 			}
-			return diff, nil
+			return ssversion, nil
 		}
 	}
 
 	return 0, os.ErrNotExist
 }
 
-func (s *storefs) WriteBlock(h [32]byte, data []byte, difficulty *big.Int, ss_version uint64) (err error) {
+func (chain *Blockchain) ReadBlockHeight(h [32]byte) (uint64, error) {
+	if heighti, ok := chain.cache_BlockHeight.Get(h); ok {
+		height := heighti.(uint64)
+		return height, nil
+	}
+
+	height, err := chain.Store.Block_tx_store.ReadBlockHeight(h)
+	if err == nil {
+		chain.cache_BlockHeight.Add(h, height)
+	}
+	return height, err
+}
+
+func (s *storefs) ReadBlockHeight(h [32]byte) (uint64, error) {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
-	file := filepath.Join(dir, fmt.Sprintf("%x.block_%s_%d", h[:], difficulty.String(), ss_version))
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, err
+	}
+
+	filename_start := fmt.Sprintf("%x.block", h[:])
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), filename_start) {
+			var height uint64
+			parts := strings.Split(file.Name(), "_")
+			if len(parts) != 4 {
+				panic("such filename cannot occur")
+			}
+			_, err := fmt.Sscan(parts[3], &height)
+			if err != nil {
+				return 0, err
+			}
+			return height, nil
+		}
+	}
+
+	return 0, os.ErrNotExist
+}
+
+func (s *storefs) WriteBlock(h [32]byte, data []byte, difficulty *big.Int, ss_version uint64, height uint64) (err error) {
+	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
+	file := filepath.Join(dir, fmt.Sprintf("%x.block_%s_%d_%d", h[:], difficulty.String(), ss_version, height))
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}

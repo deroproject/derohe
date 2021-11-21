@@ -17,7 +17,6 @@
 package blockchain
 
 import "fmt"
-import "sync"
 import "math/big"
 import "crypto/rand"
 import "path/filepath"
@@ -28,8 +27,6 @@ import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 import "github.com/deroproject/graviton"
-
-import "github.com/hashicorp/golang-lru"
 
 // though these can be done within a single DB, these are separated for completely clarity purposes
 type storage struct {
@@ -98,7 +95,7 @@ func (chain *Blockchain) StoreBlock(bl *block.Block, snapshot_version uint64) {
 
 	chain.Store.Block_tx_store.DeleteBlock(hash) // what should we do on error
 
-	err := chain.Store.Block_tx_store.WriteBlock(hash, serialized_bytes, difficulty_of_current_block, snapshot_version)
+	err := chain.Store.Block_tx_store.WriteBlock(hash, serialized_bytes, difficulty_of_current_block, snapshot_version, bl.Height)
 	if err != nil {
 		panic(fmt.Sprintf("error while writing block"))
 	}
@@ -169,36 +166,27 @@ func (chain *Blockchain) Load_Block_Timestamp(h crypto.Hash) uint64 {
 }
 
 func (chain *Blockchain) Load_Block_Height(h crypto.Hash) (height int64) {
-
 	defer func() {
 		if r := recover(); r != nil {
 			height = -1
 		}
 	}()
 
-	bl, err := chain.Load_BL_FROM_ID(h)
-	if err != nil {
-		panic(err)
+	if heighti, err := chain.ReadBlockHeight(h); err != nil {
+		return -1
+	} else {
+		return int64(heighti)
 	}
-	height = int64(bl.Height)
-
-	return
 }
 func (chain *Blockchain) Load_Height_for_BL_ID(h crypto.Hash) int64 {
 	return chain.Load_Block_Height(h)
 }
 
-var past_cache, _ = lru.New(10240)
-var past_cache_lock sync.Mutex
-
 // all the immediate past of a block
 func (chain *Blockchain) Get_Block_Past(hash crypto.Hash) (blocks []crypto.Hash) {
 
 	//fmt.Printf("loading tips for block %x\n", hash)
-	past_cache_lock.Lock()
-	defer past_cache_lock.Unlock()
-
-	if keysi, ok := past_cache.Get(hash); ok {
+	if keysi, ok := chain.cache_BlockPast.Get(hash); ok {
 		keys := keysi.([]crypto.Hash)
 		blocks = make([]crypto.Hash, len(keys))
 		for i := range keys {
@@ -223,7 +211,7 @@ func (chain *Blockchain) Get_Block_Past(hash crypto.Hash) (blocks []crypto.Hash)
 	}
 
 	//set in cache
-	past_cache.Add(hash, cache_copy)
+	chain.cache_BlockPast.Add(hash, cache_copy)
 
 	return
 }

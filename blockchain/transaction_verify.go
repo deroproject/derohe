@@ -37,74 +37,29 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/cryptography/bn256"
 
-//import "github.com/deroproject/derosuite/emission"
-
 // caches x of transactions validity
 // it is always atomic
-// the cache is not txhash -> validity mapping
-// instead it is txhash+expanded ringmembers
+// the cache is txhash -> validity mapping
 // if the entry exist, the tx is valid
 // it stores special hash and first seen time
-// this can only be used on expanded transactions
 var transaction_valid_cache sync.Map
 
 // this go routine continuously scans and cleans up the cache for expired entries
 func clean_up_valid_cache() {
-
-	for {
-		time.Sleep(3600 * time.Second)
-		current_time := time.Now()
-
-		// track propagation upto 10 minutes
-		transaction_valid_cache.Range(func(k, value interface{}) bool {
-			first_seen := value.(time.Time)
-			if current_time.Sub(first_seen).Round(time.Second).Seconds() > 3600 {
-				transaction_valid_cache.Delete(k)
-			}
-			return true
-		})
-
-	}
+	current_time := time.Now()
+	transaction_valid_cache.Range(func(k, value interface{}) bool {
+		first_seen := value.(time.Time)
+		if current_time.Sub(first_seen).Round(time.Second).Seconds() > 3600 {
+			transaction_valid_cache.Delete(k)
+		}
+		return true
+	})
 }
 
-/* Coinbase transactions need to verify registration
- * */
+// Coinbase transactions need to verify registration
 func (chain *Blockchain) Verify_Transaction_Coinbase(cbl *block.Complete_Block, minertx *transaction.Transaction) (err error) {
-
 	if !minertx.IsCoinbase() { // transaction is not coinbase, return failed
 		return fmt.Errorf("tx is not coinbase")
-	}
-
-	// make sure miner address is registered
-
-	_, topos := chain.Store.Topo_store.binarySearchHeight(int64(cbl.Bl.Height - 1))
-	// load all db versions one by one and check whether the root hash matches the one mentioned in the tx
-	if len(topos) < 1 {
-		return fmt.Errorf("could not find previous height blocks %d", cbl.Bl.Height-1)
-	}
-
-	var balance_tree *graviton.Tree
-	for i := range topos {
-
-		toporecord, err := chain.Store.Topo_store.Read(topos[i])
-		if err != nil {
-			return fmt.Errorf("could not read block at height %d due to error while obtaining toporecord topos %+v processing %d err:%s\n", cbl.Bl.Height-1, topos, i, err)
-		}
-
-		ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
-		if err != nil {
-			return err
-		}
-
-		if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
-			return err
-		}
-
-		if _, err := balance_tree.Get(minertx.MinerAddress[:]); err != nil {
-			return fmt.Errorf("balance not obtained err %s\n", err)
-			//return false
-		}
-
 	}
 
 	return nil // success comes last
@@ -229,7 +184,9 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 		}
 	}
 
-	chain.cache_IsNonceValidTips.Add(tips_string, true) // set in cache
+	if !chain.cache_disabled {
+		chain.cache_IsNonceValidTips.Add(tips_string, true) // set in cache
+	}
 	return nil
 }
 
@@ -271,7 +228,9 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 		}
 
 		if tx.IsRegistrationValid() {
-			transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
+			if !chain.cache_disabled {
+				transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
+			}
 			return nil
 		}
 		return fmt.Errorf("Registration has invalid signature")
@@ -482,7 +441,10 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 
 	// these transactions are done
 	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.SC_TX {
-		transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
+		if !chain.cache_disabled {
+			transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
+		}
+
 		return nil
 	}
 

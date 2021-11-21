@@ -16,23 +16,16 @@
 
 package p2p
 
-//import "fmt"
-
-//import "net"
+import "fmt"
 import "time"
+import "context"
 import "sync/atomic"
-
-//import "container/list"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/transaction"
-
-//import "github.com/deroproject/derohe/cryptography/crypto"
-
-//import "github.com/deroproject/derosuite/blockchain"
 
 // we are expecting other side to have a heavier PoW chain, try to sync now
 func (connection *Connection) sync_chain() {
@@ -75,8 +68,11 @@ try_again:
 	request.Block_list = append(request.Block_list, globals.Config.Genesis_Block_Hash)
 	request.TopoHeights = append(request.TopoHeights, 0)
 	fill_common(&request.Common) // fill common info
-	if err := connection.RConn.Client.Call("Peer.Chain", request, &response); err != nil {
-		connection.logger.V(2).Error(err, "Call failed Chain", err)
+
+	var TimeLimit = 10 * time.Second
+	ctx, _ := context.WithTimeout(context.Background(), TimeLimit)
+	if err := connection.Client.CallWithContext(ctx, "Peer.Chain", request, &response); err != nil {
+		connection.logger.V(2).Error(err, "Call failed Chain")
 		return
 	}
 	// we have a response, see if its valid and try to add to get the blocks
@@ -111,7 +107,7 @@ try_again:
 	connection.logger.V(2).Info("response block list", "count", len(response.Block_list))
 	for i := range response.Block_list {
 		our_topo_order := chain.Load_Block_Topological_order(response.Block_list[i])
-		if our_topo_order != (int64(i)+response.Start_topoheight) || chain.Load_Block_Topological_order(response.Block_list[i]) == -1 { // if block is not in our chain, add it to request list
+		if our_topo_order != (int64(i)+response.Start_topoheight) || our_topo_order == -1 { // if block is not in our chain, add it to request list
 			//queue_block(request.Block_list[i])
 			if max_blocks_to_queue >= 0 {
 				max_blocks_to_queue--
@@ -121,7 +117,8 @@ try_again:
 
 				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
 				fill_common(&orequest.Common)
-				if err := connection.RConn.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {
+				ctx, _ := context.WithTimeout(context.Background(), TimeLimit)
+				if err := connection.Client.CallWithContext(ctx, "Peer.GetObject", orequest, &oresponse); err != nil {
 					connection.logger.V(2).Error(err, "Call failed GetObject")
 					return
 				} else { // process the response
@@ -130,10 +127,10 @@ try_again:
 					}
 				}
 
-				//fmt.Printf("Queuing block %x height %d  %s", response.Block_list[i], response.Start_height+int64(i), connection.logid)
+				//	fmt.Printf("Queuing block %x height %d  %s", response.Block_list[i], response.Start_height+int64(i), connection.logid)
 			}
 		} else {
-			connection.logger.V(3).Info("We must have queued but we skipped it at height", "blid", response.Block_list[i], "height", response.Start_height+int64(i))
+			connection.logger.V(3).Info("We must have queued but we skipped it at height", "blid", fmt.Sprintf("%x", response.Block_list[i]), "height", response.Start_height+int64(i))
 		}
 	}
 

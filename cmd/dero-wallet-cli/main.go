@@ -355,10 +355,9 @@ func main() {
 func update_prompt(l *readline.Instance) {
 
 	last_wallet_height := uint64(0)
-	last_daemon_height := uint64(0)
+	last_daemon_height := int64(0)
 	daemon_online := false
 	last_update_time := int64(0)
-
 	for {
 		time.Sleep(30 * time.Millisecond) // give user a smooth running number
 
@@ -385,7 +384,8 @@ func update_prompt(l *readline.Instance) {
 		}
 
 		if wallet == nil {
-			l.SetPrompt(fmt.Sprintf("\033[1m\033[32m%s \033[0m"+color_green+"0/%d \033[32m>>>\033[0m ", address_trim, 0))
+			l.SetPrompt(fmt.Sprintf("\033[1m\033[32m%s \033[0m"+color_green+"0/%d \033[32m>>>\033[0m ", address_trim, walletapi.Get_Daemon_Height()))
+			l.Refresh()
 			prompt_mutex.Unlock()
 			continue
 		}
@@ -395,7 +395,7 @@ func update_prompt(l *readline.Instance) {
 		_ = daemon_online
 
 		//fmt.Printf("chekcing if update is required\n")
-		if last_wallet_height != wallet.Get_Height() || last_daemon_height != wallet.Get_Daemon_Height() ||
+		if last_wallet_height != wallet.Get_Height() || last_daemon_height != walletapi.Get_Daemon_Height() ||
 			/*daemon_online != wallet.IsDaemonOnlineCached() ||*/ (time.Now().Unix()-last_update_time) >= 1 {
 			// choose color based on urgency
 			color := "\033[32m" // default is green color
@@ -403,7 +403,7 @@ func update_prompt(l *readline.Instance) {
 				color = "\033[33m" // make prompt yellow
 			}
 
-			dheight := wallet.Get_Daemon_Height()
+			//dheight := walletapi.Get_Daemon_Height()
 
 			/*if wallet.IsDaemonOnlineCached() == false {
 				color = "\033[33m" // make prompt yellow
@@ -427,10 +427,10 @@ func update_prompt(l *readline.Instance) {
 				testnet_string = "\033[31m TESTNET"
 			}
 
-			l.SetPrompt(fmt.Sprintf("\033[1m\033[32m%s \033[0m"+color+"%d/%d %s %s\033[32m>>>\033[0m ", address_trim, wallet.Get_Height(), dheight, balance_string, testnet_string))
+			l.SetPrompt(fmt.Sprintf("\033[1m\033[32m%s \033[0m"+color+"%d/%d %s %s\033[32m>>>\033[0m ", address_trim, wallet.Get_Height(), walletapi.Get_Daemon_Height(), balance_string, testnet_string))
 			l.Refresh()
 			last_wallet_height = wallet.Get_Height()
-			last_daemon_height = wallet.Get_Daemon_Height()
+			last_daemon_height = walletapi.Get_Daemon_Height()
 			last_update_time = time.Now().Unix()
 			//daemon_online = wallet.IsDaemonOnlineCached()
 			_ = last_update_time

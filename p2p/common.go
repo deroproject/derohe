@@ -47,8 +47,7 @@ func fill_common_skip_topoheight(common *Common_Struct) {
 
 // update some common properties quickly
 func (connection *Connection) update(common *Common_Struct) {
-	//connection.Lock()
-	//defer connection.Unlock()
+	connection.update_received = time.Now()
 	var hash crypto.Hash
 	atomic.StoreInt64(&connection.Height, common.Height) // satify race detector GOD
 	if common.StableHeight != 0 {

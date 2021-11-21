@@ -80,6 +80,9 @@ func (chain *Blockchain) Verify_MiniBlocks(bl block.Block) (err error) {
 
 	// check whether the genesis blocks are all equal
 	for _, mbl := range bl.MiniBlocks {
+		if !mbl.IsSafe() {
+			return fmt.Errorf("MiniBlock is unsafe")
+		}
 		if mbl.Genesis { // make sure all genesis blocks point to all the actual tips
 
 			if bl.Height != binary.BigEndian.Uint64(mbl.Check[:]) {
@@ -194,7 +197,9 @@ func (chain *Blockchain) Check_Dynamism(mbls []block.MiniBlock) (err error) {
 
 // insert a miniblock to chain and if successfull inserted, notify everyone in need
 func (chain *Blockchain) InsertMiniBlock(mbl block.MiniBlock) (err error, result bool) {
-
+	if !mbl.IsSafe() {
+		return fmt.Errorf("miniblock is unsafe"), false
+	}
 	var miner_hash crypto.Hash
 	copy(miner_hash[:], mbl.KeyHash[:])
 	if !chain.IsAddressHashValid(true, miner_hash) {

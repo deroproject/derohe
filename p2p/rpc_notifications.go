@@ -91,7 +91,7 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 	if dirty { //  request inventory only if we want it
 		var oresponse Objects
 		fill_common(&need.Common) // fill common info
-		if err = c.RConn.Client.Call("Peer.GetObject", need, &oresponse); err != nil {
+		if err = c.Client.Call("Peer.GetObject", need, &oresponse); err != nil {
 			c.logger.V(2).Error(err, "Call failed GetObject", "need_objects", need)
 			c.exit()
 			return
@@ -113,8 +113,8 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err error) {
 	defer handle_connection_panic(c)
 
-	if len(request.MiniBlocks) != 1 {
-		err = fmt.Errorf("Notify Block can notify single block")
+	if len(request.MiniBlocks) >= 5 {
+		err = fmt.Errorf("Notify Block can notify max 5 miniblocks")
 		c.logger.V(3).Error(err, "Should be banned")
 		c.exit()
 		return err
@@ -122,20 +122,20 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 	fill_common_T1(&request.Common)
 	c.update(&request.Common) // update common information
 
-	var mbl_arrays [][]byte
-	if len(c.previous_mbl) > 0 {
-		mbl_arrays = append(mbl_arrays, c.previous_mbl)
-	}
-	mbl_arrays = append(mbl_arrays, request.MiniBlocks...)
+	var mbls []block.MiniBlock
 
-	for i := range mbl_arrays {
+	for i := range request.MiniBlocks {
 		var mbl block.MiniBlock
-		var ok bool
-
-		if err = mbl.Deserialize(mbl_arrays[i]); err != nil {
+		if err = mbl.Deserialize(request.MiniBlocks[i]); err != nil {
 			return err
 		}
+		mbls = append(mbls, mbl)
+	}
 
+	var valid_found bool
+
+	for _, mbl := range mbls {
+		var ok bool
 		if mbl.Timestamp > uint64(globals.Time().UTC().UnixMilli())+50 { // 50 ms passing allowed
 			return errormsg.ErrInvalidTimestamp
 		}
@@ -153,8 +153,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 
 		// first check whether the incoming minblock can be added to sub chains
 		if !chain.MiniBlocks.IsConnected(mbl) {
-			c.previous_mbl = mbl.Serialize()
-			c.logger.V(3).Error(err, "Disconnected miniblock","mbl",mbl.String())
+			c.logger.V(3).Error(err, "Disconnected miniblock", "mbl", mbl.String())
 			//return fmt.Errorf("Disconnected miniblock")
 			continue
 		}
@@ -213,8 +212,12 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 		if err, ok = chain.InsertMiniBlock(mbl); !ok {
 			return err
 		} else { // rebroadcast miniblock
-			defer broadcast_MiniBlock(mbl, c.Peer_ID, request.Sent) // do not send back to the original peer
+			valid_found = true
 		}
+	}
+	if valid_found {
+		Peer_SetSuccess(c.Addr.String())
+		broadcast_MiniBlock(mbls, c.Peer_ID, request.Sent) // do not send back to the original peer
 	}
 	fill_common(&response.Common)                         // fill common info
 	fill_common_T0T1T2(&request.Common, &response.Common) // fill time related information

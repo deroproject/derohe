@@ -29,6 +29,7 @@ import "net/http"
 import "path/filepath"
 import "github.com/go-logr/logr"
 import "github.com/VictoriaMetrics/metrics"
+import "github.com/xtaci/kcp-go/v5"
 
 // these are exported by the daemon for various analysis
 var Version string //this is later converted to metrics format
@@ -60,6 +61,33 @@ func writePrometheusMetrics(w io.Writer) {
 
 	usage := NewDiskUsage(".")
 	fmt.Fprintf(w, "free_disk_space_bytes %d\n", usage.Available())
+
+	// write kcp metrics, see https://github.com/xtaci/kcp-go/blob/v5.4.20/snmp.go#L9
+	fmt.Fprintf(w, "KCP_BytesSent %d\n", kcp.DefaultSnmp.BytesSent)
+	fmt.Fprintf(w, "KCP_BytesReceived %d\n", kcp.DefaultSnmp.BytesReceived)
+	fmt.Fprintf(w, "KCP_MaxConn %d\n", kcp.DefaultSnmp.MaxConn)
+	fmt.Fprintf(w, "KCP_ActiveOpens %d\n", kcp.DefaultSnmp.ActiveOpens)
+	fmt.Fprintf(w, "KCP_PassiveOpens %d\n", kcp.DefaultSnmp.PassiveOpens)
+	fmt.Fprintf(w, "KCP_CurrEstab %d\n", kcp.DefaultSnmp.CurrEstab)
+	fmt.Fprintf(w, "KCP_InErrs %d\n", kcp.DefaultSnmp.InErrs)
+	fmt.Fprintf(w, "KCP_InCsumErrors %d\n", kcp.DefaultSnmp.InCsumErrors)
+	fmt.Fprintf(w, "KCP_KCPInErrors %d\n", kcp.DefaultSnmp.KCPInErrors)
+	fmt.Fprintf(w, "KCP_InPkts %d\n", kcp.DefaultSnmp.InPkts)
+	fmt.Fprintf(w, "KCP_OutPkts %d\n", kcp.DefaultSnmp.OutPkts)
+	fmt.Fprintf(w, "KCP_InSegs %d\n", kcp.DefaultSnmp.InSegs)
+	fmt.Fprintf(w, "KCP_OutSegs %d\n", kcp.DefaultSnmp.OutSegs)
+	fmt.Fprintf(w, "KCP_InBytes %d\n", kcp.DefaultSnmp.InBytes)
+	fmt.Fprintf(w, "KCP_OutBytes %d\n", kcp.DefaultSnmp.OutBytes)
+	fmt.Fprintf(w, "KCP_RetransSegs %d\n", kcp.DefaultSnmp.RetransSegs)
+	fmt.Fprintf(w, "KCP_FastRetransSegs %d\n", kcp.DefaultSnmp.FastRetransSegs)
+	fmt.Fprintf(w, "KCP_EarlyRetransSegs %d\n", kcp.DefaultSnmp.EarlyRetransSegs)
+	fmt.Fprintf(w, "KCP_LostSegs %d\n", kcp.DefaultSnmp.LostSegs)
+	fmt.Fprintf(w, "KCP_RepeatSegs %d\n", kcp.DefaultSnmp.RepeatSegs)
+	fmt.Fprintf(w, "KCP_FECRecovered %d\n", kcp.DefaultSnmp.FECRecovered)
+	fmt.Fprintf(w, "KCP_FECErrs %d\n", kcp.DefaultSnmp.FECErrs)
+	fmt.Fprintf(w, "KCP_FECParityShards %d\n", kcp.DefaultSnmp.FECParityShards)
+	fmt.Fprintf(w, "KCP_FECShortShards %d\n", kcp.DefaultSnmp.FECShortShards)
+
 }
 
 func Dump_metrics_data_directly(logger logr.Logger, specificnamei interface{}) {

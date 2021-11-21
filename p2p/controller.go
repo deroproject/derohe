@@ -16,17 +16,18 @@
 
 package p2p
 
-//import "os"
 import "fmt"
 import "net"
-import "net/rpc"
+
+//import "net/url"
 import "time"
 import "sort"
+import "sync"
 import "strings"
 import "math/big"
 import "strconv"
 
-//import "crypto/rsa"
+import "crypto/sha1"
 import "crypto/ecdsa"
 import "crypto/elliptic"
 
@@ -44,6 +45,14 @@ import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/metrics"
 import "github.com/deroproject/derohe/blockchain"
 
+import "github.com/xtaci/kcp-go/v5"
+import "golang.org/x/crypto/pbkdf2"
+import "golang.org/x/time/rate"
+
+import "github.com/cenkalti/rpc2"
+
+//import "github.com/txthinking/socks5"
+
 var chain *blockchain.Blockchain // external reference to chain
 
 var P2P_Port int // this will be exported while doing handshake
@@ -57,6 +66,28 @@ var nonbanlist []string // any ips in this list will never be banned
 // the list will include seed nodes, any nodes provided at command prompt
 
 var ClockOffset time.Duration //Clock Offset related to all the peer2 connected
+
+// also backoff is used if we have initiated a connect we will not connect to it again for another 10 secs
+var backoff = map[string]int64{} // if server receives a connection, then it will not initiate connection to that ip for another 60 secs
+var backoff_mutex = sync.Mutex{}
+
+// return true if we should back off else we can connect
+func shouldwebackoff(ip string) bool {
+	backoff_mutex.Lock()
+	defer backoff_mutex.Unlock()
+
+	now := time.Now().Unix()
+	for k, v := range backoff { // random backing off
+		if v < now {
+			delete(backoff, k)
+		}
+	}
+
+	if backoff[ip] != 0 { // now lets do the test
+		return true
+	}
+	return false
+}
 
 // Initialize P2P subsystem
 func P2P_Init(params map[string]interface{}) error {
@@ -105,11 +136,13 @@ func P2P_Init(params map[string]interface{}) error {
 		}
 	}
 
-	go P2P_Server_v2()      // start accepting connections
-	go P2P_engine()         // start outgoing engine
-	go syncroniser()        // start sync engine
-	go chunks_clean_up()    // clean up chunks
-	go ping_loop()          // ping loop
+	go P2P_Server_v2()                                          // start accepting connections
+	go P2P_engine()                                             // start outgoing engine
+	globals.Cron.AddFunc("@every 2s", syncroniser)              // start sync engine
+	globals.Cron.AddFunc("@every 5s", Connection_Pending_Clear) // clean dead connections
+	globals.Cron.AddFunc("@every 10s", ping_loop)               // ping every one
+	globals.Cron.AddFunc("@every 10s", chunks_clean_up)         // clean chunks
+
 	go time_check_routine() // check whether server time is in sync using ntp
 
 	metrics.Set.NewGauge("p2p_peer_count", func() float64 { // set a new gauge
@@ -215,52 +248,109 @@ func P2P_engine() {
 
 }
 
+func tunekcp(conn *kcp.UDPSession) {
+	conn.SetACKNoDelay(true)
+	conn.SetNoDelay(1, 10, 2, 1) // tuning paramters for local stack
+}
+
 // will try to connect with given endpoint
 // will block until the connection dies or is killed
 func connect_with_endpoint(endpoint string, sync_node bool) {
 
 	defer globals.Recover(2)
 
-	remote_ip, err := net.ResolveTCPAddr("tcp", endpoint)
+	remote_ip, err := net.ResolveUDPAddr("udp", endpoint)
 	if err != nil {
 		logger.V(3).Error(err, "Resolve address failed:", "endpoint", endpoint)
 		return
 	}
 
+	if IsAddressInBanList(ParseIPNoError(remote_ip.IP.String())) {
+		logger.V(2).Info("Connecting to banned IP is prohibited", "IP", remote_ip.IP.String())
+		return
+	}
+
 	// check whether are already connected to this address if yes, return
-	if IsAddressConnected(remote_ip.String()) {
+	if IsAddressConnected(ParseIPNoError(remote_ip.String())) {
+		logger.V(4).Info("outgoing address is already connected", "ip", remote_ip.String())
 		return //nil, fmt.Errorf("Already connected")
 	}
 
-	// since we may be connecting through socks, grab the remote ip for our purpose rightnow
-	conn, err := globals.Dialer.Dial("tcp", remote_ip.String())
-
-	//conn, err := tls.DialWithDialer(&globals.Dialer, "tcp", remote_ip.String(),&tls.Config{InsecureSkipVerify: true})
-	//conn, err := tls.Dial("tcp", remote_ip.String(),&tls.Config{InsecureSkipVerify: true})
-	if err != nil {
-		logger.V(3).Error(err, "Dial failed", "endpoint", endpoint)
-		Peer_SetFail(remote_ip.String()) // update peer list as we see
-		return                           //nil, fmt.Errorf("Dial failed err %s", err.Error())
+	if shouldwebackoff(ParseIPNoError(remote_ip.String())) {
+		logger.V(1).Info("backing off from this connection", "ip", remote_ip.String())
+		return
+	} else {
+		backoff_mutex.Lock()
+		backoff[ParseIPNoError(remote_ip.String())] = time.Now().Unix() + 10
+		backoff_mutex.Unlock()
 	}
 
-	tcpc := conn.(*net.TCPConn)
-	// detection time: tcp_keepalive_time + tcp_keepalive_probes + tcp_keepalive_intvl
-	// default on linux:  30 + 8 * 30
-	// default on osx:    30 + 8 * 75
-	tcpc.SetKeepAlive(true)
-	tcpc.SetKeepAlivePeriod(8 * time.Second)
-	tcpc.SetLinger(0) // discard any pending data
+	var masterkey = pbkdf2.Key(globals.Config.Network_ID.Bytes(), globals.Config.Network_ID.Bytes(), 1024, 32, sha1.New)
+	var blockcipher, _ = kcp.NewAESBlockCrypt(masterkey)
 
-	//conn.SetKeepAlive(true) // set keep alive true
-	//conn.SetKeepAlivePeriod(10*time.Second) // keep alive every 10 secs
+	var conn *kcp.UDPSession
 
-	// upgrade connection TO TLS ( tls.Dial does NOT support proxy)
+	// since we may be connecting through socks, grab the remote ip for our purpose rightnow
+	//conn, err := globals.Dialer.Dial("tcp", remote_ip.String())
+	if globals.Arguments["--socks-proxy"] == nil {
+		conn, err = kcp.DialWithOptions(remote_ip.String(), blockcipher, 10, 3)
+	} else { // we must move through a socks 5 UDP ASSOCIATE supporting proxy, ssh implementation is partial
+		err = fmt.Errorf("socks proxying is not supported")
+		logger.V(0).Error(err, "Not suported", "server", globals.Arguments["--socks-proxy"])
+		return
+		/*uri, err := url.Parse("socks5://" + globals.Arguments["--socks-proxy"].(string)) // "socks5://demo:demo@192.168.99.100:1080"
+		if err != nil {
+			logger.V(0).Error(err, "Error parsing socks proxy", "server", globals.Arguments["--socks-proxy"])
+			return
+		}
+		_ = uri
+		sserver := uri.Host
+		if uri.Port() != "" {
+
+			host, _, err := net.SplitHostPort(uri.Host)
+			if err != nil {
+				logger.V(0).Error(err, "Error parsing socks proxy", "server", globals.Arguments["--socks-proxy"])
+				return
+			}
+			sserver = host  + ":"+ uri.Port()
+		}
+
+		fmt.Printf("sserver %s   host %s port %s\n", sserver, uri.Host, uri.Port())
+		username := ""
+		password := ""
+		if uri.User != nil {
+			username = uri.User.Username()
+			password,_ = uri.User.Password()
+		}
+		tcpTimeout := 10
+		udpTimeout := 10
+		c, err := socks5.NewClient(sserver, username, password, tcpTimeout, udpTimeout)
+		if err != nil {
+			logger.V(0).Error(err, "Error connecting to socks proxy", "server", globals.Arguments["--socks-proxy"])
+			return
+		}
+		udpconn, err := c.Dial("udp", remote_ip.String())
+		if err != nil {
+			logger.V(0).Error(err, "Error connecting to remote host using socks proxy", "socks", globals.Arguments["--socks-proxy"],"remote",remote_ip.String())
+			return
+		}
+		conn,err = kcp.NewConn(remote_ip.String(),blockcipher,10,3,udpconn)
+		*/
+	}
+
+	if err != nil {
+		logger.V(3).Error(err, "Dial failed", "endpoint", endpoint)
+		Peer_SetFail(ParseIPNoError(remote_ip.String())) // update peer list as we see
+		conn.Close()
+		return //nil, fmt.Errorf("Dial failed err %s", err.Error())
+	}
+
+	tunekcp(conn) // set tunings for low latency
+
 	// TODO we need to choose fastest cipher here ( so both clients/servers are not loaded)
-	conn = tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+	conntls := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+	process_outgoing_connection(conn, conntls, remote_ip, false, sync_node)
 
-	process_connection(conn, remote_ip, false, sync_node)
-
-	//Handle_Connection(conn, remote_ip, false, sync_node) // handle  connection
 }
 
 // maintains a persistant connection to endpoint
@@ -322,7 +412,7 @@ func maintain_connection_to_peers() {
 		logger.Info("Min outgoing peers", "min-peers", Min_Peers)
 	}
 
-	delay := time.NewTicker(time.Second)
+	delay := time.NewTicker(200 * time.Millisecond)
 
 	for {
 		select {
@@ -339,13 +429,15 @@ func maintain_connection_to_peers() {
 		}
 
 		peer := find_peer_to_connect(1)
-		if peer != nil {
+		if peer != nil && !IsAddressConnected(ParseIPNoError(peer.Address)) {
 			go connect_with_endpoint(peer.Address, false)
 		}
 	}
 }
 
 func P2P_Server_v2() {
+
+	var accept_limiter = rate.NewLimiter(10.0, 40) // 10 incoming per sec, burst of 40 is okay
 
 	default_address := "0.0.0.0:0" // be default choose a random port
 	if _, ok := globals.Arguments["--p2p-bind"]; ok && globals.Arguments["--p2p-bind"] != nil {
@@ -363,115 +455,193 @@ func P2P_Server_v2() {
 		}
 	}
 
+	srv := rpc2.NewServer()
+	srv.OnConnect(func(c *rpc2.Client) {
+		remote_addr_interface, _ := c.State.Get("addr")
+		remote_addr := remote_addr_interface.(net.Addr)
+
+		conn_interface, _ := c.State.Get("conn")
+		conn := conn_interface.(net.Conn)
+
+		tlsconn_interface, _ := c.State.Get("tlsconn")
+		tlsconn := tlsconn_interface.(net.Conn)
+
+		connection := &Connection{Client: c, Conn: conn, ConnTls: tlsconn, Addr: remote_addr, State: HANDSHAKE_PENDING, Incoming: true}
+		connection.logger = logger.WithName("incoming").WithName(remote_addr.String())
+
+		c.State.Set("c", connection) // set pointer to connection
+
+		//connection.logger.Info("connected  OnConnect")
+		go func() {
+			time.Sleep(2 * time.Second)
+			connection.dispatch_test_handshake()
+		}()
+
+	})
+
+	set_handlers(srv)
+
 	tlsconfig := &tls.Config{Certificates: []tls.Certificate{generate_random_tls_cert()}}
 	//l, err := tls.Listen("tcp", default_address, tlsconfig) // listen as TLS server
 
+	_ = tlsconfig
+
+	var masterkey = pbkdf2.Key(globals.Config.Network_ID.Bytes(), globals.Config.Network_ID.Bytes(), 1024, 32, sha1.New)
+	var blockcipher, _ = kcp.NewAESBlockCrypt(masterkey)
+
 	// listen to incoming tcp connections tls style
-	l, err := net.Listen("tcp", default_address) // listen as simple TCP server
+	l, err := kcp.ListenWithOptions(default_address, blockcipher, 10, 3)
 	if err != nil {
 		logger.Error(err, "Could not listen", "address", default_address)
 		return
 	}
 	defer l.Close()
-	P2P_Port = int(l.Addr().(*net.TCPAddr).Port)
+
+	_, P2P_Port_str, _ := net.SplitHostPort(l.Addr().String())
+	P2P_Port, _ = strconv.Atoi(P2P_Port_str)
 
 	logger.Info("P2P is listening", "address", l.Addr().String())
 
-	// p2p is shutting down, close the listening socket
-	go func() { <-Exit_Event; l.Close() }()
-
 	// A common pattern is to start a loop to continously accept connections
 	for {
-		conn, err := l.Accept() //accept connections using Listener.Accept()
+		conn, err := l.AcceptKCP() //accept connections using Listener.Accept()
 		if err != nil {
 			select {
 			case <-Exit_Event:
+				l.Close() // p2p is shutting down, close the listening socket
 				return
 			default:
 			}
-			logger.Error(err, "Err while accepting incoming connection")
+			logger.V(1).Error(err, "Err while accepting incoming connection")
 			continue
 		}
-		raddr := conn.RemoteAddr().(*net.TCPAddr)
 
-		//if incoming IP is banned, disconnect now
-		if IsAddressInBanList(raddr.IP.String()) {
-			logger.Info("Incoming IP is banned, disconnecting now", "IP", raddr.IP.String())
+		if !accept_limiter.Allow() { // if rate limiter allows, then only add else drop the connection
 			conn.Close()
-		} else {
-
-			tcpc := conn.(*net.TCPConn)
-			// detection time: tcp_keepalive_time + tcp_keepalive_probes + tcp_keepalive_intvl
-			// default on linux:  30 + 8 * 30
-			// default on osx:    30 + 8 * 75
-			tcpc.SetKeepAlive(true)
-			tcpc.SetKeepAlivePeriod(8 * time.Second)
-			tcpc.SetLinger(0) // discard any pending data
-
-			tlsconn := tls.Server(conn, tlsconfig)
-			go process_connection(tlsconn, raddr, true, false) // handle connection in a different go routine
+			continue
 		}
+
+		raddr := conn.RemoteAddr().(*net.UDPAddr)
+
+		backoff_mutex.Lock()
+		backoff[ParseIPNoError(raddr.String())] = time.Now().Unix() + globals.Global_Random.Int63n(200) // random backing of upto 200 secs
+		backoff_mutex.Unlock()
+
+		logger.V(3).Info("accepting incoming connection", "raddr", raddr.String())
+
+		if IsAddressConnected(ParseIPNoError(raddr.String())) {
+			logger.V(4).Info("incoming address is already connected", "ip", raddr.String())
+			conn.Close()
+
+		} else if IsAddressInBanList(ParseIPNoError(raddr.IP.String())) { //if incoming IP is banned, disconnect now
+			logger.V(2).Info("Incoming IP is banned, disconnecting now", "IP", raddr.IP.String())
+			conn.Close()
+		}
+
+		tunekcp(conn) // tuning paramters for local stack
+		tlsconn := tls.Server(conn, tlsconfig)
+		state := rpc2.NewState()
+		state.Set("addr", raddr)
+		state.Set("conn", conn)
+		state.Set("tlsconn", tlsconn)
+
+		go srv.ServeCodecWithState(NewCBORCodec(tlsconn), state)
+
 	}
 
 }
 
 func handle_connection_panic(c *Connection) {
+	defer globals.Recover(2)
 	if r := recover(); r != nil {
 		logger.V(2).Error(nil, "Recovered while handling connection", "r", r, "stack", debug.Stack())
 		c.exit()
 	}
 }
 
-func process_connection(conn net.Conn, remote_addr *net.TCPAddr, incoming, sync_node bool) {
-	defer globals.Recover(2)
+func set_handler(base interface{}, methodname string, handler interface{}) {
+	switch o := base.(type) {
+	case *rpc2.Client:
+		o.Handle(methodname, handler)
+		//fmt.Printf("setting client handler %s\n", methodname)
+	case *rpc2.Server:
+		o.Handle(methodname, handler)
+		//fmt.Printf("setting server handler %s\n", methodname)
+	default:
+		panic(fmt.Sprintf("object cannot handle such handler %T", base))
 
-	var rconn *RPC_Connection
-	var err error
-	if incoming {
-		rconn, err = wait_stream_creation_server_side(conn) // do server side processing
+	}
+}
+
+func getc(client *rpc2.Client) *Connection {
+	if ci, found := client.State.Get("c"); found {
+		return ci.(*Connection)
 	} else {
-		rconn, err = stream_creation_client_side(conn) // do client side processing
+		panic("no connection attached")
+		return nil
 	}
-	if err == nil {
+}
 
-		var RPCSERVER = rpc.NewServer()
-		c := &Connection{RConn: rconn, Addr: remote_addr, State: HANDSHAKE_PENDING, Incoming: incoming, SyncNode: sync_node}
-		RPCSERVER.RegisterName("Peer", c) // register the handlers
+// we need the following RPCS to work
+func set_handlers(o interface{}) {
+	set_handler(o, "Peer.Handshake", func(client *rpc2.Client, args Handshake_Struct, reply *Handshake_Struct) error {
+		return getc(client).Handshake(args, reply)
+	})
+	set_handler(o, "Peer.Chain", func(client *rpc2.Client, args Chain_Request_Struct, reply *Chain_Response_Struct) error {
+		return getc(client).Chain(args, reply)
+	})
+	set_handler(o, "Peer.ChangeSet", func(client *rpc2.Client, args ChangeList, reply *Changes) error {
+		return getc(client).ChangeSet(args, reply)
+	})
+	set_handler(o, "Peer.NotifyINV", func(client *rpc2.Client, args ObjectList, reply *Dummy) error {
+		return getc(client).NotifyINV(args, reply)
+	})
+	set_handler(o, "Peer.GetObject", func(client *rpc2.Client, args ObjectList, reply *Objects) error {
+		return getc(client).GetObject(args, reply)
+	})
+	set_handler(o, "Peer.TreeSection", func(client *rpc2.Client, args Request_Tree_Section_Struct, reply *Response_Tree_Section_Struct) error {
+		return getc(client).TreeSection(args, reply)
+	})
+	set_handler(o, "Peer.NotifyMiniBlock", func(client *rpc2.Client, args Objects, reply *Dummy) error {
+		return getc(client).NotifyMiniBlock(args, reply)
+	})
+	set_handler(o, "Peer.Ping", func(client *rpc2.Client, args Dummy, reply *Dummy) error {
+		return getc(client).Ping(args, reply)
+	})
 
-		if incoming {
-			c.logger = logger.WithName("incoming").WithName(remote_addr.String())
-		} else {
-			c.logger = logger.WithName("outgoing").WithName(remote_addr.String())
-		}
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					logger.V(1).Error(nil, "Recovered while handling connection", "r", r, "stack", debug.Stack())
-					conn.Close()
-				}
-			}()
-			//RPCSERVER.ServeConn(rconn.ServerConn)                      // start single threaded rpc server with GOB encoding
-			RPCSERVER.ServeCodec(NewCBORServerCodec(rconn.ServerConn)) // use CBOR encoding on rpc
-		}()
+}
 
+func process_outgoing_connection(conn net.Conn, tlsconn net.Conn, remote_addr net.Addr, incoming, sync_node bool) {
+	defer globals.Recover(0)
+
+	client := rpc2.NewClientWithCodec(NewCBORCodec(tlsconn))
+
+	c := &Connection{Client: client, Conn: conn, ConnTls: tlsconn, Addr: remote_addr, State: HANDSHAKE_PENDING, Incoming: incoming, SyncNode: sync_node}
+	defer c.exit()
+	c.logger = logger.WithName("outgoing").WithName(remote_addr.String())
+	set_handlers(client)
+
+	client.State = rpc2.NewState()
+	client.State.Set("c", c)
+
+	go func() {
+		time.Sleep(2 * time.Second)
 		c.dispatch_test_handshake()
+	}()
 
-		<-rconn.Session.CloseChan()
-		Connection_Delete(c)
-		//fmt.Printf("closing connection status err: %s\n",err)
-	}
-	conn.Close()
+	//	c.logger.V(4).Info("client running loop")
+	client.Run() // see the original
 
+	c.logger.V(4).Info("process_connection finished")
 }
 
 // shutdown the p2p component
 func P2P_Shutdown() {
-	close(Exit_Event) // send signal to all connections to exit
-	save_peer_list()  // save peer list
-	save_ban_list()   // save ban list
+	//close(Exit_Event) // send signal to all connections to exit
+	save_peer_list() // save peer list
+	save_ban_list()  // save ban list
 
 	// TODO we  must wait for connections to kill themselves
-	time.Sleep(1 * time.Second)
 	logger.Info("P2P Shutdown")
 	atomic.AddUint32(&globals.Subsystem_Active, ^uint32(0)) // this decrement 1 fom subsystem
 
@@ -538,28 +708,21 @@ func generate_random_tls_cert() tls.Certificate {
 	return tlsCert
 }
 
-/*
-// register all the handlers
-func register_handlers(){
-    arpc.DefaultHandler.Handle("/handshake",Handshake_Handler)
-    arpc.DefaultHandler.Handle("/active",func (ctx *arpc.Context) { // set the connection active
-    if c,ok := ctx.Client.Get("connection");ok {
-        connection := c.(*Connection)
-        atomic.StoreUint32(&connection.State, ACTIVE)
-       }} )
+func ParseIP(s string) (string, error) {
+	ip, _, err := net.SplitHostPort(s)
+	if err == nil {
+		return ip, nil
+	}
 
-    arpc.DefaultHandler.HandleConnected(OnConnected_Handler) // all incoming connections will first processed here
-arpc.DefaultHandler.HandleDisconnected(OnDisconnected_Handler) // all disconnected
+	ip2 := net.ParseIP(s)
+	if ip2 == nil {
+		return "", fmt.Errorf("invalid IP")
+	}
+
+	return ip2.String(), nil
 }
 
-
-
-// triggers when new clients connect and
-func OnConnected_Handler(c *arpc.Client){
-    dispatch_test_handshake(c, c.Conn.RemoteAddr().(*net.TCPAddr) ,true,false) // client connected we must handshake
+func ParseIPNoError(s string) string {
+	ip, _ := ParseIP(s)
+	return ip
 }
-
-func OnDisconnected_Handler(c *arpc.Client){
-    c.Stop()
-}
-*/

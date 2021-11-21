@@ -17,12 +17,12 @@
 package p2p
 
 import "fmt"
+import "net"
 import "bytes"
+import "context"
 
 import "sync/atomic"
 import "time"
-
-import "github.com/paulbellamy/ratecounter"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
@@ -56,7 +56,9 @@ func (connection *Connection) dispatch_test_handshake() {
 	var request, response Handshake_Struct
 	request.Fill()
 
-	if err := connection.RConn.Client.Call("Peer.Handshake", request, &response); err != nil {
+	ctx, _ := context.WithTimeout(context.Background(), 4*time.Second)
+	if err := connection.Client.CallWithContext(ctx, "Peer.Handshake", request, &response); err != nil {
+		connection.logger.V(2).Error(err, "cannot handshake")
 		connection.exit()
 		return
 	}
@@ -66,15 +68,10 @@ func (connection *Connection) dispatch_test_handshake() {
 		connection.exit()
 		return
 	}
-
-	connection.request_time.Store(time.Now())
-	connection.SpeedIn = ratecounter.NewRateCounter(60 * time.Second)
-	connection.SpeedOut = ratecounter.NewRateCounter(60 * time.Second)
-
 	connection.update(&response.Common) // update common information
-
-	if !connection.Incoming { // setup success
-		Peer_SetSuccess(connection.Addr.String())
+	if !Connection_Add(connection) {    // add connection to pool
+		connection.exit()
+		return
 	}
 
 	if len(response.ProtocolVersion) < 128 {
@@ -98,24 +95,15 @@ func (connection *Connection) dispatch_test_handshake() {
 	if connection.Port != 0 && connection.Port <= 65535 { // peer is saying it has an open port, handshake is success so add peer
 
 		var p Peer
-		if connection.Addr.IP.To4() != nil { // if ipv4
-			p.Address = fmt.Sprintf("%s:%d", connection.Addr.IP.String(), connection.Port)
+		if net.ParseIP(Address(connection)).To4() != nil { // if ipv4
+			p.Address = fmt.Sprintf("%s:%d", Address(connection), connection.Port)
 		} else { // if ipv6
-			p.Address = fmt.Sprintf("[%s]:%d", connection.Addr.IP.String(), connection.Port)
+			p.Address = fmt.Sprintf("[%s]:%d", Address(connection), connection.Port)
 		}
 		p.ID = connection.Peer_ID
 
 		p.LastConnected = uint64(time.Now().UTC().Unix())
 
-		// TODO we should add any flags here if necessary, but they are not
-		//  required, since a peer can only be used if connected and if connected
-		//  we already have a truly synced view
-		for _, k := range response.Flags {
-			switch k {
-			//case FLAG_MINER:p.Miner = true
-			default:
-			}
-		}
 		Peer_Add(&p)
 	}
 
@@ -127,25 +115,7 @@ func (connection *Connection) dispatch_test_handshake() {
 		}
 	}
 
-	Connection_Add(connection) // add connection to pool
-
-	// mark active
-	var r Dummy
-	fill_common(&r.Common) // fill common info
-	if err := connection.RConn.Client.Call("Peer.Active", r, &r); err != nil {
-		connection.exit()
-		return
-	}
-
-}
-
-// mark connection active
-func (c *Connection) Active(req Dummy, dummy *Dummy) error {
-	defer handle_connection_panic(c)
-	c.update(&req.Common) // update common information
-	atomic.StoreUint32(&c.State, ACTIVE)
-	fill_common(&dummy.Common) // fill common info
-	return nil
+	atomic.StoreUint32(&connection.State, ACTIVE)
 }
 
 // used to ping pong

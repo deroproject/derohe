@@ -4,30 +4,30 @@ package p2p
 import "fmt"
 import "io"
 import "net"
-import "net/rpc"
-import "bufio"
+import "sync"
+import "time"
+import "github.com/cenkalti/rpc2"
 import "encoding/binary"
 import "github.com/fxamacker/cbor/v2"
 
 import "github.com/deroproject/derohe/config" // only used get constants such as max data per frame
 
-// used to represent net/rpc structs
-type Request struct {
-	ServiceMethod string `cbor:"M"` // format: "Service.Method"
-	Seq           uint64 `cbor:"S"` // sequence number chosen by client
+//  it processes both
+type RequestResponse struct {
+	Method string `cbor:"M"` // format: "Service.Method"
+	Seq    uint64 `cbor:"S"` // echoes that of the request
+	Error  string `cbor:"E"` // error, if any.
 }
 
-type Response struct {
-	ServiceMethod string `cbor:"M"` // echoes that of the Request
-	Seq           uint64 `cbor:"S"` // echoes that of the request
-	Error         string `cbor:"E"` // error, if any.
-}
+const READ_TIMEOUT = 20 * time.Second
+const WRITE_TIMEOUT = 20 * time.Second
 
 // reads our data, length prefix blocks
-func Read_Data_Frame(r io.Reader, obj interface{}) error {
+func Read_Data_Frame(r net.Conn, obj interface{}) error {
 	var frame_length_buf [4]byte
 
 	//connection.set_timeout()
+	r.SetReadDeadline(time.Now().Add(READ_TIMEOUT))
 	nbyte, err := io.ReadFull(r, frame_length_buf[:])
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func Read_Data_Frame(r io.Reader, obj interface{}) error {
 }
 
 // reads our data, length prefix blocks
-func Write_Data_Frame(w io.Writer, obj interface{}) error {
+func Write_Data_Frame(w net.Conn, obj interface{}) error {
 	var frame_length_buf [4]byte
 	data_bytes, err := cbor.Marshal(obj)
 	if err != nil {
@@ -66,6 +66,7 @@ func Write_Data_Frame(w io.Writer, obj interface{}) error {
 	}
 	binary.LittleEndian.PutUint32(frame_length_buf[:], uint32(len(data_bytes)))
 
+	w.SetWriteDeadline(time.Now().Add(WRITE_TIMEOUT))
 	if _, err = w.Write(frame_length_buf[:]); err != nil {
 		return err
 	}
@@ -76,52 +77,66 @@ func Write_Data_Frame(w io.Writer, obj interface{}) error {
 
 // ClientCodec implements the rpc.ClientCodec interface for generic golang objects.
 type ClientCodec struct {
-	r *bufio.Reader
-	w io.WriteCloser
+	r net.Conn
+	sync.Mutex
 }
-
-// ServerCodec implements the rpc.ServerCodec interface for generic protobufs.
-type ServerCodec ClientCodec
 
 // NewClientCodec returns a ClientCodec for communicating with the ServerCodec
 // on the other end of the conn.
-func NewCBORClientCodec(conn net.Conn) *ClientCodec {
-	return &ClientCodec{bufio.NewReader(conn), conn}
-}
-
-// NewServerCodec returns a ServerCodec that communicates with the ClientCodec
-// on the other end of the given conn.
-func NewCBORServerCodec(conn net.Conn) *ServerCodec {
-	return &ServerCodec{bufio.NewReader(conn), conn}
-}
-
-// WriteRequest writes the 4 byte length from the connection and encodes that many
-// subsequent bytes into the given object.
-func (c *ClientCodec) WriteRequest(req *rpc.Request, obj interface{}) error {
-	// Write the header
-	header := Request{ServiceMethod: req.ServiceMethod, Seq: req.Seq}
-	if err := Write_Data_Frame(c.w, header); err != nil {
-		return err
-	}
-	return Write_Data_Frame(c.w, obj)
+// to support deadlines we use net.conn
+func NewCBORCodec(conn net.Conn) *ClientCodec {
+	return &ClientCodec{r: conn}
 }
 
 // ReadResponseHeader reads a 4 byte length from the connection and decodes that many
 // subsequent bytes into the given object, decodes it, and stores the fields
 // in the given request.
-func (c *ClientCodec) ReadResponseHeader(resp *rpc.Response) error {
-	var header Response
+func (c *ClientCodec) ReadResponseHeader(resp *rpc2.Response) error {
+	var header RequestResponse
 	if err := Read_Data_Frame(c.r, &header); err != nil {
 		return err
 	}
-	if header.ServiceMethod == "" {
-		return fmt.Errorf("header missing method: %s", "no ServiceMethod")
-	}
-	resp.ServiceMethod = header.ServiceMethod
+	//if header.Method == "" {
+	//	return fmt.Errorf("header missing method: %s", "no Method")
+	//}
+	//resp.Method = header.Method
 	resp.Seq = header.Seq
 	resp.Error = header.Error
 
 	return nil
+}
+
+// Close closes the underlying connection.
+func (c *ClientCodec) Close() error {
+	return c.r.Close()
+}
+
+// ReadRequestHeader reads the header (which is prefixed by a 4 byte lil endian length
+// indicating its size) from the connection, decodes it, and stores the fields
+// in the given request.
+func (s *ClientCodec) ReadHeader(req *rpc2.Request, resp *rpc2.Response) error {
+	var header RequestResponse
+	if err := Read_Data_Frame(s.r, &header); err != nil {
+		return err
+	}
+
+	if header.Method != "" {
+		req.Seq = header.Seq
+		req.Method = header.Method
+	} else {
+		resp.Seq = header.Seq
+		resp.Error = header.Error
+	}
+	return nil
+}
+
+// ReadRequestBody reads a 4 byte length from the connection and decodes that many
+// subsequent bytes into the object
+func (s *ClientCodec) ReadRequestBody(obj interface{}) error {
+	if obj == nil {
+		return nil
+	}
+	return Read_Data_Frame(s.r, obj)
 }
 
 // ReadResponseBody reads a 4 byte length from the connection and decodes that many
@@ -134,54 +149,32 @@ func (c *ClientCodec) ReadResponseBody(obj interface{}) error {
 	return Read_Data_Frame(c.r, obj)
 }
 
-// Close closes the underlying connection.
-func (c *ClientCodec) Close() error {
-	return c.w.Close()
-}
+// WriteRequest writes the 4 byte length from the connection and encodes that many
+// subsequent bytes into the given object.
+func (c *ClientCodec) WriteRequest(req *rpc2.Request, obj interface{}) error {
+	c.Lock()
+	defer c.Unlock()
 
-// Close closes the underlying connection.
-func (c *ServerCodec) Close() error {
-	return c.w.Close()
-}
-
-// ReadRequestHeader reads the header (which is prefixed by a 4 byte lil endian length
-// indicating its size) from the connection, decodes it, and stores the fields
-// in the given request.
-func (s *ServerCodec) ReadRequestHeader(req *rpc.Request) error {
-	var header Request
-	if err := Read_Data_Frame(s.r, &header); err != nil {
+	header := RequestResponse{Method: req.Method, Seq: req.Seq}
+	if err := Write_Data_Frame(c.r, header); err != nil {
 		return err
 	}
-	if header.ServiceMethod == "" {
-		return fmt.Errorf("header missing method: %s", "empty ServiceMethod")
-	}
-	req.ServiceMethod = header.ServiceMethod
-	req.Seq = header.Seq
-	return nil
-}
-
-// ReadRequestBody reads a 4 byte length from the connection and decodes that many
-// subsequent bytes into the object
-func (s *ServerCodec) ReadRequestBody(obj interface{}) error {
-	if obj == nil {
-		return nil
-	}
-	return Read_Data_Frame(s.r, obj)
+	return Write_Data_Frame(c.r, obj)
 }
 
 // WriteResponse writes the appropriate header. If
 // the response was invalid, the size of the body of the resp is reported as
 // having size zero and is not sent.
-func (s *ServerCodec) WriteResponse(resp *rpc.Response, obj interface{}) error {
-	// Write the header
-	header := Response{ServiceMethod: resp.ServiceMethod, Seq: resp.Seq, Error: resp.Error}
-
-	if err := Write_Data_Frame(s.w, header); err != nil {
+func (c *ClientCodec) WriteResponse(resp *rpc2.Response, obj interface{}) error {
+	c.Lock()
+	defer c.Unlock()
+	header := RequestResponse{Seq: resp.Seq, Error: resp.Error}
+	if err := Write_Data_Frame(c.r, header); err != nil {
 		return err
 	}
 
 	if resp.Error == "" { // only write response object if error is nil
-		return Write_Data_Frame(s.w, obj)
+		return Write_Data_Frame(c.r, obj)
 	}
 
 	return nil

@@ -523,7 +523,17 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 
 	// notify peers, we have a miniblock and return to miner
 	if !chain.simulator { // if not in simulator mode, relay miniblock to the chain
-		go chain.P2P_MiniBlock_Relayer(mbl, 0)
+		var mbls []block.MiniBlock
+
+		if !mbl.Genesis {
+			for i := uint8(0); i < mbl.PastCount; i++ {
+				mbls = append(mbls, chain.MiniBlocks.Get(mbl.Past[i]))
+			}
+
+		}
+		mbls = append(mbls, mbl)
+		go chain.P2P_MiniBlock_Relayer(mbls, 0)
+
 	}
 
 	// if a duplicate block is being sent, reject the block
@@ -665,7 +675,9 @@ hard_way:
 		if err != nil || bits >= 120 {
 			return
 		}
-		chain.cache_IsAddressHashValid.Add(fmt.Sprintf("%s", hash), true) // set in cache
+		if !chain.cache_disabled {
+			chain.cache_IsAddressHashValid.Add(fmt.Sprintf("%s", hash), true) // set in cache
+		}
 	}
 
 	return true

@@ -106,7 +106,7 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 						_ = k
 						_ = v
 
-						fmt.Printf("key '%x'  value '%x'\n", k, v)
+						//fmt.Printf("key '%x'  value '%x'\n", k, v)
 						if len(k) == 32 && len(v) == 8 { // it's SC balance
 							result.Balances[fmt.Sprintf("%x", k)] = binary.BigEndian.Uint64(v)
 						} else if k[len(k)-1] >= 0x3 && k[len(k)-1] < 0x80 && nil == vark.UnmarshalBinary(k) && nil == varv.UnmarshalBinary(v) {

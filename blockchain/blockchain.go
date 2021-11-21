@@ -21,6 +21,7 @@ package blockchain
 // We must not call any packages that can call panic
 // NO Panics or FATALs please
 
+import "os"
 import "fmt"
 import "sync"
 import "time"
@@ -68,8 +69,12 @@ type Blockchain struct {
 	cache_IsNonceValidTips       *lru.Cache // used to cache nonce tests on specific tips
 	cache_IsAddressHashValid     *lru.Cache // used to cache some outputs
 	cache_Get_Difficulty_At_Tips *lru.Cache // used to cache some outputs
+	cache_BlockPast              *lru.Cache // used to cache a blocks past
+	cache_BlockHeight            *lru.Cache // used to cache a blocks past
 
 	integrator_address rpc.Address // integrator rewards will be given to this address
+
+	cache_disabled bool // disables all cache, based on ENV  DISABLE_CACHE
 
 	Difficulty        uint64           // current cumulative difficulty
 	Median_Block_Size uint64           // current median block size
@@ -83,7 +88,7 @@ type Blockchain struct {
 	simulator bool // is simulator mode
 
 	P2P_Block_Relayer     func(*block.Complete_Block, uint64) // tell p2p to broadcast any block this daemon hash found
-	P2P_MiniBlock_Relayer func(mbl block.MiniBlock, peerid uint64)
+	P2P_MiniBlock_Relayer func(mbl []block.MiniBlock, peerid uint64)
 
 	RPC_NotifyNewBlock      *sync.Cond // used to notify rpc that a new block has been found
 	RPC_NotifyHeightChanged *sync.Cond // used to notify rpc that  chain height has changed due to addition of block
@@ -122,7 +127,6 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 		if addr, err = rpc.NewAddress(strings.TrimSpace(globals.Config.Dev_Address)); err != nil {
 			return nil, err
 		}
-
 	} else {
 		if addr, err = rpc.NewAddress(strings.TrimSpace(params["--integrator-address"].(string))); err != nil {
 			return nil, err
@@ -147,6 +151,19 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 	}
 	if chain.mining_blocks_cache, err = lru.New(256); err != nil { // temporary cache for miniing blocks
 		return nil, err
+	}
+
+	if chain.cache_BlockPast, err = lru.New(100 * 1024); err != nil { // temporary cache for a blocks past
+		return nil, err
+	}
+
+	if chain.cache_BlockHeight, err = lru.New(100 * 1024); err != nil { // temporary cache for a blocks height
+		return nil, err
+	}
+
+	chain.cache_disabled = os.Getenv("DISABLE_CACHE") != "" // disable cache if the environ var is set
+	if chain.cache_disabled {
+		logger.Info("All caching except mining jobs will be disabled")
 	}
 
 	if params["--simulator"] == true {
@@ -197,9 +214,55 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 		}
 	}
 
-	go clean_up_valid_cache() // clean up valid cache
-
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
+
+	globals.Cron.AddFunc("@every 360s", clean_up_valid_cache) // cleanup valid tx cache
+	globals.Cron.AddFunc("@every 60s", func() {               // mempool house keeping
+
+		stable_height := int64(0)
+		if r := recover(); r != nil {
+			logger.Error(nil, "Mempool House Keeping triggered panic", "r", r, "height", stable_height)
+		}
+
+		stable_height = chain.Get_Stable_Height()
+
+		// give mempool an oppurtunity to clean up tx, but only if they are not mined
+		chain.Mempool.HouseKeeping(uint64(stable_height))
+
+		top_block_topo_index := chain.Load_TOPO_HEIGHT()
+
+		if top_block_topo_index < 10 {
+			return
+		}
+
+		top_block_topo_index -= 10
+
+		blid, err := chain.Load_Block_Topological_order_at_index(top_block_topo_index)
+		if err != nil {
+			panic(err)
+		}
+
+		record_version, err := chain.ReadBlockSnapshotVersion(blid)
+		if err != nil {
+			panic(err)
+		}
+
+		// give regpool a chance to register
+		if ss, err := chain.Store.Balance_store.LoadSnapshot(record_version); err == nil {
+			if balance_tree, err := ss.GetTree(config.BALANCE_TREE); err == nil {
+				chain.Regpool.HouseKeeping(uint64(stable_height), func(tx *transaction.Transaction) bool {
+					if tx.TransactionType != transaction.REGISTRATION { // tx not registration so delete
+						return true
+					}
+					if _, err := balance_tree.Get(tx.MinerAddress[:]); err != nil { // address already registered
+						return true
+					}
+					return false // account not already registered, so give another chance
+				})
+
+			}
+		}
+	})
 
 	return &chain, nil
 }
@@ -207,6 +270,45 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 // return integrator address
 func (chain *Blockchain) IntegratorAddress() rpc.Address {
 	return chain.integrator_address
+}
+
+// this function is called to read blockchain state from DB
+// It is callable at any point in time
+
+func (chain *Blockchain) Initialise_Chain_From_DB() {
+	chain.Lock()
+	defer chain.Unlock()
+
+	chain.Pruned = chain.LocatePruneTopo()
+
+	// find the tips from the chain , first by reaching top height
+	// then downgrading to top-10 height
+	// then reworking the chain to get the tip
+	best_height := chain.Load_TOP_HEIGHT()
+	chain.Height = best_height
+
+	chain.Tips = map[crypto.Hash]crypto.Hash{} // reset the map
+	// reload top tip from disk
+	top := chain.Get_Top_ID()
+
+	chain.Tips[top] = top // we only can load a single tip from db
+
+	logger.V(1).Info("Reloaded Chain from disk", "Tips", chain.Tips, "Height", chain.Height)
+}
+
+// before shutdown , make sure p2p is confirmed stopped
+func (chain *Blockchain) Shutdown() {
+
+	chain.Lock()            // take the lock as chain is no longer in unsafe mode
+	close(chain.Exit_Event) // send signal to everyone we are shutting down
+
+	chain.Mempool.Shutdown() // shutdown mempool first
+	chain.Regpool.Shutdown() // shutdown regpool first
+
+	logger.Info("Stopping Blockchain")
+	//chain.Store.Shutdown()
+	atomic.AddUint32(&globals.Subsystem_Active, ^uint32(0)) // this decrement 1 fom subsystem
+	logger.Info("Stopped Blockchain")
 }
 
 // this is the only entrypoint for new / old blocks even for genesis block
@@ -254,7 +356,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 
 		if result == true { // block was successfully added, commit it atomically
-			logger.V(2).Info("Block successfully accepted by chain", "blid", block_hash.String())
+			logger.V(2).Info("Block successfully accepted by chain", "blid", block_hash.String(), "err", err)
 
 			// gracefully try to instrument
 			func() {
@@ -542,7 +644,11 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 		var history_array []crypto.Hash
 		for i := range bl.Tips {
-			history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], 26)...)
+			h := int64(bl.Height) - 25
+			if h < 0 {
+				h = 0
+			}
+			history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], h)...)
 		}
 		for _, h := range history_array {
 			history[h] = true
@@ -683,7 +789,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 	}
 
-	{
+	if height_changed {
 
 		var full_order []crypto.Hash
 		var base_topo_index int64 // new topo id will start from here
@@ -699,15 +805,18 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		// we will directly use graviton to mov in to history
 		logger.V(3).Info("Full order data", "full_order", full_order, "base_topo_index", base_topo_index)
 
+		if base_topo_index < 0 {
+			logger.Error(nil, "negative base topo, not possible, probably disk corruption or core issue")
+			os.Exit(0)
+		}
+		topos_written := false
 		for i := int64(0); i < int64(len(full_order)); i++ {
 			logger.V(3).Info("will execute order ", "i", i, "blid", full_order[i].String())
 
 			current_topo_block := i + base_topo_index
-			previous_topo_block := current_topo_block - 1
+			//previous_topo_block := current_topo_block - 1
 
-			_ = previous_topo_block
-
-			if current_topo_block == chain.Load_Block_Topological_order(full_order[i]) { // skip if same order
+			if !topos_written && current_topo_block == chain.Load_Block_Topological_order(full_order[i]) { // skip if same order
 				continue
 			}
 
@@ -738,8 +847,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			}
 
 			var balance_tree, sc_meta *graviton.Tree
-			_ = sc_meta
-
 			var ss *graviton.Snapshot
 			if bl_current.Height == 0 { // if it's genesis block
 				if ss, err = chain.Store.Balance_store.LoadSnapshot(0); err != nil {
@@ -780,7 +887,10 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			//chain.Store.Topo_store.Write(i+base_topo_index, full_order[i],0, int64(bl_current.Height)) // write entry so as sideblock could work
 			var data_trees []*graviton.Tree
 
-			if !chain.isblock_SideBlock_internal(full_order[i], current_topo_block, int64(bl_current.Height)) {
+			if chain.isblock_SideBlock_internal(full_order[i], current_topo_block, int64(bl_current.Height)) {
+				logger.V(3).Info("this block is a side block", "height", chain.Load_Block_Height(full_order[i]), "blid", full_order[i])
+			} else {
+				logger.V(3).Info("this block is a full block", "height", chain.Load_Block_Height(full_order[i]), "blid", full_order[i])
 
 				sc_change_cache := map[crypto.Hash]*graviton.Tree{} // cache entire changes for entire block
 
@@ -847,9 +957,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				}
 
 				chain.process_miner_transaction(bl_current, bl_current.Height == 0, balance_tree, fees_collected, bl_current.Height)
-			} else {
-				block_logger.V(1).Info("this block is a side block", "height", chain.Load_Block_Height(full_order[i]), "blid", full_order[i])
-
 			}
 
 			// we are here, means everything is okay, lets commit the update balance tree
@@ -860,16 +967,15 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				panic(err)
 			}
 
-			chain.StoreBlock(bl, commit_version)
-			if height_changed {
-				chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
-				if logger.V(3).Enabled() {
-					merkle_root, err := chain.Load_Merkle_Hash(commit_version)
-					if err != nil {
-						panic(err)
-					}
-					logger.V(3).Info("height changed storing topo", "i", i, "blid", full_order[i].String(), "topoheight", current_topo_block, "commit_version", commit_version, "committed_merkle", merkle_root)
+			chain.StoreBlock(bl_current, commit_version)
+			topos_written = true
+			chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
+			if logger.V(3).Enabled() {
+				merkle_root, err := chain.Load_Merkle_Hash(commit_version)
+				if err != nil {
+					panic(err)
 				}
+				logger.V(3).Info("storing topo", "i", i, "blid", full_order[i].String(), "topoheight", current_topo_block, "commit_version", commit_version, "committed_merkle", merkle_root)
 			}
 
 		}
@@ -921,109 +1027,16 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		block_logger.Info(fmt.Sprintf("Chain Height %d", chain.Height))
 	}
 
+	purge_count := chain.MiniBlocks.PurgeHeight(chain.Get_Stable_Height()) // purge all miniblocks upto this height
+	logger.V(2).Info("Purged miniblock", "count", purge_count)
+
 	result = true
 
 	// TODO fix hard fork
 	// maintain hard fork votes to keep them SANE
 	//chain.Recount_Votes() // does not return anything
 
-	// enable mempool book keeping
-
-	func() {
-		if r := recover(); r != nil {
-			logger.Error(nil, "Mempool House Keeping triggered panic", "r", r, "height", block_height)
-		}
-
-		purge_count := chain.MiniBlocks.PurgeHeight(chain.Get_Stable_Height()) // purge all miniblocks upto this height
-		logger.V(2).Info("Purged miniblock", "count", purge_count)
-
-		// discard the transactions from mempool if they are present there
-		chain.Mempool.Monitor()
-
-		for i := 0; i < len(cbl.Txs); i++ {
-			txid := cbl.Txs[i].GetHash()
-
-			switch cbl.Txs[i].TransactionType {
-
-			case transaction.REGISTRATION:
-				if chain.Regpool.Regpool_TX_Exist(txid) {
-					logger.V(3).Info("Deleting TX from regpool", "txid", txid)
-					chain.Regpool.Regpool_Delete_TX(txid)
-					continue
-				}
-
-			case transaction.NORMAL, transaction.BURN_TX, transaction.SC_TX:
-				if chain.Mempool.Mempool_TX_Exist(txid) {
-					logger.V(3).Info("Deleting TX from mempool", "txid", txid)
-					chain.Mempool.Mempool_Delete_TX(txid)
-					continue
-				}
-
-			}
-
-		}
-
-		// give mempool an oppurtunity to clean up tx, but only if they are not mined
-		chain.Mempool.HouseKeeping(uint64(block_height))
-
-		// give regpool a chance to register
-		if ss, err := chain.Store.Balance_store.LoadSnapshot(0); err == nil {
-			if balance_tree, err := ss.GetTree(config.BALANCE_TREE); err == nil {
-
-				chain.Regpool.HouseKeeping(uint64(block_height), func(tx *transaction.Transaction) bool {
-					if tx.TransactionType != transaction.REGISTRATION { // tx not registration so delete
-						return true
-					}
-					if _, err := balance_tree.Get(tx.MinerAddress[:]); err != nil { // address already registered
-						return true
-					}
-					return false // account not already registered, so give another chance
-				})
-
-			}
-		}
-
-	}()
-
 	return // run any handlers necesary to atomically
-}
-
-// this function is called to read blockchain state from DB
-// It is callable at any point in time
-
-func (chain *Blockchain) Initialise_Chain_From_DB() {
-	chain.Lock()
-	defer chain.Unlock()
-
-	chain.Pruned = chain.LocatePruneTopo()
-
-	// find the tips from the chain , first by reaching top height
-	// then downgrading to top-10 height
-	// then reworking the chain to get the tip
-	best_height := chain.Load_TOP_HEIGHT()
-	chain.Height = best_height
-
-	chain.Tips = map[crypto.Hash]crypto.Hash{} // reset the map
-	// reload top tip from disk
-	top := chain.Get_Top_ID()
-
-	chain.Tips[top] = top // we only can load a single tip from db
-
-	logger.V(1).Info("Reloaded Chain from disk", "Tips", chain.Tips, "Height", chain.Height)
-}
-
-// before shutdown , make sure p2p is confirmed stopped
-func (chain *Blockchain) Shutdown() {
-
-	chain.Lock()            // take the lock as chain is no longer in unsafe mode
-	close(chain.Exit_Event) // send signal to everyone we are shutting down
-
-	chain.Mempool.Shutdown() // shutdown mempool first
-	chain.Regpool.Shutdown() // shutdown regpool first
-
-	logger.Info("Stopping Blockchain")
-	//chain.Store.Shutdown()
-	atomic.AddUint32(&globals.Subsystem_Active, ^uint32(0)) // this decrement 1 fom subsystem
 }
 
 // get top unstable height
@@ -1433,73 +1446,57 @@ func (chain *Blockchain) IsBlockSyncBlockHeightSpecific(blid crypto.Hash, chain_
 // converts a DAG's partial order into a full order, this function is recursive
 // dag can be processed only one height at a time
 // blocks are ordered recursively, till we find a find a block  which is already in the chain
+// this could be done via binary search also, but this is also easy
 func (chain *Blockchain) Generate_Full_Order_New(current_tip crypto.Hash, new_tip crypto.Hash) (order []crypto.Hash, topo int64) {
 
-	/*if !(chain.Load_Height_for_BL_ID(new_tip) == chain.Load_Height_for_BL_ID(current_tip)+1 ||
-	   chain.Load_Height_for_BL_ID(new_tip) == chain.Load_Height_for_BL_ID(current_tip)) {
-		panic("dag can only grow one height at a time")
-	}*/
+	start := time.Now()
+	defer logger.V(2).Info("generating full order", "took", time.Now().Sub(start))
 
-	depth := 20
-	for ; ; depth += 20 {
-		current_history := chain.get_ordered_past(current_tip, depth)
-		new_history := chain.get_ordered_past(new_tip, depth)
+	matchtill := chain.Load_Height_for_BL_ID(new_tip)
+	step_size := int64(10)
 
-		if len(current_history) < 5 { // we assume chain will not fork before 4 blocks
-			var current_history_rev []crypto.Hash
-			var new_history_rev []crypto.Hash
+	for {
+		matchtill -= step_size
+		if matchtill < 0 {
+			matchtill = 0
+		}
+		current_history := chain.get_ordered_past(current_tip, matchtill)
+		new_history := chain.get_ordered_past(new_tip, matchtill)
 
-			for i := range current_history {
-				current_history_rev = append(current_history_rev, current_history[len(current_history)-i-1])
+		if matchtill == 0 {
+			if current_history[0] != new_history[0] {
+				panic("genesis not matching")
 			}
-			for i := range new_history {
-				new_history_rev = append(new_history_rev, new_history[len(new_history)-i-1])
-			}
-
-			for j := range new_history_rev {
-				found := false
-				for i := range current_history_rev {
-					if current_history_rev[i] == new_history_rev[j] {
-						found = true
-						break
-					}
-				}
-
-				if !found { // we have a contention point
-					topo = chain.Load_Block_Topological_order(new_history_rev[j-1])
-					order = append(order, new_history_rev[j-1:]...) //  order is already stored and store
-					return
-				}
-			}
-			panic("not possible")
+			topo = 0
+			order = append(order, new_history...)
+			return
 		}
 
-		for i := 0; i < len(current_history)-4; i++ {
-			for j := 0; j < len(new_history)-4; j++ {
-				if current_history[i+0] == new_history[j+0] &&
-					current_history[i+1] == new_history[j+1] &&
-					current_history[i+2] == new_history[j+2] &&
-					current_history[i+3] == new_history[j+3] {
-
-					topo = chain.Load_Block_Topological_order(new_history[j])
-					for k := j; k >= 0; k-- {
-						order = append(order, new_history[k]) // reverse order and store
-					}
-					return
-
-				}
-			}
+		if current_history[0] != new_history[0] { // base are not matching, step back further
+			continue
 		}
+
+		if current_history[0] != new_history[0] ||
+			current_history[1] != new_history[1] ||
+			current_history[2] != new_history[2] ||
+			current_history[3] != new_history[3] {
+
+			continue //  base are not matching, step back further
+		}
+
+		order = append(order, new_history[:]...)
+		topo = chain.Load_Block_Topological_order(order[0])
+		return
 	}
 
 	return
 }
 
 // we will collect atleast 50 blocks  or till genesis
-func (chain *Blockchain) get_ordered_past(tip crypto.Hash, count int) (order []crypto.Hash) {
+func (chain *Blockchain) get_ordered_past(tip crypto.Hash, tillheight int64) (order []crypto.Hash) {
 	order = append(order, tip)
 	current := tip
-	for len(order) < count {
+	for chain.Load_Height_for_BL_ID(current) > tillheight {
 		past := chain.Get_Block_Past(current)
 
 		switch len(past) {
@@ -1519,6 +1516,10 @@ func (chain *Blockchain) get_ordered_past(tip crypto.Hash, count int) (order []c
 		default:
 			panic("data corruption")
 		}
+	}
+
+	for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
+		order[i], order[j] = order[j], order[i]
 	}
 	return
 }

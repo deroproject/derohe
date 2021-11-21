@@ -55,8 +55,6 @@ type Regpool struct {
 	modified      bool                // used to monitor whethel mem pool contents have changed,
 	height        uint64              // track blockchain height
 
-	relayer chan crypto.Hash // used for immediate relay
-
 	// global variable , but don't see it utilisation here except fot tx verification
 	//chain *Blockchain
 	Exit_Mutex chan bool
@@ -136,7 +134,6 @@ func Init_Regpool(params map[string]interface{}) (*Regpool, error) {
 	loggerpool.Info("Regpool started")
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
 
-	regpool.relayer = make(chan crypto.Hash, 1024*10)
 	regpool.Exit_Mutex = make(chan bool)
 
 	metrics.Set.GetOrCreateGauge("regpool_count", func() float64 {
@@ -259,7 +256,6 @@ func (pool *Regpool) Regpool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	object.Size = uint64(len(tx.Serialize()))
 
 	pool.txs.Store(tx_hash, &object)
-	pool.relayer <- tx_hash
 	pool.modified = true // pool has been modified
 
 	//pool.sort_list() // sort and update pool list

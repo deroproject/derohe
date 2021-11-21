@@ -527,9 +527,13 @@ func mine_block_auto(chain *blockchain.Blockchain, miner_address rpc.Address) {
 	last_block_time := time.Now()
 	for {
 
+		bl, _, _, _, err := chain.Create_new_block_template_mining(miner_address)
+		if err != nil {
+			logger.Error(err, "error while building mining block")
+		}
+
 		if time.Now().Sub(last_block_time) > time.Duration(config.BLOCK_TIME)*time.Second || // every X secs generate a block
-			len(chain.Mempool.Mempool_List_TX_SortedInfo()) >= 1 ||
-			len(chain.Regpool.Regpool_List_TX()) >= 1 { //pools have a tx, try to mine them ASAP
+			len(bl.Tx_hashes) >= 1 { //pools have a tx, try to mine them ASAP
 
 			if err := mine_block_single(chain, miner_address); err != nil {
 				time.Sleep(time.Second)

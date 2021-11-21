@@ -56,7 +56,7 @@ const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(80000000) // atlantis mainnet botstr
 const MAINNET_MINIMUM_DIFFICULTY = uint64(800000000)  // 80 MH/s
 
 // testnet bootstraps at 1 MH
-const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(50000) // testnet bootstrap at 50KH/s
+const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(10000) // testnet bootstrap at 50KH/s
 const TESTNET_MINIMUM_DIFFICULTY = uint64(10000)   // 10KH/s
 
 // this single parameter controls lots of various parameters

@@ -121,14 +121,17 @@ func clean_up() {
 	peer_mutex.Lock()
 	defer peer_mutex.Unlock()
 	for k, v := range peer_map {
-		if v.FailCount >= 8 { // roughly 16 tries, 18 hrs before we discard the peer
+		if IsAddressConnected(ParseIPNoError(v.Address)) {
+			continue
+		}
+		if v.FailCount >= 8 { // roughly 8 tries before we discard the peer
 			delete(peer_map, k)
 		}
 		if v.LastConnected == 0 { // if never connected, purge the peer
 			delete(peer_map, k)
 		}
 
-		if uint64(time.Now().UTC().Unix()) > (v.LastConnected + 42000) { // purge all peers which were not connected in
+		if uint64(time.Now().UTC().Unix()) > (v.LastConnected + 3600) { // purge all peers which were not connected in
 			delete(peer_map, k)
 		}
 	}
@@ -139,7 +142,7 @@ func IsPeerInList(address string) bool {
 	peer_mutex.Lock()
 	defer peer_mutex.Unlock()
 
-	if _, ok := peer_map[address]; ok {
+	if _, ok := peer_map[ParseIPNoError(address)]; ok {
 		return true
 	}
 	return false
@@ -148,7 +151,7 @@ func GetPeerInList(address string) *Peer {
 	peer_mutex.Lock()
 	defer peer_mutex.Unlock()
 
-	if v, ok := peer_map[address]; ok {
+	if v, ok := peer_map[ParseIPNoError(address)]; ok {
 		return v
 	}
 	return nil
@@ -166,20 +169,20 @@ func Peer_Add(p *Peer) {
 
 	}
 
-	if v, ok := peer_map[p.Address]; ok {
+	if v, ok := peer_map[ParseIPNoError(p.Address)]; ok {
 		v.Lock()
 		// logger.Infof("Peer already in list adding good count")
 		v.GoodCount++
 		v.Unlock()
 	} else {
 		// logger.Infof("Peer adding to list")
-		peer_map[p.Address] = p
+		peer_map[ParseIPNoError(p.Address)] = p
 	}
 }
 
 // a peer marked as fail, will only be connected  based on exponential back-off based on powers of 2
 func Peer_SetFail(address string) {
-	p := GetPeerInList(address)
+	p := GetPeerInList(ParseIPNoError(address))
 	if p == nil {
 		return
 	}
@@ -193,7 +196,7 @@ func Peer_SetFail(address string) {
 // we will only distribute peers which have been successfully connected by us
 func Peer_SetSuccess(address string) {
 	//logger.Infof("Setting peer as success")
-	p := GetPeerInList(address)
+	p := GetPeerInList(ParseIPNoError(address))
 	if p == nil {
 		return
 	}
@@ -233,7 +236,7 @@ func Peer_EnableBan(address string) (err error){
 func Peer_Delete(p *Peer) {
 	peer_mutex.Lock()
 	defer peer_mutex.Unlock()
-	delete(peer_map, p.Address)
+	delete(peer_map, ParseIPNoError(p.Address))
 }
 
 // prints all the connection info to screen
@@ -258,7 +261,7 @@ func PeerList_Print() {
 
 	for i := range list {
 		connected := ""
-		if IsAddressConnected(list[i].Address) {
+		if IsAddressConnected(ParseIPNoError(list[i].Address)) {
 			connected = "ACTIVE"
 		}
 		fmt.Printf("%-22s %-6s %4d %5d \n", list[i].Address, connected, list[i].GoodCount, list[i].FailCount)
@@ -269,7 +272,7 @@ func PeerList_Print() {
 
 }
 
-// this function return peer count which have successful handshake
+// this function return peer count which are in our list
 func Peer_Counts() (Count uint64) {
 	peer_mutex.Lock()
 	defer peer_mutex.Unlock()
@@ -289,7 +292,7 @@ func find_peer_to_connect(version int) *Peer {
 	for _, v := range peer_map {
 		if uint64(time.Now().Unix()) > v.BlacklistBefore && //  if ip is blacklisted skip it
 			uint64(time.Now().Unix()) > v.ConnectAfter &&
-			!IsAddressConnected(v.Address) && v.Whitelist && !IsAddressInBanList(v.Address) {
+			!IsAddressConnected(ParseIPNoError(v.Address)) && v.Whitelist && !IsAddressInBanList(ParseIPNoError(v.Address)) {
 			v.ConnectAfter = uint64(time.Now().UTC().Unix()) + 10 // minimum 10 secs gap
 			return v
 		}
@@ -298,7 +301,7 @@ func find_peer_to_connect(version int) *Peer {
 	for _, v := range peer_map {
 		if uint64(time.Now().Unix()) > v.BlacklistBefore && //  if ip is blacklisted skip it
 			uint64(time.Now().Unix()) > v.ConnectAfter &&
-			!IsAddressConnected(v.Address) && !v.Whitelist && !IsAddressInBanList(v.Address) {
+			!IsAddressConnected(ParseIPNoError(v.Address)) && !v.Whitelist && !IsAddressInBanList(ParseIPNoError(v.Address)) {
 			v.ConnectAfter = uint64(time.Now().UTC().Unix()) + 10 // minimum 10 secs gap
 			return v
 		}

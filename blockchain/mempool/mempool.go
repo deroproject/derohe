@@ -21,8 +21,6 @@ import "sync"
 import "sort"
 import "time"
 import "sync/atomic"
-import "encoding/hex"
-import "encoding/json"
 
 import "github.com/go-logr/logr"
 
@@ -55,9 +53,6 @@ type Mempool struct {
 	modified      bool                // used to monitor whethel mem pool contents have changed,
 	height        uint64              // track blockchain height
 
-	P2P_TX_Relayer p2p_TX_Relayer // actual pointer, setup by the dero daemon during runtime
-
-	relayer chan crypto.Hash // used for immediate relay
 	// global variable , but don't see it utilisation here except fot tx verification
 	//chain *Blockchain
 	Exit_Mutex chan bool
@@ -70,64 +65,11 @@ type mempool_object struct {
 	Tx         *transaction.Transaction
 	Added      uint64 // time in epoch format
 	Height     uint64 //  at which height the tx unlocks in the mempool
-	Relayed    int    // relayed count
-	RelayedAt  int64  // when was tx last relayed
 	Size       uint64 // size in bytes of the TX
 	FEEperBYTE uint64 // fee per byte
 }
 
 var loggerpool logr.Logger
-
-// marshal object as json
-func (obj *mempool_object) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Tx        string `json:"tx"` // hex encoding
-		Added     uint64 `json:"added"`
-		Height    uint64 `json:"height"`
-		Relayed   int    `json:"relayed"`
-		RelayedAt int64  `json:"relayedat"`
-	}{
-		Tx:        hex.EncodeToString(obj.Tx.Serialize()),
-		Added:     obj.Added,
-		Height:    obj.Height,
-		Relayed:   obj.Relayed,
-		RelayedAt: obj.RelayedAt,
-	})
-}
-
-// unmarshal object from json encoding
-func (obj *mempool_object) UnmarshalJSON(data []byte) error {
-	aux := &struct {
-		Tx        string `json:"tx"`
-		Added     uint64 `json:"added"`
-		Height    uint64 `json:"height"`
-		Relayed   int    `json:"relayed"`
-		RelayedAt int64  `json:"relayedat"`
-	}{}
-
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	obj.Added = aux.Added
-	obj.Height = aux.Height
-	obj.Relayed = aux.Relayed
-	obj.RelayedAt = aux.RelayedAt
-
-	tx_bytes, err := hex.DecodeString(aux.Tx)
-	if err != nil {
-		return err
-	}
-	obj.Size = uint64(len(tx_bytes))
-
-	obj.Tx = &transaction.Transaction{}
-	err = obj.Tx.Deserialize(tx_bytes)
-
-	if err == nil {
-		obj.FEEperBYTE = obj.Tx.Fees() / obj.Size
-	}
-	return err
-}
 
 func Init_Mempool(params map[string]interface{}) (*Mempool, error) {
 	var mempool Mempool
@@ -137,7 +79,6 @@ func Init_Mempool(params map[string]interface{}) (*Mempool, error) {
 	loggerpool.Info("Mempool started")
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
 
-	mempool.relayer = make(chan crypto.Hash, 1024*10)
 	mempool.Exit_Mutex = make(chan bool)
 
 	metrics.Set.GetOrCreateGauge("mempool_count", func() float64 {
@@ -151,20 +92,6 @@ func Init_Mempool(params map[string]interface{}) (*Mempool, error) {
 
 	return &mempool, nil
 }
-
-// this is created per incoming block and then discarded
-// This does not require shutting down and will be garbage collected automatically
-/*
-func Init_Block_Mempool(params map[string]interface{}) (*Mempool, error) {
-	var mempool Mempool
-
-	// initialize maps
-	//mempool.txs = map[crypto.Hash]*mempool_object{}
-	//mempool.nonces = map[crypto.Hash]bool{}
-
-	return &mempool, nil
-}
-*/
 
 func (pool *Mempool) HouseKeeping(height uint64) {
 	pool.height = height
@@ -257,8 +184,6 @@ func (pool *Mempool) Mempool_Add_TX(tx *transaction.Transaction, Height uint64) 
 	object.FEEperBYTE = tx.Fees() / object.Size
 
 	pool.txs.Store(tx_hash, &object)
-
-	pool.relayer <- tx_hash
 	pool.modified = true // pool has been modified
 
 	//pool.sort_list() // sort and update pool list
@@ -402,12 +327,12 @@ func (pool *Mempool) Mempool_Print() {
 	})
 
 	loggerpool.Info(fmt.Sprintf("Total TX in mempool = %d\n", len(klist)))
-	loggerpool.Info(fmt.Sprintf("%20s  %14s %7s %7s %6s %32s\n", "Added", "Last Relayed", "Relayed", "Size", "Height", "TXID"))
+	loggerpool.Info(fmt.Sprintf("%20s  %14s %7s %7s %6s %32s\n", "Added", "Size", "Height", "TXID"))
 
 	for i := range klist {
 		k := klist[i]
 		v := vlist[i]
-		loggerpool.Info(fmt.Sprintf("%20s  %14s %7d %7d %6d %32s\n", time.Unix(int64(v.Added), 0).UTC().Format(time.RFC3339), time.Duration(v.RelayedAt)*time.Second, v.Relayed,
+		loggerpool.Info(fmt.Sprintf("%20s  %14s %7d %7d %6d %32s\n", time.Unix(int64(v.Added), 0).UTC().Format(time.RFC3339),
 			len(v.Tx.Serialize()), v.Height, k))
 	}
 }
@@ -461,5 +386,3 @@ func (pool *Mempool) sort_list() ([]crypto.Hash, []TX_Sorting_struct) {
 	return sorted_list, data
 
 }
-
-type p2p_TX_Relayer func(*transaction.Transaction, uint64) int // function type, exported in p2p but cannot use due to cyclic dependency

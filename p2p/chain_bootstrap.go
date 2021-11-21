@@ -20,6 +20,7 @@ import "fmt"
 
 //import "net"
 import "time"
+import "context"
 import "math/big"
 import "math/bits"
 import "sync/atomic"
@@ -40,6 +41,8 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 // we are expecting other side to have a heavier PoW chain
 // this is for the case when the chain only moves in pruned state
 // if after bootstraping the chain can continousky sync for few minutes, this means we have got the job done
+// TODO if during bootstrap error occurs, then we must discard data and restart from scratch
+// resume may be implemented in future
 func (connection *Connection) bootstrap_chain() {
 	defer handle_connection_panic(connection)
 	var request ChangeList
@@ -55,6 +58,8 @@ func (connection *Connection) bootstrap_chain() {
 		return
 	}
 
+	var TimeLimit = 10 * time.Second
+
 	// we will request top 60 blocks
 	ctopo := connection.TopoHeight - 50 // last 50 blocks have to be synced, this syncing will help us detect error
 	var topos []int64
@@ -69,7 +74,9 @@ func (connection *Connection) bootstrap_chain() {
 	}
 
 	fill_common(&request.Common) // fill common info
-	if err := connection.RConn.Client.Call("Peer.ChangeSet", request, &response); err != nil {
+
+	ctx, _ := context.WithTimeout(context.Background(), TimeLimit)
+	if err := connection.Client.CallWithContext(ctx, "Peer.ChangeSet", request, &response); err != nil {
 		connection.logger.V(1).Error(err, "Call failed ChangeSet")
 		return
 	}
@@ -103,8 +110,9 @@ func (connection *Connection) bootstrap_chain() {
 			ts_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: []byte(config.BALANCE_TREE), Section: section[:], SectionLength: uint64(path_length)}
 			var ts_response Response_Tree_Section_Struct
 			fill_common(&ts_response.Common)
-			if err := connection.RConn.Client.Call("Peer.TreeSection", ts_request, &ts_response); err != nil {
-				connection.logger.V(2).Error(err, "Call failed TreeSection")
+			ctx, _ := context.WithTimeout(context.Background(), TimeLimit)
+			if err := connection.Client.CallWithContext(ctx, "Peer.TreeSection", ts_request, &ts_response); err != nil {
+				connection.logger.V(1).Error(err, "Call failed TreeSection")
 				return
 			} else {
 				// now we must write all the state changes to gravition
@@ -167,8 +175,9 @@ func (connection *Connection) bootstrap_chain() {
 			ts_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: []byte(config.SC_META), Section: section[:], SectionLength: uint64(path_length)}
 			var ts_response Response_Tree_Section_Struct
 			fill_common(&ts_response.Common)
-			if err := connection.RConn.Client.Call("Peer.TreeSection", ts_request, &ts_response); err != nil {
-				connection.logger.V(2).Error(err, "Call failed TreeSection")
+			ctx, _ = context.WithTimeout(context.Background(), TimeLimit)
+			if err := connection.Client.CallWithContext(ctx, "Peer.TreeSection", ts_request, &ts_response); err != nil {
+				connection.logger.V(1).Error(err, "Call failed TreeSection")
 				return
 			} else {
 				// now we must write all the state changes to gravition
@@ -197,8 +206,9 @@ func (connection *Connection) bootstrap_chain() {
 					sc_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: ts_response.Keys[j], Section: section[:], SectionLength: uint64(0)}
 					var sc_response Response_Tree_Section_Struct
 					fill_common(&sc_response.Common)
-					if err := connection.RConn.Client.Call("Peer.TreeSection", sc_request, &sc_response); err != nil {
-						connection.logger.V(2).Error(err, "Call failed TreeSection")
+					ctx, _ = context.WithTimeout(context.Background(), TimeLimit)
+					if err := connection.Client.CallWithContext(ctx, "Peer.TreeSection", sc_request, &sc_response); err != nil {
+						connection.logger.V(1).Error(err, "Call failed TreeSection")
 						return
 					} else {
 						var sc_data_tree *graviton.Tree
@@ -327,7 +337,7 @@ func (connection *Connection) bootstrap_chain() {
 			}
 		}
 
-		if err = chain.Store.Block_tx_store.WriteBlock(bl.GetHash(), bl.Serialize(), diff, commit_version); err != nil {
+		if err = chain.Store.Block_tx_store.WriteBlock(bl.GetHash(), bl.Serialize(), diff, commit_version, bl.Height); err != nil {
 			panic(fmt.Sprintf("error while writing block"))
 		}
 

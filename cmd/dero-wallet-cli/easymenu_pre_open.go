@@ -38,9 +38,6 @@ func display_easymenu_pre_open_command(l *readline.Instance) {
 	io.WriteString(w, "\t\033[1m2\033[0m\tCreate New Wallet\n")
 	io.WriteString(w, "\t\033[1m3\033[0m\tRecover Wallet using recovery seed (25 words)\n")
 	io.WriteString(w, "\t\033[1m4\033[0m\tRecover Wallet using recovery key (64 char private spend key hex)\n")
-	//	io.WriteString(w, "\t\033[1m5\033[0m\tCreate  Watch-able Wallet (view only) using wallet view key\n")
-	//        io.WriteString(w, "\t\033[1m6\033[0m\tRecover Non-deterministic Wallet key\n")
-
 	io.WriteString(w, "\n\t\033[1m9\033[0m\tExit menu and start prompt\n")
 	io.WriteString(w, "\t\033[1m0\033[0m\tExit Wallet\n")
 }

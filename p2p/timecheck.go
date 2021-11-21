@@ -55,7 +55,7 @@ func time_check_routine() {
 		server := timeservers[random.Int()%len(timeservers)]
 
 		if response, err := ntp.Query(server); err != nil {
-			logger.V(2).Error(err, "error while querying time", "server", server)
+			//logger.V(2).Error(err, "error while querying time", "server", server)
 		} else if response.Validate() == nil {
 
 			if response.ClockOffset.Seconds() > -.05 && response.ClockOffset.Seconds() < .05 {
@@ -86,6 +86,7 @@ func time_check_routine() {
 			if response.ClockOffset.Seconds() > -1.0 && response.ClockOffset.Seconds() < 1.0 { // chrony can maintain upto 5 ms, ntps can maintain upto 10
 				timeinsync = true
 			} else {
+				timeinsync = false
 				logger.V(1).Error(nil, "Your system time deviation is more than 1 secs (%s)."+
 					"\nYou may experience chain sync issues and/or other side-effects."+
 					"\nIf you are mining, your blocks may get rejected."+

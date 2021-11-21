@@ -212,7 +212,9 @@ func (chain *Blockchain) Get_Difficulty_At_Tips(tips []crypto.Hash) *big.Int {
 		biggest_difficulty.Set(MinimumDifficulty)
 	}
 
-	chain.cache_Get_Difficulty_At_Tips.Add(tips_string, string(biggest_difficulty.Bytes())) // set in cache
+	if !chain.cache_disabled {
+		chain.cache_Get_Difficulty_At_Tips.Add(tips_string, string(biggest_difficulty.Bytes())) // set in cache
+	}
 	return biggest_difficulty
 }
 
@@ -235,7 +237,9 @@ func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock
 	}*/
 
 	if CheckPowHashBig(PoW, block_difficulty) == true {
-		chain.cache_IsMiniblockPowValid.Add(fmt.Sprintf("%s", cachekey), true) // set in cache
+		if !chain.cache_disabled {
+			chain.cache_IsMiniblockPowValid.Add(fmt.Sprintf("%s", cachekey), true) // set in cache
+		}
 		return true
 	}
 	return false

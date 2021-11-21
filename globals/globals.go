@@ -33,6 +33,7 @@ import "go.uber.org/zap"
 import "go.uber.org/zap/zapcore"
 import "github.com/go-logr/logr"
 import "github.com/go-logr/zapr"
+import "github.com/robfig/cron/v3"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
@@ -88,6 +89,10 @@ func GetOffsetNTP() time.Duration {
 func GetOffsetP2P() time.Duration {
 	return ClockOffsetP2P
 }
+
+var Cron = cron.New(cron.WithChain(
+	cron.Recover(Logger), // or use cron.DefaultLogger
+))
 
 var Dialer proxy.Dialer = proxy.Direct // for proxy and direct connections
 // all outgoing connections , including DNS requests must be made using this

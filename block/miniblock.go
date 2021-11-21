@@ -199,12 +199,20 @@ func (mbl *MiniBlock) Deserialize(buf []byte) (err error) {
 	copy(mbl.Nonce[:], buf[15+16+32:])
 	mbl.Height = int64(binary.BigEndian.Uint64(mbl.Check[:]))
 
-	if mbl.GetMiniID() == mbl.Past[0] {
-		return fmt.Errorf("Self Collision")
+	return
+}
+
+// checks for basic sanity
+func (mbl *MiniBlock) IsSafe() bool {
+	id := mbl.GetMiniID()
+	if id == mbl.Past[0] {
+		//return fmt.Errorf("Self Collision")
+		return false
 	}
-	if mbl.PastCount == 2 && mbl.GetMiniID() == mbl.Past[1] {
-		return fmt.Errorf("Self Collision")
+	if mbl.PastCount == 2 && id == mbl.Past[1] {
+		//return fmt.Errorf("Self Collision")
+		return false
 	}
 
-	return
+	return true
 }

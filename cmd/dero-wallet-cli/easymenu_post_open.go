@@ -130,8 +130,8 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			reg_tx := wallet.GetRegistrationTX()
 
 			// at this point we must send the registration transaction
-
 			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.Pls wait till the account is registered.\n", wallet.GetAddress())
+			fmt.Fprintf(l.Stderr(), "Registration TXID %s\n", reg_tx.GetHash())
 			err := wallet.SendTransaction(reg_tx)
 			if err != nil {
 				fmt.Fprintf(l.Stderr(), "sending registration tx err %s\n", err)

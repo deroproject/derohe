@@ -119,7 +119,7 @@ func (c *MiniBlocksCollection) Get(id uint32) (mbl MiniBlock) {
 	var ok bool
 
 	if mbl, ok = c.Collection[id]; !ok {
-		panic("past should be present")
+		panic("id requested should be present")
 	}
 	return mbl
 }

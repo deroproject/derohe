@@ -59,6 +59,19 @@ import "github.com/creachadair/jrpc2"
 // this global variable should be within wallet structure
 var Connected bool = false
 
+var daemon_height int64
+var daemon_topoheight int64
+
+// return daemon height
+func Get_Daemon_Height() int64 {
+	return daemon_height
+}
+
+// return topoheight of daemon
+func Get_Daemon_TopoHeight() int64 {
+	return daemon_topoheight
+}
+
 var simulator bool // turns on simulator, which has 0 fees
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
@@ -95,6 +108,7 @@ func Notify_broadcaster(req *jrpc2.Request) {
 		NotifyHeightChange.L.Lock()
 		NotifyHeightChange.Broadcast()
 		NotifyHeightChange.L.Unlock()
+		go test_connectivity()
 	case "MiniBlock": // we can skip this
 	default:
 		logger.V(1).Info("Notification received", "method", req.Method())
@@ -157,6 +171,8 @@ func test_connectivity() (err error) {
 	if strings.ToLower(info.Network) == "simulator" {
 		simulator = true
 	}
+	daemon_height = info.Height
+	daemon_topoheight = info.TopoHeight
 	logger.Info("successfully connected to daemon")
 	return nil
 }
@@ -398,6 +414,9 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 	if topoheight == -1 {
 		w.Daemon_Height = uint64(result.DHeight)
 		w.Daemon_TopoHeight = result.DTopoheight
+
+		daemon_height = result.DHeight
+		daemon_topoheight = result.DTopoheight
 		w.Merkle_Balance_TreeHash = result.DMerkle_Balance_TreeHash
 	}
 

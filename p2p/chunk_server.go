@@ -36,18 +36,13 @@ type Chunks_Per_Block_Data struct {
 
 // cleans up chunks every minute
 func chunks_clean_up() {
-	for {
-		time.Sleep(5 * time.Second) // cleanup every 5 seconds
-
-		chunk_map.Range(func(key, value interface{}) bool {
-
-			chunks_per_block := value.(*Chunks_Per_Block_Data)
-			if time.Now().Sub(chunks_per_block.Created) > time.Second*180 {
-				chunk_map.Delete(key)
-			}
-			return true
-		})
-	}
+	chunk_map.Range(func(key, value interface{}) bool {
+		chunks_per_block := value.(*Chunks_Per_Block_Data)
+		if time.Now().Sub(chunks_per_block.Created) > time.Second*180 {
+			chunk_map.Delete(key)
+		}
+		return true
+	})
 }
 
 // return whether chunk exist
@@ -63,6 +58,9 @@ func is_chunk_exist(hhash [32]byte, cid uint8) *Block_Chunk {
 
 // feed a chunk until we are able to fully decode a chunk
 func (connection *Connection) feed_chunk(chunk *Block_Chunk, sent int64) error {
+
+	chunk_lock.Lock()
+	defer chunk_lock.Unlock()
 
 	if chunk.HHash != chunk.HeaderHash() {
 		connection.logger.V(2).Info("This peer should be banned, since he supplied wrong chunk")

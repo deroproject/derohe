@@ -47,6 +47,7 @@ import "gopkg.in/natefinch/lumberjack.v2"
 import "github.com/deroproject/derohe/p2p"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
+import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/blockchain"
@@ -199,9 +200,11 @@ func main() {
 		p2p.Broadcast_Block(cbl, peerid)
 	}
 
-	chain.P2P_MiniBlock_Relayer = func(mbl block.MiniBlock, peerid uint64) {
+	chain.P2P_MiniBlock_Relayer = func(mbl []block.MiniBlock, peerid uint64) {
 		p2p.Broadcast_MiniBlock(mbl, peerid)
 	}
+
+	globals.Cron.Start() // start cron jobs
 
 	// This tiny goroutine continuously updates status as required
 	go func() {
@@ -225,14 +228,6 @@ func main() {
 
 			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
 			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
-
-			/*if our_height < 0 { // somehow the data folder got deleted/renamed/corrupted
-				logger.Error(nil, "Somehow the data directory is not accessible. shutting down")
-				l.Terminal.ExitRawMode()
-				l.Terminal.Print("\n\n")
-				os.Exit(-1)
-				return
-			}*/
 
 			// only update prompt if needed
 			if last_second != time.Now().Unix() || last_our_height != our_height || last_best_height != best_height || last_peer_count != peer_count || last_topo_height != topo_height || last_mempool_tx_count != mempool_tx_count || last_regpool_tx_count != regpool_tx_count {
@@ -605,37 +600,39 @@ restart_loop:
 			}
 
 		case command == "print_tx":
-			/*
+			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
+				txid, err := hex.DecodeString(strings.ToLower(line_parts[1]))
 
-				if len(line_parts) == 2 && len(line_parts[1]) == 64 {
-					txid, err := hex.DecodeString(strings.ToLower(line_parts[1]))
-
-					if err != nil {
-						fmt.Printf("err while decoding txid err %s\n", err)
-						continue
-					}
-					var hash crypto.Hash
-					copy(hash[:32], []byte(txid))
-
-					tx, err := chain.Load_TX_FROM_ID(nil, hash)
-					if err == nil {
-						//s_bytes := tx.Serialize()
-						//fmt.Printf("tx : %x\n", s_bytes)
-						json_bytes, err := json.MarshalIndent(tx, "", "    ")
-						_ = err
-						fmt.Printf("%s\n", string(json_bytes))
-
-						//tx.RctSignature.Message = ringct.Key(tx.GetPrefixHash())
-						//ringct.Get_pre_mlsag_hash(tx.RctSignature)
-						//chain.Expand_Transaction_v2(tx)
-
-					} else {
-						fmt.Printf("Err %s\n", err)
-					}
-				} else {
-					fmt.Printf("print_tx  needs a single transaction id as arugument\n")
+				if err != nil {
+					fmt.Printf("err while decoding txid err %s\n", err)
+					continue
 				}
-			*/
+				var hash crypto.Hash
+				copy(hash[:32], []byte(txid))
+
+				var tx transaction.Transaction
+				if tx_bytes, err := chain.Store.Block_tx_store.ReadTX(hash); err != nil {
+					fmt.Printf("err while reading txid err %s\n", err)
+					continue
+				} else if err = tx.Deserialize(tx_bytes); err != nil {
+					fmt.Printf("err deserializing tx err %s\n", err)
+					continue
+				}
+
+				if valid_blid, invalid, valid := chain.IS_TX_Valid(hash); valid {
+					fmt.Printf("TX is valid in block %s\n", valid_blid)
+				} else if len(invalid) == 0 {
+					fmt.Printf("TX is mined in a side chain\n")
+				} else {
+					fmt.Printf("TX is mined in blocks %+v\n", invalid)
+				}
+				if tx.IsRegistration() {
+					fmt.Printf("Registration TX validity could not be detected\n")
+				}
+
+			} else {
+				fmt.Printf("print_tx  needs a single transaction id as arugument\n")
+			}
 
 		case strings.ToLower(line) == "status":
 			inc, out := p2p.Peer_Direction_Count()
@@ -782,46 +779,49 @@ restart_loop:
 				logger.Error(fmt.Errorf("POP needs argument n to pop this many blocks from the top"), "")
 			}
 
+		case command == "gc":
+			runtime.GC()
+
 		case command == "ban":
-			/*
-				if len(line_parts) >= 4 || len(line_parts) == 1 {
-					fmt.Printf("IP address required to ban\n")
-					break
-				}
 
-				if len(line_parts) == 3 { // process ban time if provided
-					// if user provided a time, apply ban for specific time
-					if s, err := strconv.ParseInt(line_parts[2], 10, 64); err == nil && s >= 0 {
-						p2p.Ban_Address(line_parts[1], uint64(s))
-						break
-					} else {
-						fmt.Printf("err parsing ban time (only positive number) %s", err)
-						break
-					}
-				}
+			if len(line_parts) >= 4 || len(line_parts) == 1 {
+				fmt.Printf("IP address required to ban\n")
+				break
+			}
 
-				err := p2p.Ban_Address(line_parts[1], 10*60) // default ban is 10 minutes
-				if err != nil {
-					fmt.Printf("err parsing address %s", err)
+			if len(line_parts) == 3 { // process ban time if provided
+				// if user provided a time, apply ban for specific time
+				if s, err := strconv.ParseInt(line_parts[2], 10, 64); err == nil && s >= 0 {
+					p2p.Ban_Address(line_parts[1], uint64(s))
 					break
-				}
-			*/
-		case command == "unban":
-			/*
-				if len(line_parts) >= 3 || len(line_parts) == 1 {
-					fmt.Printf("IP address required to unban\n")
-					break
-				}
-
-				err := p2p.UnBan_Address(line_parts[1])
-				if err != nil {
-					fmt.Printf("err unbanning %s, err = %s", line_parts[1], err)
 				} else {
-					fmt.Printf("unbann %s successful", line_parts[1])
+					fmt.Printf("err parsing ban time (only positive number) %s", err)
+					break
 				}
-			*/
+			}
+
+			err := p2p.Ban_Address(line_parts[1], 10*60) // default ban is 10 minutes
+			if err != nil {
+				fmt.Printf("err parsing address %s", err)
+				break
+			}
+
+		case command == "unban":
+
+			if len(line_parts) >= 3 || len(line_parts) == 1 {
+				fmt.Printf("IP address required to unban\n")
+				break
+			}
+
+			err := p2p.UnBan_Address(line_parts[1])
+			if err != nil {
+				fmt.Printf("err unbanning %s, err = %s", line_parts[1], err)
+			} else {
+				fmt.Printf("unbann %s successful", line_parts[1])
+			}
+
 		case command == "bans":
-			//p2p.BanList_Print() // print ban list
+			p2p.BanList_Print() // print ban list
 
 		case line == "sleep":
 			logger.Info("console sleeping for 1 second")
@@ -948,6 +948,7 @@ func usage(w io.Writer) {
 var completer = readline.NewPrefixCompleter(
 	readline.PcItem("help"),
 	readline.PcItem("diff"),
+	readline.PcItem("gc"),
 	readline.PcItem("mempool_flush"),
 	readline.PcItem("mempool_delete_tx"),
 	readline.PcItem("mempool_print"),
