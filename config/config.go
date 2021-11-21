@@ -17,6 +17,7 @@
 package config
 
 import "github.com/satori/go.uuid"
+import "github.com/caarlos0/env/v6"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 // all global configuration variables are picked from here
@@ -52,12 +53,20 @@ const MAX_RINGSIZE = 128 // <= 128,  ringsize will be accepted
 // Minimum FEE calculation constants are here
 const FEE_PER_KB = uint64(100) // .00100 dero per kb
 
-const MAINNET_BOOTSTRAP_DIFFICULTY = uint64(80000000) // atlantis mainnet botstrapped at 80 MH/s
-const MAINNET_MINIMUM_DIFFICULTY = uint64(800000000)  // 80 MH/s
 
-// testnet bootstraps at 1 MH
-const TESTNET_BOOTSTRAP_DIFFICULTY = uint64(10000) // testnet bootstrap at 50KH/s
-const TESTNET_MINIMUM_DIFFICULTY = uint64(10000)   // 10KH/s
+type SettingsStruct struct {
+	MAINNET_BOOTSTRAP_DIFFICULTY         uint64         `env:"MAINNET_BOOTSTRAP_DIFFICULTY" envDefault:"80000000"`
+	MAINNET_MINIMUM_DIFFICULTY         uint64         `env:"MAINNET_MINIMUM_DIFFICULTY" envDefault:"80000000"`
+
+	TESTNET_BOOTSTRAP_DIFFICULTY         uint64         `env:"TESTNET_BOOTSTRAP_DIFFICULTY" envDefault:"10000"`
+	TESTNET_MINIMUM_DIFFICULTY         uint64         `env:"TESTNET_MINIMUM_DIFFICULTY" envDefault:"10000"`
+}
+
+var Settings SettingsStruct
+
+var _ = env.Parse(&Settings)
+
+
 
 // this single parameter controls lots of various parameters
 // within the consensus, it should never go below 7

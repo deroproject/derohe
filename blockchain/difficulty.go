@@ -123,9 +123,9 @@ func (chain *Blockchain) Get_Difficulty_At_Tips(tips []crypto.Hash) *big.Int {
 	step := new(big.Int)
 
 	if globals.IsMainnet() {
-		MinimumDifficulty = new(big.Int).SetUint64(config.MAINNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
+		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.MAINNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
 	} else {
-		MinimumDifficulty = new(big.Int).SetUint64(config.TESTNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
+		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.TESTNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
 	}
 	GenesisDifficulty := new(big.Int).SetUint64(1)
 

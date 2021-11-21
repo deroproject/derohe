@@ -166,12 +166,15 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	height := chain.Calculate_Height_At_Tips(bl.Tips) // we are 1 higher than previous highest tip
-
 	history := map[crypto.Hash]bool{}
 
 	var history_array []crypto.Hash
 	for i := range bl.Tips {
-		history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], 26)...)
+		h := height - 20 
+		if h < 0 {
+			h = 0
+		}
+		history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], h)...)
 	}
 	for _, h := range history_array {
 		history[h] = true

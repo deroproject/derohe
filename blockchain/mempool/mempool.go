@@ -327,12 +327,12 @@ func (pool *Mempool) Mempool_Print() {
 	})
 
 	loggerpool.Info(fmt.Sprintf("Total TX in mempool = %d\n", len(klist)))
-	loggerpool.Info(fmt.Sprintf("%20s  %14s %7s %7s %6s %32s\n", "Added", "Size", "Height", "TXID"))
+	loggerpool.Info(fmt.Sprintf("%20s  %7s %6s %32s\n", "Added", "Size", "Height", "TXID"))
 
 	for i := range klist {
 		k := klist[i]
 		v := vlist[i]
-		loggerpool.Info(fmt.Sprintf("%20s  %14s %7d %7d %6d %32s\n", time.Unix(int64(v.Added), 0).UTC().Format(time.RFC3339),
+		loggerpool.Info(fmt.Sprintf("%20s  %7d %6d %32s\n", time.Unix(int64(v.Added), 0).UTC().Format(time.RFC3339),
 			len(v.Tx.Serialize()), v.Height, k))
 	}
 }
