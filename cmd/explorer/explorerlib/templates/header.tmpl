@@ -1,0 +1,197 @@
+{{define "header"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <META HTTP-EQUIV="CACHE-CONTROL" CONTENT="NO-CACHE">
+    <title>{{ .title }}</title>
+    <!--<link rel="stylesheet" type="text/css" href="/css/style.css">-->
+    <style type="text/css">
+body {
+    margin: 0;
+    padding: 0;
+    color: green;
+    background-color: white;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    text-align: center;
+}
+
+.center {
+    margin: auto;
+    width: 96%;
+    /*border: 1px solid #73AD21;
+    padding: 10px;*/
+}
+
+tr, li, #pages, .info {
+    font-family: "Lucida Console", Monaco, monospace;
+    font-size  : 12px;
+    height: 22px;
+}
+
+#pages
+{
+    margin-top: 15px;
+}
+
+td {
+    text-align: center;
+}
+
+a:link {
+    text-decoration: none;
+    color: blue;
+}
+
+a:visited {
+    text-decoration: none;
+    color: blue;
+}
+
+a:hover {
+    text-decoration: underline;
+    color: blue;
+}
+
+a:active {
+    text-decoration: none;
+    color: blue;
+}
+
+form {
+    display: inline-block;
+    text-align: center;
+}
+
+.style-1 input[type="text"] {
+    padding: 2px;
+    border: solid 1px #dcdcdc;
+    transition: box-shadow 0.3s, border 0.3s;
+}
+.style-1 input[type="text"]:focus,
+.style-1 input[type="text"].focus {
+    border: solid 1px #707070;
+    box-shadow: 0 0 5px 1px #969696;
+}
+
+
+.tabs {
+    position: relative;
+    min-height: 220px; /* This part sucks */
+    clear: both;
+    margin: 25px 0;
+}
+
+.tab {
+    float: left;
+}
+
+.tab label {
+    background: white;
+    padding: 10px;
+    border: 1px solid #ccc;
+    margin-left: -1px;
+    position: relative;
+    left: 1px;
+}
+
+.tab [type=radio] {
+    display: none;
+}
+
+.content {
+    position: absolute;
+    top: 28px;
+    left: 0;
+    background: white;
+    right: 0;
+    bottom: 0;
+    padding: 20px;
+    border: 1px solid #ccc;
+}
+
+[type=radio]:checked ~ label {
+    background: #505050 ;
+    border-bottom: 1px solid green;
+    z-index: 2;
+}
+
+[type=radio]:checked ~ label ~ .content {
+    z-index: 1;
+}
+
+input#toggle-1[type=checkbox] {
+    position: absolute;
+    /*top: -9999px;*/
+    left: -9999px;
+
+}
+label#show-decoded-inputs {
+    /*-webkit-appearance: push-button;*/
+    /*-moz-appearance: button;*/
+    display: inline-block;
+    /*margin: 60px 0 10px 0;*/
+    cursor: pointer;
+    background-color: white;;
+    color: green;
+    width: 100%;
+    text-align: center;
+}
+
+div#decoded-inputs{
+    display: none;
+}
+
+/* Toggled State */
+input#toggle-1[type=checkbox]:checked ~ div#decoded-inputs {
+    display: block;
+}
+    </style>
+
+</head>
+<body>
+<div>
+
+    <div class="center">
+        <h1 class="center"> 
+        <img alt="logo" style="vertical-align:middle" height="64" width="64" src="/static/static/logo.png" />
+
+        
+        <a href="/">{{ .title }} {{if .testnet}} TestNet {{else}} Mainnet {{end}} {{.network}}</a></h1>
+<!--        <h4 style="font-size: 15px; margin: 0px">(no javascript - no cookies - no web analytics trackers - no images - open sourced)</h4> -->
+    </div>
+
+
+    <div class="center">
+        <form action="/search" method="get" style="width:100%; margin-top:15px" class="style-1">
+            <input type="text" name="value" size="120"
+                   placeholder="block height, block hash, transaction hash">
+            <input type="submit" value="Search">
+        </form>
+    </div>
+
+</div>
+
+{{if .Network_Difficulty}}
+<div class="center">
+     <h3 style="font-size: 12px; margin-top: 20px">
+        Server time: {{ .servertime }}  | <a href="/txpool">Transaction pool</a>
+        </h3>
+
+
+        <h3 style="font-size: 12px; margin-top: 5px; margin-bottom: 3">
+            Network difficulty: {{ .Network_Difficulty }}
+            | Hash rate: {{ .hash_rate }} KH&#x2F;s
+            | Average Block Time(50)  {{.averageblocktime50}} sec
+            | Total supply : {{ .total_supply }}
+            | Mempool size : {{ .txpool_size }}
+            | Fee per kb: {{.fee_per_kb}}
+            | Median block size limit: {{.median_block_size}} kB
+
+        </h3>
+
+</div>
+{{end}}
+{{end}}
