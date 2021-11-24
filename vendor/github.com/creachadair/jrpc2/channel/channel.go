@@ -1,6 +1,8 @@
-// Package channel defines a communications channel that can encode/transmit
-// and decode/receive data records with a configurable framing discipline, and
-// provides some simple framing implementations.
+// Package channel defines a basic communications channel.
+//
+// A Channel encodes/transmits and decodes/receives data records over an
+// unstructured stream, using a configurable framing discipline. This package
+// provides some basic framing implementations.
 //
 // Channels
 //

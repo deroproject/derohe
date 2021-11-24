@@ -280,7 +280,7 @@ rebuild_tx:
 		if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) {
 			if rpc.SC_INSTALL == rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64)) {
 				txid := tx.GetHash()
-				if txid[31] < 0x80 { // last byte should be more than 0x80
+				if txid[0] < 0x80 || txid[31] < 0x80 { // last byte should be more than 0x80
 					if retry_count <= 20 {
 						//fmt.Printf("rebuilding tx %s retry_count %d\n", txid, retry_count)
 						goto rebuild_tx

@@ -465,14 +465,15 @@ func (s *Server) pushReq(ctx context.Context, wantID bool, method string, params
 		id := strconv.FormatInt(s.callID, 10)
 		s.callID++
 
+		cbctx, cancel := context.WithCancel(ctx)
 		jid = json.RawMessage(id)
 		rsp = &Response{
 			ch:     make(chan *jmessage, 1),
 			id:     id,
-			cancel: func() {},
+			cancel: cancel,
 		}
 		s.call[id] = rsp
-		go s.waitCallback(ctx, id, rsp)
+		go s.waitCallback(cbctx, id, rsp)
 	}
 
 	s.log("Posting server %s %q %s", kind, method, string(bits))
@@ -575,11 +576,8 @@ func (s *Server) stop(err error) {
 	// Cancel any in-flight requests that made it out of the queue, and
 	// terminate any pending callback invocations.
 	for id, rsp := range s.call {
-		rsp.ch <- &jmessage{
-			ID: json.RawMessage(id),
-			E:  errChannelClosed,
-		}
 		delete(s.call, id)
+		rsp.cancel()
 	}
 	for id, cancel := range s.used {
 		cancel()

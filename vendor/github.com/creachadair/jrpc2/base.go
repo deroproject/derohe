@@ -14,6 +14,8 @@ import (
 // no method is available to handle the request.
 type Assigner interface {
 	// Assign returns the handler for the named method, or nil.
+	// The implementation can obtain the complete request from ctx using the
+	// jrpc2.InboundRequest function.
 	Assign(ctx context.Context, method string) Handler
 
 	// Names returns a slice of all known method names for the assigner.  The

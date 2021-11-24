@@ -18,6 +18,8 @@ package block
 
 import "fmt"
 import "time"
+import "hash"
+import "sync"
 import "strings"
 import "encoding/binary"
 
@@ -27,6 +29,10 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/pow"
 
 const MINIBLOCK_SIZE = 68
+
+var hasherPool = sync.Pool{
+	New: func() interface{} { return sha3.New256() },
+}
 
 // it should be exactly 68 bytes after serialization
 // structure size 1 + 6 + 4 + 4 + 16 +32 + 5 bytes
@@ -91,9 +97,17 @@ func (mbl *MiniBlock) GetMiniID() uint32 {
 }
 
 // this function gets the block identifier hash, this is only used to deduplicate mini blocks
-func (mbl *MiniBlock) GetHash() (hash crypto.Hash) {
+func (mbl *MiniBlock) GetHash() (result crypto.Hash) {
 	ser := mbl.Serialize()
-	return sha3.Sum256(ser[:])
+	sha := hasherPool.Get().(hash.Hash)
+	sha.Reset()
+	sha.Write(ser[:])
+	x := sha.Sum(nil)
+	copy(result[:], x[:])
+	hasherPool.Put(sha)
+	return result
+
+	//	return sha3.Sum256(ser[:])
 }
 
 // Get PoW hash , this is very slow function

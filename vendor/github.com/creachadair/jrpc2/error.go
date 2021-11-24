@@ -47,10 +47,6 @@ var errEmptyMethod = &Error{Code: code.InvalidRequest, Message: "empty method na
 // errInvalidRequest is the error reported for an invalid request object or batch.
 var errInvalidRequest = &Error{Code: code.ParseError, Message: "invalid request value"}
 
-// errChannelClosed is the error reported to a pending callback when the client
-// channel has closed before the call completed.
-var errChannelClosed = &Error{Code: code.Cancelled, Message: "client channel terminated"}
-
 // errEmptyBatch is the error reported for an empty request batch.
 var errEmptyBatch = &Error{Code: code.InvalidRequest, Message: "empty request batch"}
 

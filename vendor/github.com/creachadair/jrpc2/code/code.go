@@ -57,18 +57,16 @@ func (c Code) Err() error {
 	return codeError(c)
 }
 
-// Pre-defined standard error codes defined by the JSON-RPC specification.
+// Error codes from and including -32768 to -32000 are reserved for pre-defined
+// errors by the JSON-RPC specification. These constants cover the standard
+// codes and implementation-specific codes used by the jrpc2 module.
 const (
-	ParseError     Code = -32700 // Invalid JSON received by the server
-	InvalidRequest Code = -32600 // The JSON sent is not a valid request object
-	MethodNotFound Code = -32601 // The method does not exist or is unavailable
-	InvalidParams  Code = -32602 // Invalid method parameters
-	InternalError  Code = -32603 // Internal JSON-RPC error
-)
+	ParseError     Code = -32700 // [std] Invalid JSON received by the server
+	InvalidRequest Code = -32600 // [std] The JSON sent is not a valid request object
+	MethodNotFound Code = -32601 // [std] The method does not exist or is unavailable
+	InvalidParams  Code = -32602 // [std] Invalid method parameters
+	InternalError  Code = -32603 // [std] Internal JSON-RPC error
 
-// The JSON-RPC 2.0 specification reserves the range -32000 to -32099 for
-// implementation-defined server errors. These are used by the jrpc2 package.
-const (
 	NoError          Code = -32099 // Denotes a nil error (used by FromError)
 	SystemError      Code = -32098 // Errors from the operating environment
 	Cancelled        Code = -32097 // Request cancelled (context.Canceled)
@@ -91,6 +89,10 @@ var stdError = map[Code]string{
 // Register adds a new Code value with the specified message string.  This
 // function will panic if the proposed value is already registered with a
 // different string.
+//
+// Registering a code allows you to control the string returned by the String
+// method for the code value you specify.  It is not necessary to register a
+// code before using it. An unregistered code renders a generic string.
 func Register(value int32, message string) Code {
 	code := Code(value)
 	if s, ok := stdError[code]; ok && s != message {
@@ -102,7 +104,7 @@ func Register(value int32, message string) Code {
 
 // FromError returns a Code to categorize the specified error.
 // If err == nil, it returns code.NoError.
-// If err is an ErrCoder, it returns the reported code value.
+// If err is (or wraps) an ErrCoder, it returns the reported code value.
 // If err is context.Canceled, it returns code.Cancelled.
 // If err is context.DeadlineExceeded, it returns code.DeadlineExceeded.
 // Otherwise it returns code.SystemError.

@@ -26,6 +26,7 @@ import "bufio"
 import "strings"
 import "strconv"
 import "runtime"
+import "runtime/debug"
 import "math/big"
 import "os/signal"
 import "io/ioutil"
@@ -89,9 +90,24 @@ var Exit_In_Progress = make(chan bool)
 
 var logger logr.Logger
 
+func dump(filename string) {
+	f, err := os.Create(filename)
+	if err != nil {
+		fmt.Printf("err creating file %s\n", err)
+		return
+	}
+
+	runtime.GC()
+	debug.WriteHeapDump(f.Fd())
+
+	err = f.Close()
+	if err != nil {
+		fmt.Printf("err closing file %s\n", err)
+	}
+}
+
 func main() {
 	var err error
-
 	globals.Arguments, err = docopt.Parse(command_line, nil, true, config.Version.String(), false)
 
 	if err != nil {
@@ -781,6 +797,12 @@ restart_loop:
 
 		case command == "gc":
 			runtime.GC()
+		case command == "heap":
+			if len(line_parts) == 1 {
+				fmt.Printf("heap needs a filename to write\n")
+				break
+			}
+			dump(line_parts[1])
 
 		case command == "ban":
 

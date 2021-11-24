@@ -88,6 +88,17 @@ func New(fn interface{}) Func {
 	return fi.Wrap()
 }
 
+// NewStrict acts as New, but enforces strict field checking on an argument of
+// struct type.
+func NewStrict(fn interface{}) Func {
+	fi, err := Check(fn)
+	if err != nil {
+		panic(err)
+	}
+	fi.strictFields = true
+	return fi.Wrap()
+}
+
 var (
 	ctxType = reflect.TypeOf((*context.Context)(nil)).Elem() // type context.Context
 	errType = reflect.TypeOf((*error)(nil)).Elem()           // type error
@@ -355,8 +366,8 @@ func (o Obj) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &base); err != nil {
 		return filterJSONError("decoding", "object", err)
 	}
-	for key, val := range base {
-		arg, ok := o[key]
+	for key, arg := range o {
+		val, ok := base[key]
 		if !ok {
 			continue
 		} else if err := json.Unmarshal(val, arg); err != nil {

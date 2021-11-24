@@ -7,52 +7,44 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 
 	"github.com/creachadair/jrpc2"
-	"github.com/creachadair/jrpc2/channel"
 	"github.com/creachadair/jrpc2/code"
 	"github.com/creachadair/jrpc2/handler"
+	"github.com/creachadair/jrpc2/server"
 )
 
 var (
-	s *jrpc2.Server
-
-	ctx      = context.Background()
-	sch, cch = channel.Direct()
-	cli      = jrpc2.NewClient(cch, nil)
-
-	setup sync.Once
+	ctx = context.Background()
 )
 
 type Msg struct {
 	Text string `json:"msg"`
 }
 
-func startServer() {
-	setup.Do(func() {
-		s = jrpc2.NewServer(handler.Map{
-			"Hello": handler.New(func(ctx context.Context) string {
-				return "Hello, world!"
-			}),
-			"Echo": handler.New(func(_ context.Context, args []json.RawMessage) []json.RawMessage {
-				return args
-			}),
-			"Log": handler.New(func(ctx context.Context, msg Msg) (bool, error) {
-				fmt.Println("Log:", msg.Text)
-				return true, nil
-			}),
-		}, nil).Start(sch)
-	})
+func startServer() server.Local {
+	return server.NewLocal(handler.Map{
+		"Hello": handler.New(func(ctx context.Context) string {
+			return "Hello, world!"
+		}),
+		"Echo": handler.New(func(_ context.Context, args []json.RawMessage) []json.RawMessage {
+			return args
+		}),
+		"Log": handler.New(func(ctx context.Context, msg Msg) (bool, error) {
+			fmt.Println("Log:", msg.Text)
+			return true, nil
+		}),
+	}, nil)
 }
 
 func ExampleNewServer() {
 	// Construct a new server with methods "Hello" and "Log".
-	startServer()
+	loc := startServer()
+	defer loc.Close()
 
 	// We can query the server for its current status information, including a
 	// list of its methods.
-	si := s.ServerInfo()
+	si := loc.Server.ServerInfo()
 
 	fmt.Println(strings.Join(si.Methods, "\n"))
 	// Output:
@@ -62,10 +54,10 @@ func ExampleNewServer() {
 }
 
 func ExampleClient_Call() {
-	startServer()
+	loc := startServer()
+	defer loc.Close()
 
-	// var cli = jrpc2.NewClient(cch, nil)
-	rsp, err := cli.Call(ctx, "Hello", nil)
+	rsp, err := loc.Client.Call(ctx, "Hello", nil)
 	if err != nil {
 		log.Fatalf("Call: %v", err)
 	}
@@ -79,11 +71,11 @@ func ExampleClient_Call() {
 }
 
 func ExampleClient_CallResult() {
-	startServer()
+	loc := startServer()
+	defer loc.Close()
 
-	// var cli = jrpc2.NewClient(cch, nil)
 	var msg string
-	if err := cli.CallResult(ctx, "Hello", nil, &msg); err != nil {
+	if err := loc.Client.CallResult(ctx, "Hello", nil, &msg); err != nil {
 		log.Fatalf("CallResult: %v", err)
 	}
 	fmt.Println(msg)
@@ -92,10 +84,10 @@ func ExampleClient_CallResult() {
 }
 
 func ExampleClient_Batch() {
-	startServer()
+	loc := startServer()
+	defer loc.Close()
 
-	// var cli = jrpc2.NewClient(cch, nil)
-	rsps, err := cli.Batch(ctx, []jrpc2.Spec{
+	rsps, err := loc.Client.Batch(ctx, []jrpc2.Spec{
 		{Method: "Hello"},
 		{Method: "Log", Params: Msg{"Sing it!"}, Notify: true},
 	})
@@ -172,8 +164,10 @@ type strictParams struct {
 func (strictParams) DisallowUnknownFields() {}
 
 func ExampleResponse_UnmarshalResult() {
-	// var cli = jrpc2.NewClient(cch, nil)
-	rsp, err := cli.Call(ctx, "Echo", []string{"alpha", "oscar", "kilo"})
+	loc := startServer()
+	defer loc.Close()
+
+	rsp, err := loc.Client.Call(ctx, "Echo", []string{"alpha", "oscar", "kilo"})
 	if err != nil {
 		log.Fatalf("Call: %v", err)
 	}

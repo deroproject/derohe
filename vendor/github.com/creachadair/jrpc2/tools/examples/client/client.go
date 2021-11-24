@@ -65,7 +65,7 @@ func main() {
 	log.Printf("Connected to %v", conn.RemoteAddr())
 
 	// Start up the client, and enable logging to stderr.
-	cli := jrpc2.NewClient(channel.RawJSON(conn, conn), &jrpc2.ClientOptions{
+	cli := jrpc2.NewClient(channel.Line(conn, conn), &jrpc2.ClientOptions{
 		OnNotify: func(req *jrpc2.Request) {
 			var params json.RawMessage
 			req.UnmarshalParams(&params)

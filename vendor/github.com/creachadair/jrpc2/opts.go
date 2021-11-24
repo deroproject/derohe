@@ -278,7 +278,7 @@ func (lg Logger) Printf(msg string, args ...interface{}) {
 }
 
 // StdLogger adapts a *log.Logger to a Logger. If logger == nil, the returned
-// function sends logs to the default logger .
+// function sends logs to the default logger.
 func StdLogger(logger *log.Logger) Logger {
 	if logger == nil {
 		return func(text string) { log.Output(2, text) }

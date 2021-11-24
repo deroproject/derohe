@@ -192,7 +192,7 @@ func (c *MiniBlocksCollection) GetAllTips() (mbls []MiniBlock) {
 
 	clone := map[uint32]MiniBlock{}
 
-	var clone_list []MiniBlock
+	clone_list := make([]MiniBlock, 0, 64)
 	for k, v := range c.Collection {
 		clone[k] = v
 		clone_list = append(clone_list, v)
@@ -273,6 +273,8 @@ func (c *MiniBlocksCollection) GetGenesisFromMiniBlock(mbl MiniBlock) (genesis [
 
 // this works in all cases, but it may return truncated history,all returns must be checked for connectivity
 func (c *MiniBlocksCollection) GetEntireMiniBlockHistory(mbl MiniBlock) (history []MiniBlock) {
+
+	history = make([]MiniBlock, 0, 128)
 	if mbl.Genesis {
 		history = append(history, mbl)
 		return
@@ -301,6 +303,7 @@ func (c *MiniBlocksCollection) GetEntireMiniBlockHistory(mbl MiniBlock) (history
 // gets the genesis from the tips
 // this function only works, if the miniblock has been expanded
 func GetGenesisFromMiniBlock(mbl MiniBlock) (genesis []MiniBlock) {
+
 	if mbl.Genesis {
 		genesis = append(genesis, mbl)
 		return
@@ -325,20 +328,36 @@ func GetGenesisFromMiniBlock(mbl MiniBlock) (genesis []MiniBlock) {
 
 // get entire history,its in sorted form
 func GetEntireMiniBlockHistory(mbls ...MiniBlock) (history []MiniBlock) {
-	var queue []MiniBlock
+	queue := make([]MiniBlock, 0, 128)
 	queue = append(queue, mbls...)
+	history = make([]MiniBlock, 0, 128)
+	unique := make([]MiniBlock, 0, 128)
+
+	unique_map := map[crypto.Hash]MiniBlock{}
 
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:] // Dequeue
 
-		history = append(history, item) //mini blocks might be duplicated
-		if !item.Genesis {
-			queue = append(queue, item.PastMiniBlocks...)
+		if _, ok := unique_map[item.GetHash()]; !ok {
+			unique_map[item.GetHash()] = item
+			history = append(history, item) //mini blocks might be duplicated
+			if !item.Genesis {
+				queue = append(queue, item.PastMiniBlocks...)
+			}
 		}
 	}
 
+	for _, v := range unique_map {
+		unique = append(unique, v)
+	}
+
 	history = MiniBlocks_Unique(history)
+
+	if len(unique) != len(history) {
+		panic("result mismatch")
+	}
+
 	history = MiniBlocks_SortByTimeAsc(history) // sort on the basis of timestamps
 
 	return
@@ -347,6 +366,7 @@ func GetEntireMiniBlockHistory(mbls ...MiniBlock) (history []MiniBlock) {
 // this sorts by distance, in descending order
 // if distance is equal, then it sorts by its id which is collision free
 func MiniBlocks_SortByDistanceDesc(mbls []MiniBlock) (sorted []MiniBlock) {
+	sorted = make([]MiniBlock, 0, len(mbls))
 	sorted = append(sorted, mbls...)
 	sort.SliceStable(sorted, func(i, j int) bool { // sort descending on the basis of Distance
 		if sorted[i].Distance == sorted[j].Distance {
@@ -360,6 +380,7 @@ func MiniBlocks_SortByDistanceDesc(mbls []MiniBlock) (sorted []MiniBlock) {
 // this sorts by timestamp,ascending order
 // if timestamp is equal, then it sorts by its id which is collision free
 func MiniBlocks_SortByTimeAsc(mbls []MiniBlock) (sorted []MiniBlock) {
+	sorted = make([]MiniBlock, 0, len(mbls))
 	sorted = append(sorted, mbls...)
 	sort.SliceStable(sorted, func(i, j int) bool { // sort on the basis of timestamps
 		if sorted[i].Timestamp == sorted[j].Timestamp {
@@ -371,6 +392,7 @@ func MiniBlocks_SortByTimeAsc(mbls []MiniBlock) (sorted []MiniBlock) {
 }
 
 func MiniBlocks_Unique(mbls []MiniBlock) (unique []MiniBlock) {
+	unique = make([]MiniBlock, 0, len(mbls))
 	unique_map := map[crypto.Hash]MiniBlock{}
 	for _, mbl := range mbls {
 		unique_map[mbl.GetHash()] = mbl

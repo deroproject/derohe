@@ -10,6 +10,10 @@ const bufSize = 4096
 // RawJSON is a framing that transmits and receives records on r and wc, in which
 // each record is defined by being a complete JSON value. No padding or other
 // separation is added.
+//
+// A RawJSON channel has no out-of-band framing, so the channel cannot usually
+// recover after a message that is not syntactically valid JSON.  Applications
+// that need a channel to survive invalid JSON should avoid this framing.
 func RawJSON(r io.Reader, wc io.WriteCloser) Channel {
 	return jsonc{wc: wc, dec: json.NewDecoder(r), buf: make([]byte, bufSize)}
 }

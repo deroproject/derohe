@@ -84,7 +84,7 @@ To create a client we need a channel:
 
    conn, err := net.Dial("tcp", "localhost:8080")
    ...
-   ch := channel.RawJSON(conn, conn)
+   ch := channel.Line(conn, conn)
    cli := jrpc2.NewClient(ch, nil)  // nil for default options
 
 To send a single RPC, use the Call method:

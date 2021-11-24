@@ -49,7 +49,7 @@ func clean_up_valid_cache() {
 	current_time := time.Now()
 	transaction_valid_cache.Range(func(k, value interface{}) bool {
 		first_seen := value.(time.Time)
-		if current_time.Sub(first_seen).Round(time.Second).Seconds() > 3600 {
+		if current_time.Sub(first_seen).Round(time.Second).Seconds() > 360 {
 			transaction_valid_cache.Delete(k)
 		}
 		return true

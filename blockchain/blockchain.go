@@ -71,6 +71,7 @@ type Blockchain struct {
 	cache_Get_Difficulty_At_Tips *lru.Cache // used to cache some outputs
 	cache_BlockPast              *lru.Cache // used to cache a blocks past
 	cache_BlockHeight            *lru.Cache // used to cache a blocks past
+	cache_VersionMerkle          *lru.Cache // used to cache a versions merkle root
 
 	integrator_address rpc.Address // integrator rewards will be given to this address
 
@@ -153,11 +154,15 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 		return nil, err
 	}
 
-	if chain.cache_BlockPast, err = lru.New(100 * 1024); err != nil { // temporary cache for a blocks past
+	if chain.cache_BlockPast, err = lru.New(1024); err != nil { // temporary cache for a blocks past
 		return nil, err
 	}
 
-	if chain.cache_BlockHeight, err = lru.New(100 * 1024); err != nil { // temporary cache for a blocks height
+	if chain.cache_BlockHeight, err = lru.New(10 * 1024); err != nil { // temporary cache for a blocks height
+		return nil, err
+	}
+
+	if chain.cache_VersionMerkle, err = lru.New(1024); err != nil { // temporary cache for a snapshot version
 		return nil, err
 	}
 
@@ -231,11 +236,11 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 		top_block_topo_index := chain.Load_TOPO_HEIGHT()
 
-		if top_block_topo_index < 10 {
+		if top_block_topo_index < 4 {
 			return
 		}
 
-		top_block_topo_index -= 10
+		top_block_topo_index -= 4
 
 		blid, err := chain.Load_Block_Topological_order_at_index(top_block_topo_index)
 		if err != nil {
@@ -689,7 +694,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 					if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) {
 						if rpc.SC_INSTALL == rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64)) {
 							txid := tx.GetHash()
-							if txid[31] < 0x80 { // last byte should be more than 0x80
+							if txid[0] < 0x80 || txid[31] < 0x80 { // last byte should be more than 0x80
 								block_logger.Error(fmt.Errorf("Invalid SCID"), "SCID installing tx must end with >0x80 byte", "txid", cbl.Txs[i].GetHash())
 								return errormsg.ErrTXDoubleSpend, false
 							}
@@ -1186,6 +1191,17 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	if !chain.simulator && calculated_fee > provided_fee {
 		err = fmt.Errorf("TX  %s rejected due to low fees  provided fee %d calculated fee %d", txhash, provided_fee, calculated_fee)
 		return err
+	}
+
+	if tx.TransactionType == transaction.SC_TX {
+		if tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) {
+			if rpc.SC_INSTALL == rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64)) {
+				txid := tx.GetHash()
+				if txid[0] < 0x80 || txid[31] < 0x80 { // last byte should be more than 0x80
+					return fmt.Errorf("Invalid SCID ID,it must not start with 0x80")
+				}
+			}
+		}
 	}
 
 	if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, chain.Get_TIPS()); err != nil { // transaction verification failed

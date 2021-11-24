@@ -96,7 +96,7 @@ func main() {
 		log.Fatalln("Listen:", err)
 	}
 	log.Printf("Listening at %v...", lst.Addr())
-	acc := server.NetAccepter(lst, channel.RawJSON)
+	acc := server.NetAccepter(lst, channel.Line)
 	server.Loop(acc, server.Static(mux), &server.LoopOptions{
 		ServerOptions: &jrpc2.ServerOptions{
 			Logger:      jrpc2.StdLogger(nil),

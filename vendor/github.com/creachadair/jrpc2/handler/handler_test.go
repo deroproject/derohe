@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/code"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/google/go-cmp/cmp"
 )
@@ -111,6 +112,26 @@ func TestPositional(t *testing.T) {
 	}
 }
 
+func TestNewStrict(t *testing.T) {
+	type arg struct {
+		A, B string
+	}
+	fn := handler.NewStrict(func(ctx context.Context, arg *arg) error { return nil })
+
+	req := mustParseRequest(t, `{
+   "jsonrpc": "2.0",
+   "id":      100,
+   "method":  "f",
+   "params": {
+      "A": "foo",
+      "Z": 25
+   }}`)
+	rsp, err := fn(context.Background(), req)
+	if got := code.FromError(err); got != code.InvalidParams {
+		t.Errorf("Handler returned (%+v, %v), want InvalidParms", rsp, err)
+	}
+}
+
 // Verify that the handling of pointer-typed arguments does not incorrectly
 // introduce another pointer indirection.
 func TestNew_pointerRegression(t *testing.T) {
@@ -120,18 +141,15 @@ func TestNew_pointerRegression(t *testing.T) {
 		t.Logf("Got argument struct: %+v", got)
 		return nil
 	})
-	req, err := jrpc2.ParseRequests([]byte(`{
+	req := mustParseRequest(t, `{
    "jsonrpc": "2.0",
    "id":      "foo",
    "method":  "bar",
    "params":{
       "alpha": "xyzzy",
       "bravo": 23
-   }}`))
-	if err != nil {
-		t.Fatalf("Parse request failed: %v", err)
-	}
-	if _, err := call.Handle(context.Background(), req[0]); err != nil {
+   }}`)
+	if _, err := call.Handle(context.Background(), req); err != nil {
 		t.Errorf("Handle failed: %v", err)
 	}
 	want := argStruct{A: "xyzzy", B: 23}
@@ -165,11 +183,8 @@ func TestPositional_decode(t *testing.T) {
 		{`{"jsonrpc":"2.0","id":6,"method":"add","params":{"unknown":"field"}}`, 0, true},
 	}
 	for _, test := range tests {
-		req, err := jrpc2.ParseRequests([]byte(test.input))
-		if err != nil {
-			t.Fatalf("ParseRequests %#q: unexpected error: %v", test.input, err)
-		}
-		got, err := call(context.Background(), req[0])
+		req := mustParseRequest(t, test.input)
+		got, err := call(context.Background(), req)
 		if !test.bad {
 			if err != nil {
 				t.Errorf("Call %#q: unexpected error: %v", test.input, err)
@@ -359,4 +374,15 @@ func TestObjUnmarshal(t *testing.T) {
 			t.Errorf("Wrong values: (-want, +got)\n%s", diff)
 		}
 	}
+}
+
+func mustParseRequest(t *testing.T, text string) *jrpc2.Request {
+	t.Helper()
+	req, err := jrpc2.ParseRequests([]byte(text))
+	if err != nil {
+		t.Fatalf("ParseRequests: %v", err)
+	} else if len(req) != 1 {
+		t.Fatalf("Wrong number of requests: got %d, want 1", len(req))
+	}
+	return req[0]
 }

@@ -18,7 +18,6 @@ package blockchain
 
 import "fmt"
 import "math/big"
-import "crypto/rand"
 import "path/filepath"
 
 import "github.com/deroproject/derohe/globals"
@@ -55,9 +54,7 @@ func (s *storage) Initialize(params map[string]interface{}) (err error) {
 }
 
 func (s *storage) IsBalancesIntialized() bool {
-
 	var err error
-	var buf [64]byte
 	var balancehash, random_hash [32]byte
 
 	balance_ss, _ := s.Balance_store.LoadSnapshot(0) // load most recent snapshot
@@ -65,12 +62,10 @@ func (s *storage) IsBalancesIntialized() bool {
 
 	// avoid hardcoding any hash
 	if balancehash, err = balancetree.Hash(); err == nil {
-		if _, err = rand.Read(buf[:]); err == nil {
-			random_tree, _ := balance_ss.GetTree(string(buf[:]))
-			if random_hash, err = random_tree.Hash(); err == nil {
-				if random_hash == balancehash {
-					return false
-				}
+		random_tree, _ := balance_ss.GetTree(config.SC_META)
+		if random_hash, err = random_tree.Hash(); err == nil {
+			if random_hash == balancehash {
+				return false
 			}
 		}
 	}
@@ -300,6 +295,11 @@ func (chain *Blockchain) Load_Block_Topological_order_at_index(index_pos int64) 
 //load store hash from 2 tree
 func (chain *Blockchain) Load_Merkle_Hash(version uint64) (hash crypto.Hash, err error) {
 
+	if hashi, ok := chain.cache_VersionMerkle.Get(version); ok {
+		hash = hashi.(crypto.Hash)
+		return
+	}
+
 	ss, err := chain.Store.Balance_store.LoadSnapshot(version)
 	if err != nil {
 		return
@@ -323,6 +323,10 @@ func (chain *Blockchain) Load_Merkle_Hash(version uint64) (hash crypto.Hash, err
 	}
 	for i := range balance_merkle_hash {
 		hash[i] = balance_merkle_hash[i] ^ meta_merkle_hash[i]
+	}
+
+	if chain.cache_enabled { //set in cache
+		chain.cache_VersionMerkle.Add(version, hash)
 	}
 	return hash, nil
 }
