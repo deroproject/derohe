@@ -16,7 +16,6 @@
 
 package block
 
-import "time"
 import "bytes"
 import "testing"
 import "crypto/rand"
@@ -25,11 +24,7 @@ func Test_blockmini_serde(t *testing.T) {
 
 	var random_data [MINIBLOCK_SIZE]byte
 
-	random_data[0] = 0xa1
-	for i := byte(1); i < 32; i++ {
-		random_data[i] = 0
-	}
-
+	random_data[0] = 0x41
 	var bl, bl2 MiniBlock
 
 	if err := bl2.Deserialize(random_data[:]); err != nil {
@@ -43,8 +38,6 @@ func Test_blockmini_serde(t *testing.T) {
 		t.Fatalf("error during serdes %x", random_data)
 	}
 
-	//t.Logf("bl1 %+v\n",bl)
-
 }
 
 func Test_blockmini_serdes(t *testing.T) {
@@ -55,7 +48,7 @@ func Test_blockmini_serdes(t *testing.T) {
 		if _, err := rand.Read(random_data[:]); err != nil {
 			t.Fatalf("error reading random number %s", err)
 		}
-		random_data[0] = 0xa1
+		random_data[0] = 0x41
 
 		var bl, bl2 MiniBlock
 
@@ -77,30 +70,4 @@ func Test_blockmini_serdes(t *testing.T) {
 
 	}
 
-}
-
-// test all invalid edge cases, which will return error
-func Test_Representable_Time(t *testing.T) {
-
-	var bl, bl2 MiniBlock
-	bl.Version = 1
-	bl.PastCount = 2
-	bl.Timestamp = 0xffffffffffff
-	serialized := bl.Serialize()
-
-	if err := bl2.Deserialize(serialized); err != nil {
-		t.Fatalf("error during serdes")
-	}
-
-	if bl.Timestamp != bl2.Timestamp {
-		t.Fatalf("timestamp corruption")
-	}
-
-	timestamp := time.Unix(0, int64(bl.Timestamp*uint64(time.Millisecond)))
-
-	if timestamp.Year() != 2121 {
-		t.Fatalf("corruption in timestamp representing year 2121")
-	}
-
-	t.Logf("time representable is %s\n", timestamp.UTC())
 }

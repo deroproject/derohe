@@ -89,7 +89,7 @@ type Blockchain struct {
 	simulator bool // is simulator mode
 
 	P2P_Block_Relayer     func(*block.Complete_Block, uint64) // tell p2p to broadcast any block this daemon hash found
-	P2P_MiniBlock_Relayer func(mbl []block.MiniBlock, peerid uint64)
+	P2P_MiniBlock_Relayer func(mbl block.MiniBlock, peerid uint64)
 
 	RPC_NotifyNewBlock      *sync.Cond // used to notify rpc that a new block has been found
 	RPC_NotifyHeightChanged *sync.Cond // used to notify rpc that  chain height has changed due to addition of block
@@ -514,20 +514,14 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	}
 
 	// verify everything related to miniblocks in one go
-	{
-		if err = chain.Verify_MiniBlocks(*cbl.Bl); err != nil {
+	if !chain.simulator {
+		if err = Verify_MiniBlocks(*cbl.Bl); err != nil { // verifies the miniblocks all refer to current block
 			return err, false
 		}
 
 		if bl.Height != 0 { // a genesis block doesn't have miniblock
-
 			// verify hash of miniblock for corruption
 			if err = chain.Verify_MiniBlocks_HashCheck(cbl); err != nil {
-				return err, false
-			}
-
-			// check dynamic consensus rules
-			if err = chain.Check_Dynamism(cbl.Bl.MiniBlocks); err != nil {
 				return err, false
 			}
 		}
@@ -535,7 +529,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		for _, mbl := range bl.MiniBlocks {
 			var miner_hash crypto.Hash
 			copy(miner_hash[:], mbl.KeyHash[:])
-			if !chain.IsAddressHashValid(true, miner_hash) {
+			if mbl.Final == false && !chain.IsAddressHashValid(true, miner_hash) {
 				err = fmt.Errorf("miner address not registered")
 				return err, false
 			}
@@ -720,6 +714,9 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			go func(j int) {
 				defer sem.Release(1)
 				defer wg.Done()
+				if atomic.LoadInt32(&fail_count) >= 1 { // fail fast
+					return
+				}
 				if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, cbl.Txs[j], bl.Tips); err != nil { // transaction verification failed
 					atomic.AddInt32(&fail_count, 1) // increase fail count by 1
 					block_logger.Error(err, "tx nonce verification failed", "txid", cbl.Txs[j].GetHash())
@@ -749,6 +746,9 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			go func(j int) {
 				defer sem.Release(1)
 				defer wg.Done()
+				if atomic.LoadInt32(&fail_count) >= 1 { // fail fast
+					return
+				}
 				if err := chain.Verify_Transaction_NonCoinbase(cbl.Txs[j]); err != nil { // transaction verification failed
 					atomic.AddInt32(&fail_count, 1) // increase fail count by 1
 					block_logger.Error(err, "tx verification failed", "txid", cbl.Txs[j].GetHash())
@@ -1205,12 +1205,12 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	}
 
 	if err := chain.Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_version, tx, chain.Get_TIPS()); err != nil { // transaction verification failed
-		logger.V(1).Error(err, "Incoming TX nonce verification failed", "txid", txhash, "stacktrace", globals.StackTrace(false))
+		logger.V(2).Error(err, "Incoming TX nonce verification failed", "txid", txhash, "stacktrace", globals.StackTrace(false))
 		return fmt.Errorf("Incoming TX %s nonce verification failed, err %s", txhash, err)
 	}
 
 	if err := chain.Verify_Transaction_NonCoinbase(tx); err != nil {
-		logger.V(1).Error(err, "Incoming TX could not be verified", "txid", txhash)
+		logger.V(2).Error(err, "Incoming TX could not be verified", "txid", txhash)
 		return fmt.Errorf("Incoming TX %s could not be verified, err %s", txhash, err)
 	}
 
@@ -1331,13 +1331,6 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 	chain.Lock()
 	defer chain.Unlock()
 
-	// we must till we reach a safe point
-	// safe point is point where a single block exists at specific height
-	// this may lead us to rewinding a it more
-	//safe := false
-
-	// TODO we must fix safeness using the stable calculation
-
 	if rewind_count == 0 {
 		return
 	}
@@ -1345,28 +1338,23 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 	top_block_topo_index := chain.Load_TOPO_HEIGHT()
 	rewinded := int64(0)
 
-	for { // rewind as many as possible
-		if top_block_topo_index-rewinded < 1 || rewinded >= int64(rewind_count) {
-			break
-		}
-
-		rewinded++
-	}
-
-	for { // rewinf till we reach a safe point
+	for {
 		r, err := chain.Store.Topo_store.Read(top_block_topo_index - rewinded)
 		if err != nil {
 			panic(err)
 		}
 
-		if chain.IsBlockSyncBlockHeight(r.BLOCK_ID) || r.Height == 1 {
+		if top_block_topo_index-rewinded < 1 || rewinded >= int64(rewind_count) {
 			break
 		}
 
+		if r.Height == 1 {
+			break
+		}
 		rewinded++
 	}
 
-	for i := int64(0); i != rewinded; i++ {
+	for i := int64(0); i < rewinded; i++ {
 		chain.Store.Topo_store.Clean(top_block_topo_index - i)
 	}
 
@@ -1381,9 +1369,12 @@ func (chain *Blockchain) CheckDagStructure(tips []crypto.Hash) bool {
 
 	for i := range tips { // first make sure all the tips are at same height
 		if chain.Load_Height_for_BL_ID(tips[0]) != chain.Load_Height_for_BL_ID(tips[i]) {
-
 			return false
 		}
+	}
+
+	if len(tips) == 2 && tips[0] == tips[1] {
+		return false
 	}
 
 	switch len(tips) {

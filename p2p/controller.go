@@ -138,7 +138,7 @@ func P2P_Init(params map[string]interface{}) error {
 
 	go P2P_Server_v2()                                          // start accepting connections
 	go P2P_engine()                                             // start outgoing engine
-	globals.Cron.AddFunc("@every 2s", syncroniser)              // start sync engine
+	globals.Cron.AddFunc("@every 4s", syncroniser)              // start sync engine
 	globals.Cron.AddFunc("@every 5s", Connection_Pending_Clear) // clean dead connections
 	globals.Cron.AddFunc("@every 10s", ping_loop)               // ping every one
 	globals.Cron.AddFunc("@every 10s", chunks_clean_up)         // clean chunks
@@ -554,7 +554,7 @@ func P2P_Server_v2() {
 func handle_connection_panic(c *Connection) {
 	defer globals.Recover(2)
 	if r := recover(); r != nil {
-		logger.V(2).Error(nil, "Recovered while handling connection", "r", r, "stack", debug.Stack())
+		logger.V(2).Error(nil, "Recovered while handling connection", "r", r, "stack", string(debug.Stack()))
 		c.exit()
 	}
 }

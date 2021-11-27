@@ -124,8 +124,8 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 	// since perfect division is not possible, ( see money handling)
 	// any left over change is delivered to main miner who integrated the full block
 
-	share := full_reward / uint64(len(bl.MiniBlocks)+1)              //  one block integrator, this is integer division
-	leftover := full_reward - (share * uint64(len(bl.MiniBlocks)+1)) // only integrator will get this
+	share := full_reward / uint64(len(bl.MiniBlocks))              //  one block integrator, this is integer division
+	leftover := full_reward - (share * uint64(len(bl.MiniBlocks))) // only integrator will get this
 
 	{ // giver integrator his reward
 		balance_serialized, err := balance_tree.Get(tx.MinerAddress[:])
@@ -139,6 +139,9 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 
 	// all the other miniblocks will get their share
 	for _, mbl := range bl.MiniBlocks {
+		if mbl.Final {
+			continue
+		}
 		_, key_compressed, balance_serialized, err := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
 		if err != nil {
 			panic(err)

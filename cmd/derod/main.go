@@ -29,7 +29,6 @@ import "runtime"
 import "runtime/debug"
 import "math/big"
 import "os/signal"
-import "io/ioutil"
 
 //import "crypto/sha1"
 import "encoding/hex"
@@ -107,6 +106,7 @@ func dump(filename string) {
 }
 
 func main() {
+	runtime.MemProfileRate = 0
 	var err error
 	globals.Arguments, err = docopt.Parse(command_line, nil, true, config.Version.String(), false)
 
@@ -216,7 +216,7 @@ func main() {
 		p2p.Broadcast_Block(cbl, peerid)
 	}
 
-	chain.P2P_MiniBlock_Relayer = func(mbl []block.MiniBlock, peerid uint64) {
+	chain.P2P_MiniBlock_Relayer = func(mbl block.MiniBlock, peerid uint64) {
 		p2p.Broadcast_MiniBlock(mbl, peerid)
 	}
 
@@ -348,7 +348,7 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 
 	}()
 
-restart_loop:
+	//restart_loop:
 	for {
 		line, err := l.Readline()
 		if err == io.EOF {
@@ -701,42 +701,6 @@ restart_loop:
 		case strings.ToLower(line) == "quit":
 			close(Exit_In_Progress)
 			return nil
-		case command == "graphminifull": // renders the graph of miniblocks in memory
-			ioutil.WriteFile("/tmp/minidag_recent.dot", []byte(chain.MiniBlocks.Graph()), 0644)
-
-			logger.Info("Writing mini block graph (from memory) dot format  /tmp/minidag_recent.dot\n")
-
-		case command == "graphmini": // renders graphs of miniblocks within a block
-			topo := int64(0)
-
-			if len(line_parts) != 2 {
-				logger.Error(fmt.Errorf("This function requires single parameter a topoheight"), "")
-				continue
-			}
-			if s, err := strconv.ParseInt(line_parts[1], 10, 64); err == nil {
-				topo = s
-			} else {
-				logger.Error(err, "Invalid topo height value", "value", line_parts[1])
-				continue
-			}
-
-			if hash, err := chain.Load_Block_Topological_order_at_index(topo); err == nil {
-				if bl, err := chain.Load_BL_FROM_ID(hash); err == nil {
-					tmp_collection := block.CreateMiniBlockCollection()
-					for _, tmbl := range bl.MiniBlocks {
-						if err, ok := tmp_collection.InsertMiniBlock(tmbl); !ok {
-							fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
-							break restart_loop
-						}
-					}
-					ioutil.WriteFile(fmt.Sprintf("/tmp/minidag_%d.dot", topo), []byte(tmp_collection.Graph()), 0644)
-					logger.Info("Writing mini block graph dot format  /tmp/minidag.dot", "topo", topo)
-				}
-			}
-
-			if err != nil {
-				fmt.Printf("cannot render graph at topo %d due to error %s\n", topo, err)
-			}
 
 		case command == "graph":
 			start := int64(0)

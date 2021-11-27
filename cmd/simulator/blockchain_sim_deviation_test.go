@@ -181,7 +181,7 @@ func Test_Blockchain_Deviation(t *testing.T) {
 			t.Fatalf("miniblock count not increased.")
 		}
 
-		if tips := chain.MiniBlocks.GetAllTipsAtHeight(int64(cbl_next.Bl.Height)); len(tips) != 1 {
+		if tips := chain.MiniBlocks.GetAllKeys(int64(cbl_next.Bl.Height)); len(tips) != 1 {
 			t.Fatalf("Tip count Expected %d Actuak %d", 1, len(tips))
 		}
 

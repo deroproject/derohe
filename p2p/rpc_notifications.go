@@ -112,7 +112,6 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 // only miniblocks carry extra info, which leads to better time tracking
 func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err error) {
 	defer handle_connection_panic(c)
-
 	if len(request.MiniBlocks) >= 5 {
 		err = fmt.Errorf("Notify Block can notify max 5 miniblocks")
 		c.logger.V(3).Error(err, "Should be banned")
@@ -136,8 +135,9 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 
 	for _, mbl := range mbls {
 		var ok bool
-		if mbl.Timestamp > uint64(globals.Time().UTC().UnixMilli())+50 { // 50 ms passing allowed
-			return errormsg.ErrInvalidTimestamp
+
+		if mbl.Final {
+			return fmt.Errorf("final blocks are not propagted")
 		}
 
 		// track miniblock propagation
@@ -151,39 +151,22 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 			continue // miniblock already in chain, so skip it
 		}
 
-		// first check whether the incoming minblock can be added to sub chains
-		if !chain.MiniBlocks.IsConnected(mbl) {
-			c.logger.V(3).Error(err, "Disconnected miniblock", "mbl", mbl.String())
-			//return fmt.Errorf("Disconnected miniblock")
-			continue
-		}
-
 		var miner_hash crypto.Hash
 		copy(miner_hash[:], mbl.KeyHash[:])
 		if !chain.IsAddressHashValid(false, miner_hash) { // this will use cache
-			c.logger.V(3).Error(err, "unregistered miner")
 			return fmt.Errorf("unregistered miner")
 		}
 
-		// check whether the genesis blocks are all equal
-		genesis_list := chain.MiniBlocks.GetGenesisFromMiniBlock(mbl)
-
 		var bl block.Block
-		if len(genesis_list) >= 1 {
-			bl.Height = binary.BigEndian.Uint64(genesis_list[0].Check[:])
 
-			var tip1, tip2 crypto.Hash
-			copy(tip1[:], genesis_list[0].Check[8:8+12])
-			bl.Tips = append(bl.Tips, tip1)
+		bl.Height = mbl.Height
+		var tip1, tip2 crypto.Hash
+		binary.BigEndian.PutUint32(tip1[:], mbl.Past[0])
+		bl.Tips = append(bl.Tips, tip1)
 
-			if genesis_list[0].PastCount == 2 {
-				copy(tip2[:], genesis_list[0].Check[8+12:])
-				bl.Tips = append(bl.Tips, tip2)
-			}
-
-		} else {
-			c.logger.V(3).Error(nil, "no genesis, we cannot do anything")
-			continue
+		if mbl.PastCount == 2 {
+			binary.BigEndian.PutUint32(tip2[:], mbl.Past[1])
+			bl.Tips = append(bl.Tips, tip2)
 		}
 
 		for i, tip := range bl.Tips { // tips are currently only partial,  lets expand tips
@@ -194,15 +177,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 			}
 		}
 
-		if bl.Height >= 2 && !chain.CheckDagStructure(bl.Tips) {
-			return fmt.Errorf("Invalid DAG structure")
-		}
-
-		bl.MiniBlocks = append(bl.MiniBlocks, chain.MiniBlocks.GetEntireMiniBlockHistory(mbl)...)
-
-		if err = chain.Verify_MiniBlocks(bl); err != nil { // whether the structure is okay
-			return err
-		}
+		bl.MiniBlocks = append(bl.MiniBlocks, mbl)
 
 		// lets get the difficulty at tips
 		if !chain.VerifyMiniblockPoW(&bl, mbl) {
@@ -213,12 +188,13 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 			return err
 		} else { // rebroadcast miniblock
 			valid_found = true
+			if valid_found {
+				Peer_SetSuccess(c.Addr.String())
+				broadcast_MiniBlock(mbl, c.Peer_ID, request.Sent) // do not send back to the original peer
+			}
 		}
 	}
-	if valid_found {
-		Peer_SetSuccess(c.Addr.String())
-		broadcast_MiniBlock(mbls, c.Peer_ID, request.Sent) // do not send back to the original peer
-	}
+
 	fill_common(&response.Common)                         // fill common info
 	fill_common_T0T1T2(&request.Common, &response.Common) // fill time related information
 	return nil

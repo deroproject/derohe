@@ -58,13 +58,13 @@ func (connection *Connection) dispatch_test_handshake() {
 
 	ctx, _ := context.WithTimeout(context.Background(), 4*time.Second)
 	if err := connection.Client.CallWithContext(ctx, "Peer.Handshake", request, &response); err != nil {
-		connection.logger.V(2).Error(err, "cannot handshake")
+		connection.logger.V(4).Error(err, "cannot handshake")
 		connection.exit()
 		return
 	}
 
 	if !Verify_Handshake(&response) { // if not same network boot off
-		connection.logger.V(2).Info("terminating connection network id mismatch ", "networkid", response.Network_ID)
+		connection.logger.V(3).Info("terminating connection network id mismatch ", "networkid", response.Network_ID)
 		connection.exit()
 		return
 	}

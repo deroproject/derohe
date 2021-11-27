@@ -17,9 +17,9 @@
 package block
 
 import "fmt"
-import "time"
 import "hash"
 import "sync"
+import "bytes"
 import "strings"
 import "encoding/binary"
 
@@ -28,49 +28,52 @@ import "golang.org/x/crypto/sha3"
 import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/pow"
 
-const MINIBLOCK_SIZE = 68
+const MINIBLOCK_SIZE = 48
 
 var hasherPool = sync.Pool{
 	New: func() interface{} { return sha3.New256() },
 }
 
-// it should be exactly 68 bytes after serialization
-// structure size 1 + 6 + 4 + 4 + 16 +32 + 5 bytes
+// it should be exactly 48 bytes after serialization
+// structure size 1 + 2 + 5 + 8 + 16 + 16 bytes
 type MiniBlock struct {
-	// all the below 3 fields are serialized into single byte
+	//  below 3 fields are serialized into single byte
 	Version   uint8 // 1 byte    // lower 5 bits (0,1,2,3,4)
-	Odd       bool  // 1 bit flag, bit 4
-	Genesis   bool  // 1 bit flag, bit 5
+	Final     bool  // bit 5
 	PastCount uint8 // previous  count  // bits 6,7
 
-	Timestamp uint64 //  6 bytes  millisecond precision, serialized in 6 bytes,
-	// can represent time till 2121-04-11 11:53:25
-	Past [2]uint32 // 4 bytes used to build DAG of miniblocks and prevent number of attacks
+	Timestamp uint16 // can represent time from first block
+	Height    uint64 //  5 bytes  serialized in 5 bytes,
+
+	Past [2]uint32 // 8 bytes used to build DAG of miniblocks and prevent number of attacks
 
 	KeyHash crypto.Hash //  16 bytes, remaining bytes are trimmed miniblock miner keyhash
-	Check   crypto.Hash // in non genesis,32 bytes this is  XOR of hash of TXhashes and block header hash
-	// in genesis, this represents 8 bytes height, 12 bytes of first tip, 12 bytes of second tip
-	Nonce [5]byte // 5 nonce byte represents 2^40 variations, 2^40 work every ms
 
-	// below fields are never serialized and are placed here for easier processing/documentation
-	Distance       uint32      // distance to tip block
-	PastMiniBlocks []MiniBlock // pointers to past
-	Height         int64       // which height
+	Flags uint32    // can be used as flags by special miners to represent something, also used as nonce
+	Nonce [3]uint32 // 12 nonce byte represents 2^96 variations, 2^96 work every ms
+}
 
+type MiniBlockKey struct {
+	Height uint64
+	Past0  uint32
+	Past1  uint32
+}
+
+func (mbl *MiniBlock) GetKey() (key MiniBlockKey) {
+	key.Height = mbl.Height
+	key.Past0 = mbl.Past[0]
+	key.Past1 = mbl.Past[1]
+	return
 }
 
 func (mbl MiniBlock) String() string {
 	r := new(strings.Builder)
 
-	fmt.Fprintf(r, "%08x %d ", mbl.GetMiniID(), mbl.Version)
-	if mbl.Genesis {
-		fmt.Fprintf(r, "GENESIS height %d", int64(binary.BigEndian.Uint64(mbl.Check[:])))
-	} else {
-		fmt.Fprintf(r, "NORMAL ")
-	}
+	fmt.Fprintf(r, "%d ", mbl.Version)
+	fmt.Fprintf(r, "height %d", mbl.Height)
 
-	if mbl.Odd {
-		fmt.Fprintf(r, " Odd ")
+	if mbl.Final {
+		fmt.Fprintf(r, " Final ")
 	}
 
 	if mbl.PastCount == 1 {
@@ -79,21 +82,10 @@ func (mbl MiniBlock) String() string {
 		fmt.Fprintf(r, " Past [%08x %08x]", mbl.Past[0], mbl.Past[1])
 	}
 	fmt.Fprintf(r, " time %d", mbl.Timestamp)
+	fmt.Fprintf(r, " flags %d", mbl.Flags)
+	fmt.Fprintf(r, " Nonce [%08x %08x %08x]", mbl.Nonce[0], mbl.Nonce[1], mbl.Nonce[2])
 
 	return r.String()
-}
-
-func (mbl *MiniBlock) GetTimestamp() time.Time {
-	return time.Unix(0, int64(mbl.Timestamp*uint64(time.Millisecond)))
-}
-
-//func (mbl *MiniBlock) SetTimestamp(t time.Time) {
-//	mbl.Timestamp = uint64(t.UTC().UnixMilli())
-//}
-
-func (mbl *MiniBlock) GetMiniID() uint32 {
-	h := mbl.GetHash()
-	return binary.BigEndian.Uint32(h[:])
 }
 
 // this function gets the block identifier hash, this is only used to deduplicate mini blocks
@@ -115,33 +107,8 @@ func (mbl *MiniBlock) GetPoWHash() (hash crypto.Hash) {
 	return pow.Pow(mbl.Serialize())
 }
 
-func (mbl *MiniBlock) HasPid(pid uint32) bool {
-
-	switch mbl.PastCount {
-	case 0:
-		return false
-	case 1:
-		if mbl.Past[0] == pid {
-			return true
-		} else {
-			return false
-		}
-
-	case 2:
-		if mbl.Past[0] == pid || mbl.Past[1] == pid {
-			return true
-		} else {
-			return false
-		}
-
-	default:
-		panic("not supported")
-	}
-
-}
-
 func (mbl *MiniBlock) SanityCheck() error {
-	if mbl.Version >= 32 {
+	if mbl.Version >= 31 {
 		return fmt.Errorf("version not supported")
 	}
 	if mbl.PastCount > 2 {
@@ -150,94 +117,88 @@ func (mbl *MiniBlock) SanityCheck() error {
 	if mbl.PastCount == 0 {
 		return fmt.Errorf("miniblock must have tips")
 	}
+	if mbl.Height >= 0xffffffffff {
+		return fmt.Errorf("miniblock height not possible")
+	}
+	if mbl.PastCount == 2 && mbl.Past[0] == mbl.Past[1] {
+		return fmt.Errorf("tips cannot collide")
+	}
 	return nil
 }
 
 // serialize entire block ( 64 bytes )
 func (mbl *MiniBlock) Serialize() (result []byte) {
-	result = make([]byte, MINIBLOCK_SIZE, MINIBLOCK_SIZE)
-	var scratch [8]byte
 	if err := mbl.SanityCheck(); err != nil {
 		panic(err)
 	}
 
-	result[0] = mbl.Version | mbl.PastCount<<6
-
-	if mbl.Odd {
-		result[0] |= 1 << 4
-	}
-	if mbl.Genesis {
-		result[0] |= 1 << 5
+	var b bytes.Buffer
+	if mbl.Final {
+		b.WriteByte(mbl.Version | mbl.PastCount<<6 | 0x20)
+	} else {
+		b.WriteByte(mbl.Version | mbl.PastCount<<6)
 	}
 
-	binary.BigEndian.PutUint64(scratch[:], mbl.Timestamp)
-	copy(result[1:], scratch[2:]) // 1 + 6
+	binary.Write(&b, binary.BigEndian, mbl.Timestamp)
 
-	for i, v := range mbl.Past {
-		binary.BigEndian.PutUint32(result[7+i*4:], v)
+	var scratch [8]byte
+	binary.BigEndian.PutUint64(scratch[:], mbl.Height)
+	b.Write(scratch[3:8]) // 1 + 5
+
+	for _, v := range mbl.Past {
+		binary.Write(&b, binary.BigEndian, v)
 	}
 
-	copy(result[1+6+4+4:], mbl.KeyHash[:16])   // 1 + 6 + 4 + 4 + 16
-	copy(result[1+6+4+4+16:], mbl.Check[:])    // 1 + 6 + 4 + 4 + 16 + 32
-	copy(result[1+6+4+4+16+32:], mbl.Nonce[:]) // 1 + 6 + 4 + 4 + 16 + 32 + 5 = 68 bytes
+	b.Write(mbl.KeyHash[:16])
+	binary.Write(&b, binary.BigEndian, mbl.Flags)
+	for _, v := range mbl.Nonce {
+		binary.Write(&b, binary.BigEndian, v)
+	}
 
-	return result
+	return b.Bytes()
 }
 
 //parse entire block completely
 func (mbl *MiniBlock) Deserialize(buf []byte) (err error) {
-	var scratch [8]byte
-
 	if len(buf) < MINIBLOCK_SIZE {
 		return fmt.Errorf("Expected %d bytes. Actual %d", MINIBLOCK_SIZE, len(buf))
 	}
 
-	if mbl.Version = buf[0] & 0xf; mbl.Version != 1 {
+	if mbl.Version = buf[0] & 0x1f; mbl.Version != 1 {
 		return fmt.Errorf("unknown version '%d'", mbl.Version)
 	}
 
 	mbl.PastCount = buf[0] >> 6
-	if buf[0]&0x10 > 0 {
-		mbl.Odd = true
-	}
 	if buf[0]&0x20 > 0 {
-		mbl.Genesis = true
+		mbl.Final = true
+	}
+
+	mbl.Timestamp = binary.BigEndian.Uint16(buf[1:])
+	mbl.Height = binary.BigEndian.Uint64(buf[0:]) & 0x000000ffffffffff
+
+	var b bytes.Buffer
+	b.Write(buf[8:])
+
+	for i := range mbl.Past {
+		if err = binary.Read(&b, binary.BigEndian, &mbl.Past[i]); err != nil {
+			return
+		}
 	}
 
 	if err = mbl.SanityCheck(); err != nil {
 		return err
 	}
 
-	if len(buf) != MINIBLOCK_SIZE {
-		return fmt.Errorf("Expecting %d bytes", MINIBLOCK_SIZE)
+	b.Read(mbl.KeyHash[:16])
+	if err = binary.Read(&b, binary.BigEndian, &mbl.Flags); err != nil {
+		return
 	}
 
-	copy(scratch[2:], buf[1:])
-	mbl.Timestamp = binary.BigEndian.Uint64(scratch[:])
-
-	for i := range mbl.Past {
-		mbl.Past[i] = binary.BigEndian.Uint32(buf[7+i*4:])
+	for i := range mbl.Nonce {
+		if err = binary.Read(&b, binary.BigEndian, &mbl.Nonce[i]); err != nil {
+			return
+		}
 	}
-
-	copy(mbl.KeyHash[:], buf[15:15+16])
-	copy(mbl.Check[:], buf[15+16:])
-	copy(mbl.Nonce[:], buf[15+16+32:])
-	mbl.Height = int64(binary.BigEndian.Uint64(mbl.Check[:]))
 
 	return
-}
-
-// checks for basic sanity
-func (mbl *MiniBlock) IsSafe() bool {
-	id := mbl.GetMiniID()
-	if id == mbl.Past[0] {
-		//return fmt.Errorf("Self Collision")
-		return false
-	}
-	if mbl.PastCount == 2 && id == mbl.Past[1] {
-		//return fmt.Errorf("Self Collision")
-		return false
-	}
-
-	return true
 }

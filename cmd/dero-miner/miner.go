@@ -518,10 +518,11 @@ func (rpc_client *Client) mineblock(tid int) {
 	runtime.LockOSThread()
 	threadaffinity()
 
-	iterations_per_loop := uint32(0xffffffff)
+	i := uint32(0)
 
 	for {
 		mutex.RLock()
+
 		myjob := job
 		mutex.RUnlock()
 
@@ -547,13 +548,13 @@ func (rpc_client *Client) mineblock(tid int) {
 			continue
 		}
 
-		if work[0]&0x10 > 0 { //  odd miniblocks have twice the difficulty
-			diff.Mul(new(big.Int).Set(&diff), new(big.Int).SetUint64(2))
-		}
-
-		for i := uint32(0); i < iterations_per_loop; i++ {
+		for {
+			i++
 			binary.BigEndian.PutUint32(nonce_buf, i)
-			//pow := astrobwt.POW_0alloc(work[:])
+
+			if i&0x3ff == 0x3ff { // get updated job every 250 millisecs
+				break
+			}
 
 			powhash := pow.Pow(work[:])
 			atomic.AddUint64(&counter, 1)
@@ -570,9 +571,7 @@ func (rpc_client *Client) mineblock(tid int) {
 						block_counter++
 					}
 					logger.V(2).Info("submitting block", "result", result)
-					rpc_client.update_job()
-
-					break
+					go rpc_client.update_job()
 				} else {
 					logger.Error(err, "error submitting block")
 					rpc_client.update_job()

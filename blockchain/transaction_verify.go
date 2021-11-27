@@ -317,7 +317,7 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 	}
 
 	if hash != tx.Payloads[0].Statement.Roothash {
-		return fmt.Errorf("Tx statement roothash mismatch expected %x actual %x", tx.Payloads[0].Statement.Roothash, hash[:])
+		return fmt.Errorf("Tx statement roothash mismatch ref blid %x expected %x actual %x", tx.BLID, tx.Payloads[0].Statement.Roothash, hash[:])
 	}
 	// we have found the balance tree with which it was built now lets verify
 

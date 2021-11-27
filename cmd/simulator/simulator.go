@@ -91,6 +91,31 @@ var rpcport = "127.0.0.1:20000"
 
 const wallet_ports_start = 30000 // all wallets will rpc activated on ports
 
+// this is a crude function used during tests
+
+func Mine_block_single(chain *blockchain.Blockchain, miner_address rpc.Address) error {
+	var blid crypto.Hash
+
+	//if !chain.simulator{
+	//	return fmt.Errorf("this function can only run in simulator mode")
+	//}
+
+	for i := uint64(0); i < config.BLOCK_TIME; i++ {
+		bl, mbl, _, _, err := chain.Create_new_block_template_mining(miner_address)
+		if err != nil {
+			logger.Error(err, "err while request block template")
+
+			return err
+		}
+		if _, blid, _, err = chain.Accept_new_block(bl.Timestamp, mbl.Serialize()); blid.IsZero() || err != nil {
+			if err != nil {
+				logger.Error(err, "err while accepting block template")
+			}
+		}
+	}
+	return nil
+}
+
 func main() {
 	var err error
 
@@ -172,7 +197,7 @@ func main() {
 	rpcserver, _ := derodrpc.RPCServer_Start(params)
 
 	register_wallets(chain)                               // setup 22 wallets
-	mine_block_single(chain, genesis_wallet.GetAddress()) //mine single block to confirm all 22 registrations
+	Mine_block_single(chain, genesis_wallet.GetAddress()) //mine single block to confirm all 22 registrations
 
 	go walletapi.Keep_Connectivity() // all wallets maintain connectivity
 
@@ -526,7 +551,6 @@ exit:
 func mine_block_auto(chain *blockchain.Blockchain, miner_address rpc.Address) {
 	last_block_time := time.Now()
 	for {
-
 		bl, _, _, _, err := chain.Create_new_block_template_mining(miner_address)
 		if err != nil {
 			logger.Error(err, "error while building mining block")
@@ -535,7 +559,7 @@ func mine_block_auto(chain *blockchain.Blockchain, miner_address rpc.Address) {
 		if time.Now().Sub(last_block_time) > time.Duration(config.BLOCK_TIME)*time.Second || // every X secs generate a block
 			len(bl.Tx_hashes) >= 1 { //pools have a tx, try to mine them ASAP
 
-			if err := mine_block_single(chain, miner_address); err != nil {
+			if err := Mine_block_single(chain, miner_address); err != nil {
 				time.Sleep(time.Second)
 				continue
 			}
@@ -543,26 +567,8 @@ func mine_block_auto(chain *blockchain.Blockchain, miner_address rpc.Address) {
 			last_block_time = time.Now()
 
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(900 * time.Millisecond)
 	}
-}
-
-func mine_block_single(chain *blockchain.Blockchain, miner_address rpc.Address) (err error) {
-	var blid crypto.Hash
-	bl, mbl, _, _, err := chain.Create_new_block_template_mining(miner_address)
-	if err != nil {
-		logger.Error(err, "err while request block template")
-
-		return
-	}
-	if _, blid, _, err = chain.Accept_new_block(bl.Timestamp, mbl.Serialize()); blid.IsZero() || err != nil {
-		if err != nil {
-			logger.Error(err, "err while accepting block template")
-		}
-		//fmt.Printf("error adding miniblock, err %s\n",err)
-		return
-	}
-	return err
 }
 
 func prettyprint_json(b []byte) []byte {

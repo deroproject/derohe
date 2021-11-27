@@ -17,6 +17,7 @@
 package blockchain
 
 import "fmt"
+import "math"
 import "math/big"
 
 import "github.com/deroproject/derohe/block"
@@ -96,17 +97,41 @@ func CheckPowHashBig(pow_hash crypto.Hash, big_difficulty_integer *big.Int) bool
 	return false
 }
 
+const E = float64(2.71828182845905)
+
+// hard code datatypes
+func Diff(solvetime, blocktime, M int64, prev_diff int64) (diff int64) {
+	if blocktime <= 0 || solvetime <= 0 || M <= 0 {
+		panic("invalid parameters")
+	}
+	easypart := int64(math.Pow(E, ((1-float64(solvetime)/float64(blocktime))/float64(M))) * 10000)
+	diff = (prev_diff * easypart) / 10000
+	return diff
+}
+
+// big int implementation
+func DiffBig(solvetime, blocktime, M int64, prev_diff *big.Int) (diff *big.Int) {
+	if blocktime <= 0 || solvetime <= 0 || M <= 0 {
+		panic("invalid parameters")
+	}
+
+	easypart := int64(math.Pow(E, ((1-float64(solvetime)/float64(blocktime))/float64(M))) * 10000)
+	diff = new(big.Int).Mul(prev_diff, new(big.Int).SetInt64(easypart))
+	diff.Div(diff, new(big.Int).SetUint64(10000))
+	return diff
+}
+
 // when creating a new block, current_time in utc + chain_block_time must be added
 // while verifying the block, expected time stamp should be replaced from what is in blocks header
 // in DERO atlantis difficulty is based on previous tips
 // get difficulty at specific  tips,
-// algorithm is as follows choose biggest difficulty tip (// division is integer and not floating point)
-// diff = (parent_diff +   (parent_diff / 100 * max(1 - (parent_timestamp - parent_parent_timestamp) // (chain_block_time*2//3), -1))
+// algorithm is agiven above
 // this should be more thoroughly evaluated
 
 // NOTE: we need to evaluate if the mining adversary gains something, if the they set the time diff to 1
 // we need to do more simulations and evaluations
 // difficulty is now processed at sec level, mean how many hashes are require per sec to reach block time
+// basica
 func (chain *Blockchain) Get_Difficulty_At_Tips(tips []crypto.Hash) *big.Int {
 
 	tips_string := ""
@@ -118,104 +143,12 @@ func (chain *Blockchain) Get_Difficulty_At_Tips(tips []crypto.Hash) *big.Int {
 		return new(big.Int).SetBytes([]byte(diff_bytes.(string)))
 	}
 
-	var MinimumDifficulty *big.Int
-	change := new(big.Int)
-	step := new(big.Int)
-
-	if globals.IsMainnet() {
-		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.MAINNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
-	} else {
-		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.TESTNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
-	}
-	GenesisDifficulty := new(big.Int).SetUint64(1)
-
-	if len(tips) == 0 || chain.simulator == true {
-		return GenesisDifficulty
-	}
-
-	height := chain.Calculate_Height_At_Tips(tips)
-
-	// hard fork version 1 has difficulty set to  1
-	/*if 1 == chain.Get_Current_Version_at_Height(height) {
-		return new(big.Int).SetUint64(1)
-	}*/
-
-	/*
-	   	// if we are hardforking from 1 to 2
-	   	// we can start from high difficulty to find the right point
-	   	if height >= 1 && chain.Get_Current_Version_at_Height(height-1) == 1 && chain.Get_Current_Version_at_Height(height) == 2 {
-	   		if globals.IsMainnet() {
-	   			bootstrap_difficulty := new(big.Int).SetUint64(config.MAINNET_BOOTSTRAP_DIFFICULTY) // return bootstrap mainnet difficulty
-	   			rlog.Infof("Returning bootstrap difficulty %s at height %d", bootstrap_difficulty.String(), height)
-	   			return bootstrap_difficulty
-	   		} else {
-	   			bootstrap_difficulty := new(big.Int).SetUint64(config.TESTNET_BOOTSTRAP_DIFFICULTY)
-	   			rlog.Infof("Returning bootstrap difficulty %s at height %d", bootstrap_difficulty.String(), height)
-	   			return bootstrap_difficulty // return bootstrap difficulty for testnet
-	   		}
-	   	}
-
-	       // if we are hardforking from 3 to 4
-	   	// we can start from high difficulty to find the right point
-	   	if height >= 1 && chain.Get_Current_Version_at_Height(height-1) <= 3 && chain.Get_Current_Version_at_Height(height) == 4 {
-	   		if globals.IsMainnet() {
-	   			bootstrap_difficulty := new(big.Int).SetUint64(config.MAINNET_BOOTSTRAP_DIFFICULTY_hf4) // return bootstrap mainnet difficulty
-	   			rlog.Infof("Returning bootstrap difficulty %s at height %d", bootstrap_difficulty.String(), height)
-	   			return bootstrap_difficulty
-	   		} else {
-	   			bootstrap_difficulty := new(big.Int).SetUint64(config.TESTNET_BOOTSTRAP_DIFFICULTY)
-	   			rlog.Infof("Returning bootstrap difficulty %s at height %d", bootstrap_difficulty.String(), height)
-	   			return bootstrap_difficulty // return bootstrap difficulty for testnet
-	   		}
-	   	}
-
-	*/
-
-	// until we have atleast 2 blocks, we cannot run the algo
-	if height < 3 && chain.Get_Current_Version_at_Height(height) <= 1 {
-		return MinimumDifficulty
-	}
-
-	//  take the time from the most heavy block
-
-	biggest_difficulty := chain.Load_Block_Difficulty(tips[0])
-	parent_highest_time := chain.Load_Block_Timestamp(tips[0])
-
-	// find parents parents tip from the most heavy block's parent
-	parent_past := chain.Get_Block_Past(tips[0])
-	past_biggest_tip := parent_past[0]
-	parent_parent_highest_time := chain.Load_Block_Timestamp(past_biggest_tip)
-
-	if biggest_difficulty.Cmp(MinimumDifficulty) < 0 {
-		biggest_difficulty.Set(MinimumDifficulty)
-	}
-
-	block_time := config.BLOCK_TIME_MILLISECS
-	step.Div(biggest_difficulty, new(big.Int).SetUint64(100))
-
-	// create 3 ranges, used for physical verification
-	switch {
-	case (parent_highest_time - parent_parent_highest_time) <= block_time-1000: // increase diff
-		change.Add(change, step) // block was found earlier, increase diff
-
-	case (parent_highest_time - parent_parent_highest_time) >= block_time+1000: // decrease diff
-		change.Sub(change, step) // block was found late, decrease diff
-		change.Sub(change, step)
-
-	default: //  if less than 1 sec deviation,use previous diff, ie change is zero
-
-	}
-
-	biggest_difficulty.Add(biggest_difficulty, change)
-
-	if biggest_difficulty.Cmp(MinimumDifficulty) < 0 { // we can never be below minimum difficulty
-		biggest_difficulty.Set(MinimumDifficulty)
-	}
+	difficulty := Get_Difficulty_At_Tips(chain, tips)
 
 	if chain.cache_enabled {
-		chain.cache_Get_Difficulty_At_Tips.Add(tips_string, string(biggest_difficulty.Bytes())) // set in cache
+		chain.cache_Get_Difficulty_At_Tips.Add(tips_string, string(difficulty.Bytes())) // set in cache
 	}
-	return biggest_difficulty
+	return difficulty
 }
 
 func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock) bool {
@@ -236,10 +169,6 @@ func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock
 		logger.Panicf("Difficuly mismatch between big and uint64 diff ")
 	}*/
 
-	if mbl.Odd { // odd miniblocks have twice the difficulty
-		block_difficulty.Mul(new(big.Int).Set(block_difficulty), new(big.Int).SetUint64(2))
-	}
-
 	if CheckPowHashBig(PoW, block_difficulty) == true {
 		if chain.cache_enabled {
 			chain.cache_IsMiniblockPowValid.Add(fmt.Sprintf("%s", cachekey), true) // set in cache
@@ -249,9 +178,71 @@ func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock
 	return false
 }
 
-// this function calculates difficulty on the basis of previous difficulty  and number of blocks
-// THIS is the ideal algorithm for us as it will be optimal based on the number of orphan blocks
-// we may deploy it when the  block reward becomes insignificant in comparision to fees
-//  basically tail emission kicks in or we need to optimally increase number of blocks
-// the algorithm does NOT work if the network has a single miner  !!!
-// this algorithm will work without the concept of time
+type DiffProvider interface {
+	Load_Block_Height(crypto.Hash) int64
+	Load_Block_Difficulty(crypto.Hash) *big.Int
+	Load_Block_Timestamp(crypto.Hash) uint64
+	Get_Block_Past(crypto.Hash) []crypto.Hash
+}
+
+func Get_Difficulty_At_Tips(source DiffProvider, tips []crypto.Hash) *big.Int {
+	var MinimumDifficulty *big.Int
+
+	if globals.IsMainnet() {
+		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.MAINNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
+	} else {
+		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.TESTNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
+	}
+	GenesisDifficulty := new(big.Int).SetUint64(1)
+
+	if chain, ok := source.(*Blockchain); ok {
+		if chain.simulator == true {
+			return GenesisDifficulty
+		}
+	}
+
+	if len(tips) == 0 {
+		return GenesisDifficulty
+	}
+
+	height := int64(0)
+	for i := range tips {
+		past_height := source.Load_Block_Height(tips[i])
+		if past_height < 0 {
+			panic(fmt.Errorf("could not find height for blid %s", tips[i]))
+		}
+		if height <= past_height {
+			height = past_height
+		}
+	}
+	height++
+	//above height code is equivalent to below code
+	//height := chain.Calculate_Height_At_Tips(tips)
+
+	// until we have atleast 2 blocks, we cannot run the algo
+	if height < 3 {
+		return MinimumDifficulty
+	}
+
+	tip_difficulty := source.Load_Block_Difficulty(tips[0])
+	tip_time := source.Load_Block_Timestamp(tips[0])
+
+	parents := source.Get_Block_Past(tips[0])
+	parent_time := source.Load_Block_Timestamp(parents[0])
+
+	block_time := int64(config.BLOCK_TIME_MILLISECS)
+	solve_time := int64(tip_time - parent_time)
+
+	if solve_time > (block_time * 2) { // there should not be sudden decreases
+		solve_time = block_time * 2
+	}
+
+	M := int64(8)
+	difficulty := DiffBig(solve_time, block_time, M, tip_difficulty)
+
+	if difficulty.Cmp(MinimumDifficulty) < 0 { // we can never be below minimum difficulty
+		difficulty.Set(MinimumDifficulty)
+	}
+
+	return difficulty
+}

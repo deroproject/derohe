@@ -116,6 +116,7 @@ func (s *storefs) ReadBlockDifficulty(h [32]byte) (*big.Int, error) {
 	return nil, os.ErrNotExist
 }
 
+// this cannot be cached
 func (chain *Blockchain) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 	return chain.Store.Block_tx_store.ReadBlockSnapshotVersion(h)
 }

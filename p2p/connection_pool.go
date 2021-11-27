@@ -511,17 +511,15 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 // we can only broadcast a block which is in our db
 // this function is trigger from 2 points, one when we receive a unknown block which can be successfully added to chain
 // second from the blockchain which has to relay locally  mined blocks as soon as possible
-func Broadcast_MiniBlock(mbls []block.MiniBlock, PeerID uint64) { // if peerid is provided it is skipped
-	broadcast_MiniBlock(mbls, PeerID, globals.Time().UTC().UnixMicro())
+func Broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64) { // if peerid is provided it is skipped
+	broadcast_MiniBlock(mbl, PeerID, globals.Time().UTC().UnixMicro())
 }
-func broadcast_MiniBlock(mbls []block.MiniBlock, PeerID uint64, first_seen int64) { // if peerid is provided it is skipped
+func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) { // if peerid is provided it is skipped
 
 	defer globals.Recover(3)
 
 	var peer_specific_block Objects
-	for _, mbl := range mbls {
-		peer_specific_block.MiniBlocks = append(peer_specific_block.MiniBlocks, mbl.Serialize())
-	}
+	peer_specific_block.MiniBlocks = append(peer_specific_block.MiniBlocks, mbl.Serialize())
 	fill_common(&peer_specific_block.Common) // fill common info
 	peer_specific_block.Sent = first_seen
 

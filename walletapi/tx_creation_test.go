@@ -212,7 +212,7 @@ func Test_Creation_TX(t *testing.T) {
 
 	time.Sleep(time.Second)
 	if err = wsrc.Sync_Wallet_Memory_With_Daemon(); err != nil {
-		t.Fatalf("wallet sync error err %s", err)
+		t.Fatalf("wallet sync error err %s chain height %d", err, chain.Get_Height())
 	}
 
 	// here we are collecting proofs for later on bennhcmarking

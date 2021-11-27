@@ -23,6 +23,7 @@ import "path/filepath"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/config"
+import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 import "github.com/deroproject/graviton"
@@ -136,11 +137,10 @@ func (chain *Blockchain) Calculate_Height_At_Tips(tips []crypto.Hash) int64 {
 
 	} else { // find the best height of past
 		for i := range tips {
-			bl, err := chain.Load_BL_FROM_ID(tips[i])
-			if err != nil {
-				panic(err)
+			past_height := chain.Load_Block_Height(tips[i])
+			if past_height < 0 {
+				panic(fmt.Errorf("could not find height for blid %s", tips[i]))
 			}
-			past_height := int64(bl.Height)
 			if height <= past_height {
 				height = past_height
 			}
@@ -329,4 +329,28 @@ func (chain *Blockchain) Load_Merkle_Hash(version uint64) (hash crypto.Hash, err
 		chain.cache_VersionMerkle.Add(version, hash)
 	}
 	return hash, nil
+}
+
+// loads a complete block from disk
+func (chain *Blockchain) Load_Complete_Block(blid crypto.Hash) (cbl *block.Complete_Block, err error) {
+	cbl = &block.Complete_Block{}
+	cbl.Bl, err = chain.Load_BL_FROM_ID(blid)
+	if err != nil {
+		return
+	}
+
+	for _, txid := range cbl.Bl.Tx_hashes {
+		var tx_bytes []byte
+		if tx_bytes, err = chain.Store.Block_tx_store.ReadTX(txid); err != nil {
+			return
+		} else {
+			var tx transaction.Transaction
+			if err = tx.Deserialize(tx_bytes); err != nil {
+				return
+			}
+			cbl.Txs = append(cbl.Txs, &tx)
+		}
+
+	}
+	return
 }

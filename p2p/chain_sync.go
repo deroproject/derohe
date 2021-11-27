@@ -18,14 +18,94 @@ package p2p
 
 import "fmt"
 import "time"
-import "context"
+import "math/big"
 import "sync/atomic"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/errormsg"
+import "github.com/deroproject/derohe/blockchain"
 import "github.com/deroproject/derohe/transaction"
+import "github.com/deroproject/derohe/cryptography/crypto"
+
+// used to satisfy difficulty interface
+type MemorySource struct {
+	Blocks     map[crypto.Hash]*block.Complete_Block
+	Difficulty map[crypto.Hash]*big.Int
+}
+
+// local blocks are inserted using this
+func (x *MemorySource) insert_block_noprecheck(cbl *block.Complete_Block, diff *big.Int) {
+	blid := cbl.Bl.GetHash()
+	x.Blocks[blid] = cbl
+	x.Difficulty[blid] = diff
+}
+
+// remote peers blocks are added using this
+func (x *MemorySource) insert_block(cbl *block.Complete_Block) {
+	if len(cbl.Bl.Tips) == 0 {
+		panic("genesis block not possible")
+	}
+	diff := blockchain.Get_Difficulty_At_Tips(x, cbl.Bl.Tips)
+	blid := cbl.Bl.GetHash()
+
+	for _, mbl := range cbl.Bl.MiniBlocks {
+		PoW := mbl.GetPoWHash()
+		if blockchain.CheckPowHashBig(PoW, diff) == false {
+			panic("pow failed")
+		}
+	}
+
+	x.Blocks[blid] = cbl
+	x.Difficulty[blid] = diff
+}
+func (x *MemorySource) check(blid crypto.Hash) *block.Complete_Block {
+	cbl, ok := x.Blocks[blid]
+	if !ok {
+		panic(fmt.Errorf("no such blid in ram %s", blid))
+	}
+	return cbl
+}
+func (x *MemorySource) Load_Block_Height(blid crypto.Hash) int64 {
+	return int64(x.check(blid).Bl.Height)
+}
+func (x *MemorySource) Load_Block_Timestamp(blid crypto.Hash) uint64 {
+	return uint64(x.check(blid).Bl.Timestamp)
+}
+func (x *MemorySource) Get_Block_Past(blid crypto.Hash) []crypto.Hash {
+	return x.check(blid).Bl.Tips
+}
+func (x *MemorySource) Load_Block_Difficulty(blid crypto.Hash) *big.Int {
+	diff, ok := x.Difficulty[blid]
+	if !ok {
+		panic(fmt.Errorf("no such blid in ram %s", blid))
+	}
+	return diff
+}
+
+// convert block which was serialized in p2p format to in ram block format
+func ConvertCBlock_To_CompleteBlock(cblock Complete_Block) (cbl block.Complete_Block, diff *big.Int) {
+	var bl block.Block
+	cbl.Bl = &bl
+	if err := bl.Deserialize(cblock.Block); err != nil {
+		panic(err)
+	}
+	// complete the txs
+	for j := range cblock.Txs {
+		var tx transaction.Transaction
+		if err := tx.Deserialize(cblock.Txs[j]); err != nil { // we have a tx which could not be deserialized ban peer
+			panic(err)
+		}
+		cbl.Txs = append(cbl.Txs, &tx)
+	}
+
+	if len(bl.Tx_hashes) != len(cbl.Txs) {
+		panic(fmt.Errorf("txcount mismatch, expected %d txs actual %d", len(bl.Tx_hashes), len(cbl.Txs)))
+	}
+
+	return
+}
 
 // we are expecting other side to have a heavier PoW chain, try to sync now
 func (connection *Connection) sync_chain() {
@@ -69,15 +149,15 @@ try_again:
 	request.TopoHeights = append(request.TopoHeights, 0)
 	fill_common(&request.Common) // fill common info
 
-	var TimeLimit = 10 * time.Second
-	ctx, _ := context.WithTimeout(context.Background(), TimeLimit)
-	if err := connection.Client.CallWithContext(ctx, "Peer.Chain", request, &response); err != nil {
+	if err := connection.Client.Call("Peer.Chain", request, &response); err != nil {
 		connection.logger.V(2).Error(err, "Call failed Chain")
 		return
 	}
 	// we have a response, see if its valid and try to add to get the blocks
 
 	connection.logger.V(2).Info("Peer wants to give chain", "from topoheight", response.Start_height)
+
+	var pop_count int64
 
 	// we do not need reorganisation if deviation is less than  or equak to 7 blocks
 	// only pop blocks if the system has somehow deviated more than 7 blocks
@@ -92,10 +172,75 @@ try_again:
 		goto try_again
 
 	} else if chain.Get_Height()-response.Common.Height != 0 && chain.Get_Height()-response.Start_height <= config.STABLE_LIMIT {
-		//pop_count := chain.Load_TOPO_HEIGHT() - response.Start_topoheight
-		//chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
+		pop_count = chain.Load_TOPO_HEIGHT() - response.Start_topoheight
 	} else if chain.Get_Height() < connection.Height && chain.Get_Height()-response.Start_height > config.STABLE_LIMIT { // we must somehow notify that deviation is way too much and manual interaction is necessary, so as any bug for chain deviationmay be detected
 		connection.logger.V(1).Error(nil, "we have or others have deviated too much.you may have to use --sync-node option", "our topoheight", chain.Load_TOPO_HEIGHT(), "peer topoheight start", response.Start_topoheight)
+		return
+	}
+
+	if pop_count >= 1 { // peer is claiming his chain is good and we should rewind
+		connection.logger.V(1).Info("syncing", "pop_count", pop_count)
+
+		ramstore := MemorySource{Blocks: map[crypto.Hash]*block.Complete_Block{}, Difficulty: map[crypto.Hash]*big.Int{}}
+		start_point := response.Start_topoheight
+		for i := 0; i < 10 && start_point >= 1; i++ {
+			start_point--
+		}
+
+		for i := start_point; i < start_point+128 && i <= chain.Load_TOPO_HEIGHT(); i++ {
+			blid, err := chain.Load_Block_Topological_order_at_index(i)
+			if err != nil {
+				connection.logger.V(1).Info("error loading local topo", "i", i)
+				return
+			}
+			cbl, err := chain.Load_Complete_Block(blid)
+			if err != nil {
+				connection.logger.V(1).Info("error loading completeblock", "blid", blid)
+				return
+			}
+			diff := chain.Load_Block_Difficulty(blid)
+			ramstore.insert_block_noprecheck(cbl, diff) // all local blocks are already checked
+		}
+
+		// now we must request peer blocks and verify their pow
+
+		for i := range response.Block_list {
+			our_topo_order := chain.Load_Block_Topological_order(response.Block_list[i])
+			if our_topo_order != (int64(i)+response.Start_topoheight) || our_topo_order == -1 { // if block is not in our chain, add it to request list
+
+				var orequest ObjectList
+				var oresponse Objects
+
+				//fmt.Printf("inserting blocks %d\n", (int64(i) + response.Start_topoheight))
+				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
+				fill_common(&orequest.Common)
+				if err := connection.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {
+					connection.logger.V(2).Error(err, "Call failed GetObject")
+					return
+				} else { // process the response
+					cbl, _ := ConvertCBlock_To_CompleteBlock(oresponse.CBlocks[0])
+					ramstore.insert_block(&cbl) // insert block with checking verification
+				}
+			}
+		}
+
+		// if we reached here we were able to verify basic chain structure
+
+		chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
+
+		failcount := 0
+		for i := range response.Block_list {
+			our_topo_order := chain.Load_Block_Topological_order(response.Block_list[i])
+			if our_topo_order != (int64(i)+response.Start_topoheight) || our_topo_order == -1 { // if block is not in our chain, add it to request list
+				if failcount < 4 {
+					if _, ok := chain.Add_Complete_Block(ramstore.check(response.Block_list[i])); !ok {
+						failcount++
+					}
+				}
+			}
+		}
+
+		connection.logger.V(1).Info("rewinded blocks", "pop_count", pop_count)
 		return
 	}
 
@@ -117,8 +262,7 @@ try_again:
 
 				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
 				fill_common(&orequest.Common)
-				ctx, _ := context.WithTimeout(context.Background(), TimeLimit)
-				if err := connection.Client.CallWithContext(ctx, "Peer.GetObject", orequest, &oresponse); err != nil {
+				if err := connection.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {
 					connection.logger.V(2).Error(err, "Call failed GetObject")
 					return
 				} else { // process the response

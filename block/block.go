@@ -55,11 +55,20 @@ type Complete_Block struct {
 // this has been simplified and varint length has been removed
 // keccak hash of entire block including miniblocks, gives the block id
 func (bl *Block) GetHash() (hash crypto.Hash) {
-	return sha3.Sum256(bl.serialize(true))
+	return sha3.Sum256(bl.serialize(false))
 }
 
-func (bl *Block) GetHashWithoutMiniBlocks() (hash crypto.Hash) {
-	return sha3.Sum256(bl.SerializeWithoutMiniBlocks())
+func (bl *Block) GetHashSkipLastMiniBlock() (hash crypto.Hash) {
+	return sha3.Sum256(bl.SerializeWithoutLastMiniBlock())
+}
+
+// serialize entire block ( block_header + miner_tx + tx_list )
+func (bl *Block) Serialize() []byte {
+	return bl.serialize(false) // include mini blocks
+}
+
+func (bl *Block) SerializeWithoutLastMiniBlock() []byte {
+	return bl.serialize(true) //skip last mini block
 }
 
 // get timestamp, it has millisecond granularity
@@ -87,7 +96,7 @@ func (bl Block) String() string {
 }
 
 // this function serializes a block and skips miniblocks is requested
-func (bl *Block) serialize(includeminiblocks bool) []byte {
+func (bl *Block) serialize(skiplastminiblock bool) []byte {
 
 	var serialized bytes.Buffer
 
@@ -117,13 +126,27 @@ func (bl *Block) serialize(includeminiblocks bool) []byte {
 		serialized.Write(hash[:])
 	}
 
-	if includeminiblocks {
-		n = binary.PutUvarint(buf, uint64(len(bl.MiniBlocks)))
-		serialized.Write(buf[:n])
+	if len(bl.MiniBlocks) == 0 {
+		serialized.WriteByte(0)
+	} else {
+		if skiplastminiblock == false {
+			n = binary.PutUvarint(buf, uint64(len(bl.MiniBlocks)))
+			serialized.Write(buf[:n])
 
-		for _, mblock := range bl.MiniBlocks {
-			s := mblock.Serialize()
-			serialized.Write(s[:])
+			for _, mblock := range bl.MiniBlocks {
+				s := mblock.Serialize()
+				serialized.Write(s[:])
+			}
+		} else {
+			length := len(bl.MiniBlocks) - 1
+			n = binary.PutUvarint(buf, uint64(length))
+			serialized.Write(buf[:n])
+
+			for i := 0; i < length; i++ {
+				s := bl.MiniBlocks[i].Serialize()
+				serialized.Write(s[:])
+			}
+
 		}
 	}
 
@@ -136,15 +159,6 @@ func (bl *Block) serialize(includeminiblocks bool) []byte {
 
 	return serialized.Bytes()
 
-}
-
-// serialize entire block ( block_header + miner_tx + tx_list )
-func (bl *Block) Serialize() []byte {
-	return bl.serialize(true) // include mini blocks
-}
-
-func (bl *Block) SerializeWithoutMiniBlocks() []byte {
-	return bl.serialize(false) // do not include mini blocks
 }
 
 // get block transactions tree hash

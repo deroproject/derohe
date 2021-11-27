@@ -25,6 +25,7 @@ import "encoding/binary"
 
 import "golang.org/x/xerrors"
 import "golang.org/x/time/rate"
+import "golang.org/x/crypto/sha3"
 
 // this file creates the blobs which can be used to mine new blocks
 
@@ -93,6 +94,13 @@ func (chain *Blockchain) SortTips(tips []crypto.Hash) (sorted []crypto.Hash) {
 	return
 }
 
+// used by tip
+func convert_uint32_to_crypto_hash(i uint32) crypto.Hash {
+	var h crypto.Hash
+	binary.BigEndian.PutUint32(h[:], i)
+	return h
+}
+
 //NOTE: this function is quite big since we do a lot of things in preparation of next blocks
 func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl *block.Complete_Block, bl block.Block, err error) {
 	//chain.Lock()
@@ -118,34 +126,36 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 
 	var tips []crypto.Hash
 	// lets fill in the tips from miniblocks, list is already sorted
-	if mbls := chain.MiniBlocks.GetAllTipsAtHeight(chain.Get_Height() + 1); len(mbls) > 0 {
+	if keys := chain.MiniBlocks.GetAllKeys(chain.Get_Height() + 1); len(keys) > 0 {
 
-		mbls = block.MiniBlocks_SortByDistanceDesc(mbls)
-		for _, mbl := range mbls {
-			tips = tips[:0]
-			gens := block.GetGenesisFromMiniBlock(mbl)
-			if len(gens) <= 0 { // if tip cannot be resolved to genesis skip it
+		for _, key := range keys {
+			mbls := chain.MiniBlocks.GetAllMiniBlocks(key)
+			if len(mbls) < 1 {
 				continue
 			}
-
-			var tip crypto.Hash
-			copy(tip[:], gens[0].Check[8:8+12])
+			mbl := mbls[0]
+			tips = tips[:0]
+			tip := convert_uint32_to_crypto_hash(mbl.Past[0])
 			if ehash, ok := chain.ExpandMiniBlockTip(tip); ok {
 				tips = append(tips, ehash)
 			} else {
 				continue
 			}
 
-			if gens[0].PastCount == 2 {
-				copy(tip[:], gens[0].Check[8+12:])
+			if mbl.PastCount == 2 {
+				tip = convert_uint32_to_crypto_hash(mbl.Past[1])
 				if ehash, ok := chain.ExpandMiniBlockTip(tip); ok {
 					tips = append(tips, ehash)
 				} else {
 					continue
 				}
 			}
+			if mbl.PastCount == 2 && mbl.Past[0] == mbl.Past[1] {
+				continue
+			}
 			break
 		}
+
 	}
 
 	if len(tips) == 0 {
@@ -209,9 +219,26 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	logger.V(8).Info("mempool returned tx list", "tx_list", tx_hash_list_sorted)
 	var pre_check cbl_verify // used to verify sanity of new block
 
+	history_tx := map[crypto.Hash]bool{} // used to build history of recent blocks
+
+	for _, h := range history_array {
+		var history_bl *block.Block
+		if history_bl, err = chain.Load_BL_FROM_ID(h); err != nil {
+			return
+		}
+		for i := range history_bl.Tx_hashes {
+			history_tx[history_bl.Tx_hashes[i]] = true
+		}
+	}
+
 	for i := range tx_hash_list_sorted {
-		if (sizeoftxs + tx_hash_list_sorted[i].Size) > (99*config.STARGATE_HE_MAX_BLOCK_SIZE)/100 { // limit block to max possible
+		if (sizeoftxs + tx_hash_list_sorted[i].Size) > (config.STARGATE_HE_MAX_BLOCK_SIZE - 102400) { // limit block to max possible
 			break
+		}
+
+		if _, ok := history_tx[tx_hash_list_sorted[i].Hash]; ok {
+			logger.V(8).Info("not selecting tx since it is already mined", "txid", tx_hash_list_sorted[i].Hash)
+			continue
 		}
 
 		if tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash); tx != nil {
@@ -295,54 +322,19 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	// lets fill in the miniblocks, list is already sorted
-	if mbls := chain.MiniBlocks.GetAllTipsAtHeight(height); len(mbls) > 0 {
 
-		mbls = block.MiniBlocks_SortByDistanceDesc(mbls)
-		max_distance := uint32(0)
-		tipcount := 0
-		for _, mbl := range mbls {
-			if tipcount == 2 { //we can only support max 2 tips
-				break
-			}
+	var key block.MiniBlockKey
+	key.Height = bl.Height
+	key.Past0 = binary.BigEndian.Uint32(bl.Tips[0][:])
+	if len(bl.Tips) == 2 {
+		key.Past1 = binary.BigEndian.Uint32(bl.Tips[1][:])
+	}
 
-			gens := block.GetGenesisFromMiniBlock(mbl)
-			if len(gens) <= 0 { // if tip cannot be resolved to genesis skip it
-				continue
-			}
-			gens_filtered := block.MiniBlocks_FilterOnlyGenesis(gens, bl.Tips)
-			if len(gens_filtered) <= 0 { // no valid genesis having same tips
-				continue
-			}
-
-			if len(gens) != len(gens_filtered) { // more than 1 genesis, with some not pointing to same tips
-				continue
-			}
-
-			if max_distance < mbl.Distance {
-				max_distance = mbl.Distance
-			}
-
-			if mbl.Genesis && max_distance-mbl.Distance > miniblock_genesis_distance { // only 0 distance is supported for genesis
-				continue
-			}
-			if !mbl.Genesis && max_distance-mbl.Distance > miniblock_normal_distance { // only 3 distance is supported
-				continue
-			}
-
-			history := block.GetEntireMiniBlockHistory(mbl)
-			if !mbl.Genesis && len(history) < 2 {
-				logger.V(1).Error(nil, "history missing. this should never occur", "mbl", fmt.Sprintf("%+v", mbl))
-				continue
-			}
-
-			bl.MiniBlocks = append(bl.MiniBlocks, history...)
-			tipcount++
+	if mbls := chain.MiniBlocks.GetAllMiniBlocks(key); len(mbls) > 0 {
+		if uint64(len(mbls)) > config.BLOCK_TIME-1 {
+			mbls = mbls[:config.BLOCK_TIME-1]
 		}
-
-		if len(bl.MiniBlocks) > 1 { // we need to unique and sort them by time
-			bl.MiniBlocks = block.MiniBlocks_SortByTimeAsc(block.MiniBlocks_Unique(bl.MiniBlocks))
-		}
-
+		bl.MiniBlocks = mbls
 	}
 
 	cbl.Bl = &bl
@@ -357,63 +349,36 @@ func ConvertBlockToMiniblock(bl block.Block, miniblock_miner_address rpc.Address
 	if len(bl.Tips) == 0 {
 		panic("Tips cannot be zero")
 	}
+	mbl.Height = bl.Height
 
-	mbl.Timestamp = uint64(globals.Time().UTC().UnixMilli())
-
-	if len(bl.MiniBlocks) == 0 {
-		mbl.Genesis = true
-		mbl.PastCount = byte(len(bl.Tips))
-		for i := range bl.Tips {
-			mbl.Past[i] = binary.BigEndian.Uint32(bl.Tips[i][:])
-		}
-	} else {
-		tmp_collection := block.CreateMiniBlockCollection()
-		for _, tmbl := range bl.MiniBlocks {
-			if err, ok := tmp_collection.InsertMiniBlock(tmbl); !ok {
-				logger.Error(err, "error converting block to miniblock")
-				panic("not possible, logical flaw")
-			}
-		}
-
-		tips := tmp_collection.GetAllTips()
-		if len(tips) > 2 || len(tips) == 0 {
-			logger.Error(nil, "block contains miniblocks for more tips than possible", "count", len(tips))
-			panic("not possible, logical flaw")
-		}
-		for i, tip := range tips {
-			mbl.PastCount++
-			tiphash := tip.GetHash()
-			mbl.Past[i] = binary.BigEndian.Uint32(tiphash[:])
-			if tip.Timestamp >= uint64(globals.Time().UTC().UnixMilli()) {
-				mbl.Timestamp = tip.Timestamp + 1
-			}
-		}
-
-		prev_distance := tips[0].Distance
-		if len(tips) == 2 && prev_distance < tips[1].Distance {
-			prev_distance = tips[1].Distance
-		}
-		mbl.Odd = (prev_distance%2 == 1) // set odd even height
+	timestamp := uint64(globals.Time().UTC().UnixMilli())
+	diff := timestamp - bl.Timestamp
+	mbl.Timestamp = 0xffff
+	if diff > 0xffff {
+		mbl.Timestamp = 0xffff
 	}
 
-	if mbl.Genesis {
-		binary.BigEndian.PutUint64(mbl.Check[:], bl.Height)
-		copy(mbl.Check[8:], bl.Tips[0][0:12])
-		if len(bl.Tips) == 2 {
-			copy(mbl.Check[8+12:], bl.Tips[1][0:12])
-		}
-	} else {
-		txshash := bl.GetTXSHash()
-		block_header_hash := bl.GetHashWithoutMiniBlocks()
-		for i := range mbl.Check {
-			mbl.Check[i] = txshash[i] ^ block_header_hash[i]
-		}
+	mbl.PastCount = byte(len(bl.Tips))
+	for i := range bl.Tips {
+		mbl.Past[i] = binary.BigEndian.Uint32(bl.Tips[i][:])
 	}
 
-	miner_address_hashed_key := graviton.Sum(miniblock_miner_address.Compressed())
-	copy(mbl.KeyHash[:], miner_address_hashed_key[:])
+	if uint64(len(bl.MiniBlocks)) != config.BLOCK_TIME-1 {
+		miner_address_hashed_key := graviton.Sum(miniblock_miner_address.Compressed())
+		copy(mbl.KeyHash[:], miner_address_hashed_key[:])
+	} else {
+		mbl.Final = true
+		block_header_hash := sha3.Sum256(bl.Serialize()) // note here this block is not present
+		for i := range mbl.KeyHash {
+			mbl.KeyHash[i] = block_header_hash[i]
+		}
+	}
+	// leave the flags for users as per their request
 
-	globals.Global_Random.Read(mbl.Nonce[:]) // fill with randomness
+	for i := range mbl.Nonce {
+		mbl.Nonce[i] = globals.Global_Random.Uint32() // fill with randomness
+	}
+
 	return
 }
 
@@ -451,10 +416,13 @@ func (chain *Blockchain) Create_new_block_template_mining(miniblock_miner_addres
 
 	var miner_hash crypto.Hash
 	copy(miner_hash[:], mbl.KeyHash[:])
-	if !chain.IsAddressHashValid(false, miner_hash) {
-		logger.V(3).Error(err, "unregistered miner %s", miner_hash)
-		err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
-		return
+	if !mbl.Final {
+
+		if !chain.IsAddressHashValid(false, miner_hash) {
+			logger.V(3).Error(err, "unregistered miner %s", miner_hash)
+			err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
+			return
+		}
 	}
 
 	miniblock_blob = fmt.Sprintf("%x", mbl.Serialize())
@@ -473,7 +441,7 @@ var duplicate_height_check = map[uint64]bool{}
 // otherwise the miner is trying to attack the network
 
 func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) (mblid crypto.Hash, blid crypto.Hash, result bool, err error) {
-	if globals.Arguments["--sync-node"].(bool) {
+	if globals.Arguments["--sync-node"] != nil && globals.Arguments["--sync-node"].(bool) {
 		logger.Error(fmt.Errorf("Mining is deactivated since daemon is running with --sync-mode, please check program options."), "")
 		return mblid, blid, false, fmt.Errorf("Please deactivate --sync-node option before mining")
 	}
@@ -511,8 +479,6 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		return
 	}
 
-	//fmt.Printf("received miniblock %x block %x\n", miniblock_blob, bl.Serialize())
-
 	// lets try to check pow to detect whether the miner is cheating
 	if !chain.VerifyMiniblockPoW(&bl, mbl) {
 		logger.V(1).Error(err, "Error ErrInvalidPoW ")
@@ -520,64 +486,42 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		return
 	}
 
-	var miner_hash crypto.Hash
-	copy(miner_hash[:], mbl.KeyHash[:])
-	if !chain.IsAddressHashValid(true, miner_hash) {
-		logger.V(3).Error(err, "unregistered miner %s", miner_hash)
-		err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
-		return
-	}
+	if !mbl.Final {
 
-	// if we reach here, everything looks ok
-	bl.MiniBlocks = append(bl.MiniBlocks, mbl)
+		var miner_hash crypto.Hash
+		copy(miner_hash[:], mbl.KeyHash[:])
+		if !chain.IsAddressHashValid(true, miner_hash) {
+			logger.V(3).Error(err, "unregistered miner %s", miner_hash)
+			err = fmt.Errorf("unregistered miner or you need to wait 15 mins")
+			return
+		}
 
-	if err = chain.Verify_MiniBlocks(bl); err != nil {
+		if err1, ok := chain.InsertMiniBlock(mbl); ok {
+			//fmt.Printf("miniblock %s inserted successfully, total %d\n",mblid,len(chain.MiniBlocks.Collection) )
+			result = true
 
-		fmt.Printf("verifying miniblocks %s\n", err)
-		return
-	}
-
-	mblid = mbl.GetHash()
-	if err1, ok := chain.InsertMiniBlock(mbl); ok {
-		//fmt.Printf("miniblock %s inserted successfully, total %d\n",mblid,len(chain.MiniBlocks.Collection) )
-		result = true
-
-	} else {
-		logger.V(1).Error(err1, "miniblock insertion failed", "mbl", fmt.Sprintf("%+v", mbl))
-		err = err1
-		return
-	}
-
-	cache_block_mutex.Lock()
-	cache_block.Timestamp = 0 // expire cache block
-	cache_block_mutex.Unlock()
-
-	// notify peers, we have a miniblock and return to miner
-	if !chain.simulator { // if not in simulator mode, relay miniblock to the chain
-		var mbls []block.MiniBlock
-
-		if !mbl.Genesis {
-			for i := uint8(0); i < mbl.PastCount; i++ {
-				mbls = append(mbls, chain.MiniBlocks.Get(mbl.Past[i]))
+			// notify peers, we have a miniblock and return to miner
+			if !chain.simulator { // if not in simulator mode, relay miniblock to the chain
+				go chain.P2P_MiniBlock_Relayer(mbl, 0)
 			}
 
-		}
-		mbls = append(mbls, mbl)
-		go chain.P2P_MiniBlock_Relayer(mbls, 0)
+		} else {
+			logger.V(1).Error(err1, "miniblock insertion failed", "mbl", fmt.Sprintf("%+v", mbl))
+			err = err1
 
+		}
+		return
 	}
+
+	result = true // block's pow is valid
+
+	// if we reach here, everything looks ok, we can complete the block we have, lets add the final piece
+	bl.MiniBlocks = append(bl.MiniBlocks, mbl)
 
 	// if a duplicate block is being sent, reject the block
 	if _, ok := duplicate_height_check[bl.Height]; ok {
-		logger.V(1).Error(nil, "Block %s rejected by chain due to duplicate hwork.", "blid", bl.GetHash())
+		logger.V(3).Error(nil, "Block %s rejected by chain due to duplicate hwork.", "blid", bl.GetHash())
 		err = fmt.Errorf("Error duplicate work")
-		return
-	}
-
-	// fast check dynamic consensus rules
-	// if it passes then this miniblock completes the puzzle (if other consensus rules allow)
-	if scraperr := chain.Check_Dynamism(bl.MiniBlocks); scraperr != nil {
-		logger.V(3).Error(scraperr, "dynamism check failed ")
 		return
 	}
 
@@ -611,7 +555,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 	cbl.Bl = &bl // the block is now complete, lets try to add it to chain
 
 	if !chain.simulator && !accept_limiter.Allow() { // if rate limiter allows, then add block to chain
-		logger.Info("Block rejected by chain.", "blid", bl.GetHash())
+		logger.V(1).Info("Block rejected by chain", "blid", bl.GetHash())
 		return
 	}
 
@@ -621,8 +565,11 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 	err, result_block = chain.Add_Complete_Block(cbl)
 
 	if result_block {
-
 		duplicate_height_check[bl.Height] = true
+
+		cache_block_mutex.Lock()
+		cache_block.Timestamp = 0 // expire cache block
+		cache_block_mutex.Unlock()
 
 		logger.V(1).Info("Block successfully accepted, Notifying Network", "blid", bl.GetHash(), "height", bl.Height)
 
@@ -630,7 +577,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 			chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network
 		}
 	} else {
-		logger.V(1).Error(err, "Block Rejected", "blid", bl.GetHash())
+		logger.V(3).Error(err, "Block Rejected", "blid", bl.GetHash())
 		return
 	}
 	return
@@ -642,7 +589,7 @@ func (chain *Blockchain) ExpandMiniBlockTip(hash crypto.Hash) (result crypto.Has
 
 	tips := chain.Get_TIPS()
 	for i := range tips {
-		if bytes.Equal(hash[:12], tips[i][:12]) {
+		if bytes.Equal(hash[:4], tips[i][:4]) {
 			copy(result[:], tips[i][:])
 			return result, true
 		}
@@ -655,7 +602,7 @@ func (chain *Blockchain) ExpandMiniBlockTip(hash crypto.Hash) (result crypto.Has
 
 		blhash, err := chain.Load_Block_Topological_order_at_index(i)
 		if err == nil {
-			if bytes.Equal(hash[:12], blhash[:12]) {
+			if bytes.Equal(hash[:4], blhash[:4]) {
 				copy(result[:], blhash[:])
 				return result, true
 			}
