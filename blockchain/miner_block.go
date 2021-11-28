@@ -352,12 +352,8 @@ func ConvertBlockToMiniblock(bl block.Block, miniblock_miner_address rpc.Address
 	mbl.Height = bl.Height
 
 	timestamp := uint64(globals.Time().UTC().UnixMilli())
-	diff := timestamp - bl.Timestamp
-	mbl.Timestamp = 0xffff
-	if diff > 0xffff {
-		mbl.Timestamp = 0xffff
-	}
-
+	mbl.Timestamp = uint16(timestamp) // this will help us better understand network conditions
+	
 	mbl.PastCount = byte(len(bl.Tips))
 	for i := range bl.Tips {
 		mbl.Past[i] = binary.BigEndian.Uint32(bl.Tips[i][:])

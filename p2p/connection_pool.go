@@ -56,34 +56,35 @@ const MAX_CLOCK_DATA_SET = 16
 
 // This structure is used to do book keeping for the connection and keeps other DATA related to peer
 // golang restricts 64 bit uint64/int atomic on a 64 bit boundary
-// therefore all atomics are on the top
+// therefore all atomics are on the top, As suggested by Slixe
 type Connection struct {
+	Height                int64  // last height sent by peer  ( first member alignments issues)
+	StableHeight          int64  // last stable height
+	TopoHeight            int64  // topo height, current topo height, this is the only thing we require for syncing
+	Pruned                int64  // till where chain has been pruned on this node
+	LastObjectRequestTime int64  // when was the last item placed in object list
+	Latency               int64  // time.Duration            // latency to this node when sending timed sync
+	BytesIn               uint64 // total bytes in
+	BytesOut              uint64 // total bytes out
+	Top_Version           uint64 // current hard fork version supported by peer
+	Peer_ID               uint64 // Remote peer id
+	Port                  uint32 // port advertised by other end as its server,if it's 0 server cannot accept connections
+	State                 uint32 // state of the connection
+
 	Client  *rpc2.Client
 	Conn    net.Conn // actual object to talk
 	ConnTls net.Conn // tls layered conn
 
-	Height       int64       // last height sent by peer  ( first member alignments issues)
-	StableHeight int64       // last stable height
-	TopoHeight   int64       // topo height, current topo height, this is the only thing we require for syncing
-	StateHash    crypto.Hash // statehash at the top
-	Pruned       int64       // till where chain has been pruned on this node
+	StateHash crypto.Hash // statehash at the top
 
-	Created               time.Time // when was object created
-	LastObjectRequestTime int64     // when was the last item placed in object list
-	BytesIn               uint64    // total bytes in
-	BytesOut              uint64    // total bytes out
-	Latency               int64     // time.Duration            // latency to this node when sending timed sync
+	Created time.Time // when was object created
 
 	Incoming        bool     // is connection incoming or outgoing
 	Addr            net.Addr // endpoint on the other end
-	Port            uint32   // port advertised by other end as its server,if it's 0 server cannot accept connections
-	Peer_ID         uint64   // Remote peer id
 	SyncNode        bool     // whether the peer has been added to command line as sync node
-	Top_Version     uint64   // current hard fork version supported by peer
 	ProtocolVersion string
 	Tag             string // tag for the other end
 	DaemonVersion   string
-	State           uint32      // state of the connection
 	Top_ID          crypto.Hash // top block id of the connection
 
 	logger logr.Logger // connection specific logger
@@ -100,8 +101,7 @@ type Connection struct {
 	clock_offsets [MAX_CLOCK_DATA_SET]time.Duration
 	delays        [MAX_CLOCK_DATA_SET]time.Duration
 	clock_offset  int64 // duration updated on every miniblock
-
-	onceexit sync.Once
+	onceexit      sync.Once
 
 	Mutex sync.Mutex // used only by connection go routine
 }

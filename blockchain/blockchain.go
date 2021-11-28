@@ -820,7 +820,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 
 		// we will directly use graviton to mov in to history
-		logger.V(3).Info("Full order data", "full_order", full_order, "base_topo_index", base_topo_index)
+		logger.V(1).Info("Full order data", "full_order", full_order, "base_topo_index", base_topo_index)
 
 		if base_topo_index < 0 {
 			logger.Error(nil, "negative base topo, not possible, probably disk corruption or core issue")
@@ -880,7 +880,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 					panic(err)
 				}
 
-				logger.V(3).Info("reading block snapshot", "blid", full_order[i-1], "i", i, "record_version", record_version)
+				logger.V(1).Info("reading block snapshot", "blid", full_order[i-1], "i", i, "record_version", record_version)
 
 				ss, err = chain.Store.Balance_store.LoadSnapshot(record_version)
 				if err != nil {
@@ -987,12 +987,12 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			chain.StoreBlock(bl_current, commit_version)
 			topos_written = true
 			chain.Store.Topo_store.Write(current_topo_block, full_order[i], commit_version, chain.Load_Block_Height(full_order[i]))
-			if logger.V(3).Enabled() {
+			if logger.V(1).Enabled() {
 				merkle_root, err := chain.Load_Merkle_Hash(commit_version)
 				if err != nil {
 					panic(err)
 				}
-				logger.V(3).Info("storing topo", "i", i, "blid", full_order[i].String(), "topoheight", current_topo_block, "commit_version", commit_version, "committed_merkle", merkle_root)
+				logger.V(1).Info("storing topo", "i", i, "blid", full_order[i].String(), "topoheight", current_topo_block, "commit_version", commit_version, "committed_merkle", merkle_root)
 			}
 
 		}
@@ -1024,7 +1024,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 		for i := range tips {
 			tip_height := int64(chain.Load_Height_for_BL_ID(tips[i]))
-			if (chain_height - tip_height) < 2 {
+			if (chain_height - tip_height) == 0 {
 
 				new_tips[tips[i]] = tips[i]
 			} else { // this should be a rare event, unless network has very high latency

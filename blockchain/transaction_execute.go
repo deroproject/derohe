@@ -550,6 +550,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 func extract_signer(tx *transaction.Transaction) (signer [33]byte, err error) {
 	for t := range tx.Payloads {
 		if uint64(len(tx.Payloads[t].Statement.Publickeylist_compressed)) != tx.Payloads[t].Statement.RingSize {
+			panic("tx is not expanded")
 			return signer, fmt.Errorf("tx is not expanded")
 		}
 		if tx.Payloads[t].SCID.IsZero() && tx.Payloads[t].Statement.RingSize == 2 {

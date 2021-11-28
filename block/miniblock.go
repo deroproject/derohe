@@ -42,7 +42,7 @@ type MiniBlock struct {
 	Final     bool  // bit 5
 	PastCount uint8 // previous  count  // bits 6,7
 
-	Timestamp uint16 // can represent time from first block
+	Timestamp uint16 // represents rolling time
 	Height    uint64 //  5 bytes  serialized in 5 bytes,
 
 	Past [2]uint32 // 8 bytes used to build DAG of miniblocks and prevent number of attacks

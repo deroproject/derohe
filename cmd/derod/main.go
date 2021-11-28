@@ -518,6 +518,44 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 
 		case command == "print_tree": // prints entire block chain tree
 			//WriteBlockChainTree(chain, "/tmp/graph.dot")
+		case command == "install_block":
+			var hash crypto.Hash
+
+			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
+				bl_raw, err := hex.DecodeString(strings.ToLower(line_parts[1]))
+				if err != nil {
+					fmt.Printf("err while decoding blid err %s\n", err)
+					continue
+				}
+				copy(hash[:32], []byte(bl_raw))
+			} else {
+				fmt.Printf("install_block  needs a single block id as argument\n")
+				continue
+			}
+
+			var bl block.Block
+			var cbl *block.Complete_Block
+
+			if block_data, err := os.ReadFile(fmt.Sprintf("/tmp/blocks/%s", hash)); err == nil {
+
+				if err = bl.Deserialize(block_data); err != nil { // we should deserialize the block here
+					logger.Error(err, "fError deserialiing block, block id %x len(data) %d data %x", hash[:], len(block_data), block_data, err)
+					continue
+				}
+
+				cbl = &block.Complete_Block{Bl: &bl}
+			} else {
+				fmt.Printf("err reading block %s\n", err)
+				continue
+			}
+
+			//	bl, err := chain.Load_BL_FROM_ID(hash)
+			//	if err != nil {
+			//		fmt.Printf("Err %s\n", err)
+			//	}
+
+			err, _ = chain.Add_Complete_Block(cbl)
+			fmt.Printf("err adding block %s\n", err)
 
 		case command == "print_block":
 
@@ -661,7 +699,7 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 			if supply > (1000000 * 1000000000000) {
 				supply -= (1000000 * 1000000000000) // remove  premine
 			}
-			fmt.Printf("Network %s Height %d  NW Hashrate %0.03f MH/sec  TH %s Peers %d inc, %d out  MEMPOOL size %d REGPOOL %d  Total Supply %s DERO \n", globals.Config.Name, chain.Get_Height(), float64(chain.Get_Network_HashRate())/1000000.0, chain.Get_Top_ID(), inc, out, mempool_tx_count, regpool_tx_count, globals.FormatMoney(supply))
+			fmt.Printf("Network %s Height %d  NW Hashrate %0.03f MH/sec  Peers %d inc, %d out  MEMPOOL size %d REGPOOL %d  Total Supply %s DERO \n", globals.Config.Name, chain.Get_Height(), float64(chain.Get_Network_HashRate())/1000000.0, inc, out, mempool_tx_count, regpool_tx_count, globals.FormatMoney(supply))
 			if chain.LocatePruneTopo() >= 1 {
 				fmt.Printf("Chain is pruned till %d\n", chain.LocatePruneTopo())
 			} else {
@@ -670,6 +708,14 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 			fmt.Printf("Integrator address %s\n", chain.IntegratorAddress().String())
 			fmt.Printf("UTC time %s  (as per system clock) \n", time.Now().UTC())
 			fmt.Printf("UTC time %s  (offset %s) (as per daemon) should be close to 0\n", globals.Time().UTC(), time.Now().Sub(globals.Time()))
+			fmt.Printf("Local time %s  (as per system clock) \n", time.Now())
+			fmt.Printf("Local time %s  (offset %s) (as per daemon) should be close to 0\n", globals.Time(), time.Now().Sub(globals.Time()))
+			tips := chain.Get_TIPS()
+			fmt.Printf("Tips ")
+			for _, tip := range tips {
+				fmt.Printf(" %s(%d)", tip, chain.Load_Height_for_BL_ID(tip))
+			}
+			fmt.Printf("\n")
 
 			// print hardfork status on second line
 			hf_state, _, _, threshold, version, votes, window := chain.Get_HF_info()

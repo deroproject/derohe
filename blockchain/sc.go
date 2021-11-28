@@ -158,8 +158,9 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 		return
 	}
 	signer, err := extract_signer(&tx)
-	if err != nil {
-		return
+	if err != nil { // allow anonymous SC transactions with condition that SC will not call Signer
+		// this allows anonymous voting and numerous other applications
+		// otherwise SC receives signer as all zeroes
 	}
 
 	// setup block hash, height, topoheight correctly
