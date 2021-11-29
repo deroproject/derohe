@@ -868,10 +868,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			if bl_current.Height == 0 { // if it's genesis block
 				if ss, err = chain.Store.Balance_store.LoadSnapshot(0); err != nil {
 					panic(err)
-				} else if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
-					panic(err)
-				} else if sc_meta, err = ss.GetTree(config.SC_META); err != nil {
-					panic(err)
 				}
 			} else { // we already have a block before us, use it
 
@@ -886,13 +882,12 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				if err != nil {
 					panic(err)
 				}
-
-				if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
-					panic(err)
-				}
-				if sc_meta, err = ss.GetTree(config.SC_META); err != nil {
-					panic(err)
-				}
+			}
+			if balance_tree, err = ss.GetTree(config.BALANCE_TREE); err != nil {
+				panic(err)
+			}
+			if sc_meta, err = ss.GetTree(config.SC_META); err != nil {
+				panic(err)
 			}
 
 			fees_collected := uint64(0)

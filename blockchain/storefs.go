@@ -59,6 +59,7 @@ func (s *storefs) ReadBlock(h [32]byte) ([]byte, error) {
 	return nil, os.ErrNotExist
 }
 
+// on windows, we see an odd behaviour where some files could not be deleted, since they may exist only in cache
 func (s *storefs) DeleteBlock(h [32]byte) error {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
@@ -74,7 +75,7 @@ func (s *storefs) DeleteBlock(h [32]byte) error {
 			file := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]), file.Name())
 			err = os.Remove(file)
 			if err != nil {
-				return err
+				//return err
 			}
 			found = true
 		}
@@ -123,9 +124,14 @@ func (chain *Blockchain) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 func (s *storefs) ReadBlockSnapshotVersion(h [32]byte) (uint64, error) {
 	dir := filepath.Join(filepath.Join(s.basedir, "bltx_store"), fmt.Sprintf("%02x", h[0]), fmt.Sprintf("%02x", h[1]), fmt.Sprintf("%02x", h[2]))
 
-	files, err := os.ReadDir(dir)
+	files, err := os.ReadDir(dir) // this always returns the sorted list
 	if err != nil {
 		return 0, err
+	}
+	// windows has a caching issue, so earlier versions may exist at the same time
+	// so we mitigate it, by using the last version, below 3 lines reverse the already sorted arrray
+	for left, right := 0, len(files)-1; left < right; left, right = left+1, right-1 {
+		files[left], files[right] = files[right], files[left]
 	}
 
 	filename_start := fmt.Sprintf("%x.block", h[:])
