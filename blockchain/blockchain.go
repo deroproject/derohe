@@ -1283,7 +1283,6 @@ func (chain *Blockchain) IS_TX_Valid(txhash crypto.Hash) (valid_blid crypto.Hash
 		for _, bltxhash := range bl.Tx_hashes {
 			if bltxhash == txhash {
 				exist_list = append(exist_list, blid)
-				//break , this is removed so as this case can be tested well
 			}
 		}
 	}

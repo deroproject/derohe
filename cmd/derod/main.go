@@ -59,7 +59,7 @@ var command_line string = `derod
 DERO : A secure, private blockchain with smart-contracts
 
 Usage:
-  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--timeisinsync] [--fastsync] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... 	 [--min-peers=<11>] [--rpc-bind=<127.0.0.1:9999>] [--node-tag=<unique name>] [--prune-history=<50>] [--integrator-address=<address>] [--clog-level=1] [--flog-level=1]
+  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--timeisinsync] [--fastsync] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... 	 [--min-peers=<11>] [--rpc-bind=<127.0.0.1:9999>] [--getwork-bind=<0.0.0.0:18089>] [--node-tag=<unique name>] [--prune-history=<50>] [--integrator-address=<address>] [--clog-level=1] [--flog-level=1]
   derod -h | --help
   derod --version
 
@@ -76,6 +76,7 @@ Options:
   --data-dir=<directory>    Store blockchain data at this location
   --rpc-bind=<127.0.0.1:9999>    RPC listens on this ip:port
   --p2p-bind=<0.0.0.0:18089>    p2p server listens on this ip:port, specify port 0 to disable listening server
+  --getwork-bind=<0.0.0.0:10100>    getwork server listens on this ip:port, specify port 0 to disable listening server
   --add-exclusive-node=<ip:port>	Connect to specific peer only 
   --add-priority-node=<ip:port>	Maintain persistant connection to specified peer
   --sync-node       Sync node automatically with the seeds nodes. This option is for rare use.
@@ -211,6 +212,8 @@ func main() {
 	p2p.P2P_Init(params)
 	rpcserver, _ := derodrpc.RPCServer_Start(params)
 
+	go derodrpc.Getwork_server()
+
 	// setup function pointers
 	chain.P2P_Block_Relayer = func(cbl *block.Complete_Block, peerid uint64) {
 		p2p.Broadcast_Block(cbl, peerid)
@@ -284,7 +287,7 @@ func main() {
 
 				testnet_string += " " + strconv.Itoa(chain.MiniBlocks.Count()) + " " + globals.GetOffset().Round(time.Millisecond).String() + "|" + globals.GetOffsetNTP().Round(time.Millisecond).String() + "|" + globals.GetOffsetP2P().Round(time.Millisecond).String()
 
-				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO HE: \033[0m"+color+"%d/%d [%d/%d] "+pcolor+"P %d TXp %d:%d \033[32mNW %s >%s>>\033[0m ", our_height, topo_height, best_height, best_topo_height, peer_count, mempool_tx_count, regpool_tx_count, hash_rate_string, testnet_string))
+				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO HE: \033[0m"+color+"%d/%d [%d/%d] "+pcolor+"P %d TXp %d:%d \033[32mNW %s >Miners %d %s>>\033[0m ", our_height, topo_height, best_height, best_topo_height, peer_count, mempool_tx_count, regpool_tx_count, hash_rate_string, derodrpc.CountMiners(), testnet_string))
 				l.Refresh()
 				last_second = time.Now().Unix()
 				last_our_height = our_height
@@ -490,6 +493,19 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 			} else {
 				logger.Error(fmt.Errorf("regpool_delete_tx  needs a single transaction id as argument"), "")
 			}
+
+		case command == "mempool_dump": // dump mempool to directory
+			tx_hash_list_sorted := chain.Mempool.Mempool_List_TX_SortedInfo() // hash of all tx expected to be included within this block , sorted by fees
+
+			os.Mkdir(filepath.Join(globals.GetDataDirectory(), "mempool"), 0755)
+			count := 0
+			for _, txi := range tx_hash_list_sorted {
+				if tx := chain.Mempool.Mempool_Get_TX(txi.Hash); tx != nil {
+					os.WriteFile(filepath.Join(globals.GetDataDirectory(), "mempool", txi.Hash.String()), tx.Serialize(), 0755)
+					count++
+				}
+			}
+			logger.Info("flushed mempool to driectory", "count", count, "dir", filepath.Join(globals.GetDataDirectory(), "mempool"))
 
 		case command == "mempool_print":
 			chain.Mempool.Mempool_Print()
@@ -981,6 +997,7 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("help"),
 	readline.PcItem("diff"),
 	readline.PcItem("gc"),
+	readline.PcItem("mempool_dump"),
 	readline.PcItem("mempool_flush"),
 	readline.PcItem("mempool_delete_tx"),
 	readline.PcItem("mempool_print"),

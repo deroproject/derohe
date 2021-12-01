@@ -20,7 +20,9 @@ import "io"
 import "os"
 import "fmt"
 import "time"
+import "net/url"
 import "crypto/rand"
+import "crypto/tls"
 import "sync"
 import "runtime"
 import "math/big"
@@ -31,7 +33,6 @@ import "os/signal"
 import "sync/atomic"
 import "strings"
 import "strconv"
-import "context"
 
 import "github.com/go-logr/logr"
 
@@ -48,13 +49,10 @@ import "github.com/docopt/docopt-go"
 import "github.com/deroproject/derohe/pow"
 
 import "github.com/gorilla/websocket"
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
 
 var mutex sync.RWMutex
 var job rpc.GetBlockTemplate_Result
+var job_counter int64
 var maxdelay int = 10000
 var threads int
 var iterations int = 100
@@ -67,8 +65,8 @@ var hash_rate uint64
 var Difficulty uint64
 var our_height int64
 
-var block_counter int
-var mini_block_counter int
+var block_counter uint64
+var mini_block_counter uint64
 var logger logr.Logger
 
 var command_line string = `dero-miner
@@ -95,15 +93,6 @@ Example Testnet: ./dero-miner-linux-amd64 --wallet-address deto1qy0ehnqjpr0wxqnk
 If daemon running on local machine no requirement of '--daemon-rpc-address' argument. 
 `
 var Exit_In_Progress = make(chan bool)
-
-func Notify_broadcaster(req *jrpc2.Request) {
-	switch req.Method() {
-	case "Block", "MiniBlock", "Height":
-		go rpc_client.update_job()
-	default:
-		logger.V(1).Info("Notification received but not handled", "method", req.Method())
-	}
-}
 
 func main() {
 
@@ -165,9 +154,9 @@ func main() {
 	}
 
 	if !globals.Arguments["--testnet"].(bool) {
-		daemon_rpc_address = "127.0.0.1:10102"
+		daemon_rpc_address = "127.0.0.1:10100"
 	} else {
-		daemon_rpc_address = "127.0.0.1:40402"
+		daemon_rpc_address = "127.0.0.1:10100"
 	}
 
 	if globals.Arguments["--daemon-rpc-address"] != nil {
@@ -234,17 +223,12 @@ func main() {
 	go func() {
 		last_our_height := int64(0)
 		last_best_height := int64(0)
-		last_peer_count := uint64(0)
-		last_topo_height := int64(0)
-		last_mempool_tx_count := 0
+
 		last_counter := uint64(0)
 		last_counter_time := time.Now()
 		last_mining_state := false
 
 		_ = last_mining_state
-		_ = last_peer_count
-		_ = last_topo_height
-		_ = last_mempool_tx_count
 
 		mining := true
 		for {
@@ -254,27 +238,12 @@ func main() {
 			default:
 			}
 
-			best_height, best_topo_height := int64(0), int64(0)
-			peer_count := uint64(0)
-
-			mempool_tx_count := 0
-
+			best_height := int64(0)
 			// only update prompt if needed
 			if last_our_height != our_height || last_best_height != best_height || last_counter != counter {
 				// choose color based on urgency
-				color := "\033[33m" // default is green color
-				/*if our_height < best_height {
-					color = "\033[33m" // make prompt yellow
-				} else if our_height > best_height {
-					color = "\033[31m" // make prompt red
-				}*/
-
+				color := "\033[33m"  // default is green color
 				pcolor := "\033[32m" // default is green color
-				/*if peer_count < 1 {
-					pcolor = "\033[31m" // make prompt red
-				} else if peer_count <= 8 {
-					pcolor = "\033[33m" // make prompt yellow
-				}*/
 
 				mining_string := ""
 
@@ -313,16 +282,10 @@ func main() {
 					testnet_string = "\033[31m TESTNET"
 				}
 
-				extra := fmt.Sprintf("%f", float32(mini_block_counter)/float32(block_counter))
-
-				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO Miner: \033[0m"+color+"Height %d "+pcolor+" BLOCKS %d MiniBlocks %d \033[32mNW %s %s>%s> avg %s >\033[0m ", our_height, block_counter, mini_block_counter, hash_rate_string, mining_string, testnet_string, extra))
+				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO Miner: \033[0m"+color+"Height %d "+pcolor+" BLOCKS %d MiniBlocks %d \033[32mNW %s %s>%s>>\033[0m ", our_height, block_counter, mini_block_counter, hash_rate_string, mining_string, testnet_string))
 				l.Refresh()
 				last_our_height = our_height
 				last_best_height = best_height
-				last_peer_count = peer_count
-				last_mempool_tx_count = mempool_tx_count
-				last_topo_height = best_topo_height
-
 			}
 			time.Sleep(1 * time.Second)
 		}
@@ -348,11 +311,10 @@ func main() {
 		threads = 255
 	}
 
-	go increase_delay()
-	go getwork()
+	go getwork(wallet_address)
 
 	for i := 0; i < threads; i++ {
-		go rpc_client.mineblock(i)
+		go mineblock(i)
 	}
 
 	for {
@@ -426,91 +388,61 @@ func random_execution(wg *sync.WaitGroup, iterations int) {
 	runtime.UnlockOSThread()
 }
 
-func increase_delay() {
-	for {
-		time.Sleep(time.Second)
-		maxdelay++
-	}
-}
-
-type Client struct {
-	WS        *websocket.Conn
-	RPC       *jrpc2.Client
-	Connected bool
-}
-
-var rpc_client = &Client{}
-
 // continuously get work
-func getwork() {
+
+var connection *websocket.Conn
+var connection_mutex sync.Mutex
+
+func getwork(wallet_address string) {
 	var err error
 
 	for {
-		rpc_client.WS, _, err = websocket.DefaultDialer.Dial("ws://"+daemon_rpc_address+"/ws", nil)
 
+		u := url.URL{Scheme: "wss", Host: daemon_rpc_address, Path: "/ws/" + wallet_address}
+		logger.Info("connecting to ", "url", u.String())
+
+		dialer := websocket.DefaultDialer
+		dialer.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		connection, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 		if err != nil {
 			logger.Error(err, "Error connecting to server", "server adress", daemon_rpc_address)
 			logger.Info("Will try in 10 secs", "server adress", daemon_rpc_address)
-			rpc_client.Connected = false
 			time.Sleep(10 * time.Second)
 
 			continue
 		}
 
-		input_output := rwc.New(rpc_client.WS)
-		rpc_client.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), &jrpc2.ClientOptions{OnNotify: Notify_broadcaster})
-		rpc_client.Connected = true
+		var result rpc.GetBlockTemplate_Result
+	wait_for_another_job:
 
-		for {
-			if err = rpc_client.update_job(); err != nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
+		if err = connection.ReadJSON(&result); err != nil {
+			logger.Error(err, "connection error")
+			continue
 		}
 
-		time.Sleep(4 * time.Second)
-	}
-
-}
-
-func (cli *Client) update_job() (err error) {
-	defer globals.Recover(1)
-	var result rpc.GetBlockTemplate_Result
-
-	if err = rpc_client.Call("DERO.GetBlockTemplate", rpc.GetBlockTemplate_Params{Wallet_Address: wallet_address}, &result); err == nil {
 		mutex.Lock()
 		job = result
-		maxdelay = 0
+		job_counter++
 		mutex.Unlock()
+		if job.LastError != "" {
+			logger.Error(nil, "received error", "err", job.LastError)
+		}
+
+		block_counter = job.Blocks
+		mini_block_counter = job.MiniBlocks
 		hash_rate = job.Difficultyuint64
 		our_height = int64(job.Height)
 		Difficulty = job.Difficultyuint64
 
-	} else {
-		rpc_client.WS.Close()
-		rpc_client.Connected = false
-		logger.Error(err, "Error receiving block template")
-
+		//fmt.Printf("recv: %s", result)
+		goto wait_for_another_job
 	}
-	return err
 
 }
 
-func (cli *Client) Call(method string, params interface{}, result interface{}) error {
-	return cli.RPC.CallResult(context.Background(), method, params, result)
-}
-
-// tests connectivity when connectivity to daemon
-func (rpc_client *Client) test_connectivity() (err error) {
-	var info rpc.GetInfo_Result
-	if err = rpc_client.Call("DERO.GetInfo", nil, &info); err != nil {
-		logger.V(1).Error(err, "DERO.GetInfo Call failed:")
-		return
-	}
-	return nil
-}
-
-func (rpc_client *Client) mineblock(tid int) {
+func mineblock(tid int) {
 	var diff big.Int
 	var work [block.MINIBLOCK_SIZE]byte
 
@@ -518,18 +450,15 @@ func (rpc_client *Client) mineblock(tid int) {
 	runtime.LockOSThread()
 	threadaffinity()
 
+	var local_job_counter int64
+
 	i := uint32(0)
 
 	for {
 		mutex.RLock()
-
 		myjob := job
+		local_job_counter = job_counter
 		mutex.RUnlock()
-
-		if rpc_client.Connected == false {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
 
 		n, err := hex.Decode(work[:], []byte(myjob.Blockhashing_blob))
 		if err != nil || n != block.MINIBLOCK_SIZE {
@@ -543,40 +472,27 @@ func (rpc_client *Client) mineblock(tid int) {
 		diff.SetString(myjob.Difficulty, 10)
 
 		if work[0]&0xf != 1 { // check  version
-			logger.Error(nil, "Unknown version", "version", work[0]&0x1f)
+			logger.Error(nil, "Unknown version, please check for updates", "version", work[0]&0x1f)
 			time.Sleep(time.Second)
 			continue
 		}
 
-		for {
+		for local_job_counter == job_counter { // update job when it comes, expected rate 1 per second
 			i++
 			binary.BigEndian.PutUint32(nonce_buf, i)
-
-			if i&0x3ff == 0x3ff { // get updated job every 250 millisecs
-				break
-			}
 
 			powhash := pow.Pow(work[:])
 			atomic.AddUint64(&counter, 1)
 
 			if CheckPowHashBig(powhash, &diff) == true {
 				logger.V(1).Info("Successfully found DERO miniblock", "difficulty", myjob.Difficulty, "height", myjob.Height)
-				maxdelay = 200
-				var result rpc.SubmitBlock_Result
-				if err = rpc_client.Call("DERO.SubmitBlock", rpc.SubmitBlock_Params{JobID: myjob.JobID, MiniBlockhashing_blob: fmt.Sprintf("%x", work[:])}, &result); err == nil {
+				func() {
+					defer globals.Recover(1)
+					connection_mutex.Lock()
+					defer connection_mutex.Unlock()
+					connection.WriteJSON(rpc.SubmitBlock_Params{JobID: myjob.JobID, MiniBlockhashing_blob: fmt.Sprintf("%x", work[:])})
+				}()
 
-					if result.MiniBlock {
-						mini_block_counter++
-					} else {
-						block_counter++
-					}
-					logger.V(2).Info("submitting block", "result", result)
-					go rpc_client.update_job()
-				} else {
-					logger.Error(err, "error submitting block")
-					rpc_client.update_job()
-					break
-				}
 			}
 		}
 	}
@@ -584,7 +500,6 @@ func (rpc_client *Client) mineblock(tid int) {
 
 func usage(w io.Writer) {
 	io.WriteString(w, "commands:\n")
-	//io.WriteString(w, completer.Tree("    "))
 	io.WriteString(w, "\t\033[1mhelp\033[0m\t\tthis help\n")
 	io.WriteString(w, "\t\033[1mstatus\033[0m\t\tShow general information\n")
 	io.WriteString(w, "\t\033[1mbye\033[0m\t\tQuit the miner\n")

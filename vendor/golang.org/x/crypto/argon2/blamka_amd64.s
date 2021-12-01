@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build amd64,!gccgo,!appengine
+//go:build amd64 && gc && !purego
+// +build amd64,gc,!purego
 
 #include "textflag.h"
 
@@ -240,13 +241,4 @@ loop:
 	ADDQ  $16, DX
 	SUBQ  $2, BP
 	JA    loop
-	RET
-
-// func supportsSSE4() bool
-TEXT ·supportsSSE4(SB), 4, $0-1
-	MOVL $1, AX
-	CPUID
-	SHRL $19, CX       // Bit 19 indicates SSE4 support
-	ANDL $1, CX        // CX != 0 if support SSE4
-	MOVB CX, ret+0(FP)
 	RET

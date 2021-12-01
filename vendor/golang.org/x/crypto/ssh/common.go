@@ -24,11 +24,21 @@ const (
 	serviceSSH      = "ssh-connection"
 )
 
-// supportedCiphers specifies the supported ciphers in preference order.
+// supportedCiphers lists ciphers we support but might not recommend.
 var supportedCiphers = []string{
 	"aes128-ctr", "aes192-ctr", "aes256-ctr",
 	"aes128-gcm@openssh.com",
-	"arcfour256", "arcfour128",
+	chacha20Poly1305ID,
+	"arcfour256", "arcfour128", "arcfour",
+	aes128cbcID,
+	tripledescbcID,
+}
+
+// preferredCiphers specifies the default preference for ciphers.
+var preferredCiphers = []string{
+	"aes128-gcm@openssh.com",
+	chacha20Poly1305ID,
+	"aes128-ctr", "aes192-ctr", "aes256-ctr",
 }
 
 // supportedKexAlgos specifies the supported key-exchange algorithms in
@@ -41,14 +51,31 @@ var supportedKexAlgos = []string{
 	kexAlgoDH14SHA1, kexAlgoDH1SHA1,
 }
 
+// serverForbiddenKexAlgos contains key exchange algorithms, that are forbidden
+// for the server half.
+var serverForbiddenKexAlgos = map[string]struct{}{
+	kexAlgoDHGEXSHA1:   {}, // server half implementation is only minimal to satisfy the automated tests
+	kexAlgoDHGEXSHA256: {}, // server half implementation is only minimal to satisfy the automated tests
+}
+
+// preferredKexAlgos specifies the default preference for key-exchange algorithms
+// in preference order.
+var preferredKexAlgos = []string{
+	kexAlgoCurve25519SHA256,
+	kexAlgoECDH256, kexAlgoECDH384, kexAlgoECDH521,
+	kexAlgoDH14SHA1,
+}
+
 // supportedHostKeyAlgos specifies the supported host-key algorithms (i.e. methods
 // of authenticating servers) in preference order.
 var supportedHostKeyAlgos = []string{
-	CertAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01,
+	CertSigAlgoRSASHA2512v01, CertSigAlgoRSASHA2256v01,
+	CertSigAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01,
 	CertAlgoECDSA384v01, CertAlgoECDSA521v01, CertAlgoED25519v01,
 
 	KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
-	KeyAlgoRSA, KeyAlgoDSA,
+	SigAlgoRSASHA2512, SigAlgoRSASHA2256,
+	SigAlgoRSA, KeyAlgoDSA,
 
 	KeyAlgoED25519,
 }
@@ -65,16 +92,20 @@ var supportedCompressions = []string{compressionNone}
 // hashFuncs keeps the mapping of supported algorithms to their respective
 // hashes needed for signature verification.
 var hashFuncs = map[string]crypto.Hash{
-	KeyAlgoRSA:          crypto.SHA1,
-	KeyAlgoDSA:          crypto.SHA1,
-	KeyAlgoECDSA256:     crypto.SHA256,
-	KeyAlgoECDSA384:     crypto.SHA384,
-	KeyAlgoECDSA521:     crypto.SHA512,
-	CertAlgoRSAv01:      crypto.SHA1,
-	CertAlgoDSAv01:      crypto.SHA1,
-	CertAlgoECDSA256v01: crypto.SHA256,
-	CertAlgoECDSA384v01: crypto.SHA384,
-	CertAlgoECDSA521v01: crypto.SHA512,
+	SigAlgoRSA:               crypto.SHA1,
+	SigAlgoRSASHA2256:        crypto.SHA256,
+	SigAlgoRSASHA2512:        crypto.SHA512,
+	KeyAlgoDSA:               crypto.SHA1,
+	KeyAlgoECDSA256:          crypto.SHA256,
+	KeyAlgoECDSA384:          crypto.SHA384,
+	KeyAlgoECDSA521:          crypto.SHA512,
+	CertSigAlgoRSAv01:        crypto.SHA1,
+	CertSigAlgoRSASHA2256v01: crypto.SHA256,
+	CertSigAlgoRSASHA2512v01: crypto.SHA512,
+	CertAlgoDSAv01:           crypto.SHA1,
+	CertAlgoECDSA256v01:      crypto.SHA256,
+	CertAlgoECDSA384v01:      crypto.SHA384,
+	CertAlgoECDSA521v01:      crypto.SHA512,
 }
 
 // unexpectedMessageError results when the SSH message that we received didn't
@@ -99,6 +130,7 @@ func findCommon(what string, client []string, server []string) (common string, e
 	return "", fmt.Errorf("ssh: no common algorithm for %s; client offered: %v, server offered: %v", what, client, server)
 }
 
+// directionAlgorithms records algorithm choices in one direction (either read or write)
 type directionAlgorithms struct {
 	Cipher      string
 	MAC         string
@@ -127,7 +159,7 @@ type algorithms struct {
 	r       directionAlgorithms
 }
 
-func findAgreedAlgorithms(clientKexInit, serverKexInit *kexInitMsg) (algs *algorithms, err error) {
+func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMsg) (algs *algorithms, err error) {
 	result := &algorithms{}
 
 	result.kex, err = findCommon("key exchange", clientKexInit.KexAlgos, serverKexInit.KexAlgos)
@@ -140,32 +172,37 @@ func findAgreedAlgorithms(clientKexInit, serverKexInit *kexInitMsg) (algs *algor
 		return
 	}
 
-	result.w.Cipher, err = findCommon("client to server cipher", clientKexInit.CiphersClientServer, serverKexInit.CiphersClientServer)
+	stoc, ctos := &result.w, &result.r
+	if isClient {
+		ctos, stoc = stoc, ctos
+	}
+
+	ctos.Cipher, err = findCommon("client to server cipher", clientKexInit.CiphersClientServer, serverKexInit.CiphersClientServer)
 	if err != nil {
 		return
 	}
 
-	result.r.Cipher, err = findCommon("server to client cipher", clientKexInit.CiphersServerClient, serverKexInit.CiphersServerClient)
+	stoc.Cipher, err = findCommon("server to client cipher", clientKexInit.CiphersServerClient, serverKexInit.CiphersServerClient)
 	if err != nil {
 		return
 	}
 
-	result.w.MAC, err = findCommon("client to server MAC", clientKexInit.MACsClientServer, serverKexInit.MACsClientServer)
+	ctos.MAC, err = findCommon("client to server MAC", clientKexInit.MACsClientServer, serverKexInit.MACsClientServer)
 	if err != nil {
 		return
 	}
 
-	result.r.MAC, err = findCommon("server to client MAC", clientKexInit.MACsServerClient, serverKexInit.MACsServerClient)
+	stoc.MAC, err = findCommon("server to client MAC", clientKexInit.MACsServerClient, serverKexInit.MACsServerClient)
 	if err != nil {
 		return
 	}
 
-	result.w.Compression, err = findCommon("client to server compression", clientKexInit.CompressionClientServer, serverKexInit.CompressionClientServer)
+	ctos.Compression, err = findCommon("client to server compression", clientKexInit.CompressionClientServer, serverKexInit.CompressionClientServer)
 	if err != nil {
 		return
 	}
 
-	result.r.Compression, err = findCommon("server to client compression", clientKexInit.CompressionServerClient, serverKexInit.CompressionServerClient)
+	stoc.Compression, err = findCommon("server to client compression", clientKexInit.CompressionServerClient, serverKexInit.CompressionServerClient)
 	if err != nil {
 		return
 	}
@@ -211,7 +248,7 @@ func (c *Config) SetDefaults() {
 		c.Rand = rand.Reader
 	}
 	if c.Ciphers == nil {
-		c.Ciphers = supportedCiphers
+		c.Ciphers = preferredCiphers
 	}
 	var ciphers []string
 	for _, c := range c.Ciphers {
@@ -223,7 +260,7 @@ func (c *Config) SetDefaults() {
 	c.Ciphers = ciphers
 
 	if c.KeyExchanges == nil {
-		c.KeyExchanges = supportedKexAlgos
+		c.KeyExchanges = preferredKexAlgos
 	}
 
 	if c.MACs == nil {

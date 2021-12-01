@@ -35,7 +35,7 @@ func dial(handler serverType, t *testing.T) *Client {
 		}
 		conf.AddHostKey(testSigners["rsa"])
 
-		_, chans, reqs, err := NewServerConn(c1, &conf)
+		conn, chans, reqs, err := NewServerConn(c1, &conf)
 		if err != nil {
 			t.Fatalf("Unable to handshake: %v", err)
 		}
@@ -55,6 +55,9 @@ func dial(handler serverType, t *testing.T) *Client {
 			go func() {
 				handler(ch, inReqs, t)
 			}()
+		}
+		if err := conn.Wait(); err != io.EOF {
+			t.Logf("server exit reason: %v", err)
 		}
 	}()
 
@@ -358,10 +361,9 @@ func TestServerWindow(t *testing.T) {
 	}
 	written, err := copyNRandomly("stdin", serverStdin, origBuf, windowTestBytes)
 	if err != nil {
-		t.Fatalf("failed to copy origBuf to serverStdin: %v", err)
-	}
-	if written != windowTestBytes {
-		t.Fatalf("Wrote only %d of %d bytes to server", written, windowTestBytes)
+		t.Errorf("failed to copy origBuf to serverStdin: %v", err)
+	} else if written != windowTestBytes {
+		t.Errorf("Wrote only %d of %d bytes to server", written, windowTestBytes)
 	}
 
 	echoedBytes := <-result
@@ -755,7 +757,13 @@ func TestHostKeyAlgorithms(t *testing.T) {
 	connect(clientConf, KeyAlgoECDSA256)
 
 	// Client asks for RSA explicitly.
-	clientConf.HostKeyAlgorithms = []string{KeyAlgoRSA}
+	clientConf.HostKeyAlgorithms = []string{SigAlgoRSA}
+	connect(clientConf, KeyAlgoRSA)
+
+	// Client asks for RSA-SHA2-512 explicitly.
+	clientConf.HostKeyAlgorithms = []string{SigAlgoRSASHA2512}
+	// We get back an "ssh-rsa" key but the verification happened
+	// with an RSA-SHA2-512 signature.
 	connect(clientConf, KeyAlgoRSA)
 
 	c1, c2, err := netPipe()

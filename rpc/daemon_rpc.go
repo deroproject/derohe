@@ -114,6 +114,9 @@ type (
 		Height             uint64 `json:"height"`
 		Prev_Hash          string `json:"prev_hash"`
 		EpochMilli         uint64 `json:"epochmilli"`
+		Blocks             uint64 `json:"blocks"`     // number of blocks found
+		MiniBlocks         uint64 `json:"miniblocks"` // number of miniblocks found
+		LastError          string `json:"lasterror"`  // last error
 		Status             string `json:"status"`
 	}
 )
@@ -197,14 +200,14 @@ type (
 	} // no params
 	GetTransaction_Result struct {
 		Txs_as_hex  []string          `json:"txs_as_hex"`
-		Txs_as_json []string          `json:"txs_as_json"`
+		Txs_as_json []string          `json:"txs_as_json,omitempty"`
 		Txs         []Tx_Related_Info `json:"txs"`
 		Status      string            `json:"status"`
 	}
 
 	Tx_Related_Info struct {
 		As_Hex         string     `json:"as_hex"`
-		As_Json        string     `json:"as_json"`
+		As_Json        string     `json:"as_json,omitempty"`
 		Block_Height   int64      `json:"block_height"`
 		Reward         uint64     `json:"reward"`  // miner tx rewards are decided by the protocol during execution
 		Ignored        bool       `json:"ignored"` // tell whether this tx is okau as per client protocol or bein ignored
@@ -261,17 +264,8 @@ type (
 		Tx_as_hex string `json:"tx_as_hex"`
 	}
 	SendRawTransaction_Result struct {
-		Status        string `json:"status"`
-		DoubleSpend   bool   `json:"double_spend"`
-		FeeTooLow     bool   `json:"fee_too_low"`
-		InvalidInput  bool   `json:"invalid_input"`
-		InvalidOutput bool   `json:"invalid_output"`
-		Low_Mixin     bool   `json:"low_mixin"`
-		Non_rct       bool   `json:"not_rct"`
-		NotRelayed    bool   `json:"not_relayed"`
-		Overspend     bool   `json:"overspend"`
-		TooBig        bool   `json:"too_big"`
-		Reason        string `json:"string"`
+		Status string `json:"status"`
+		Reason string `json:"string"`
 	}
 )
 

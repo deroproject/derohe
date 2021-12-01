@@ -270,7 +270,7 @@ func (w *Wallet_Memory) NameToAddress(name string) (addr string, err error) {
 	}
 
 	if !IsDaemonOnline() {
-		err = fmt.Errorf("offline or not connected. cannot send transaction.")
+		err = fmt.Errorf("offline or not connected. cannot translate name to address")
 		return
 	}
 
@@ -495,7 +495,7 @@ func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
 
 	last_topo_height := int64(-1)
 
-	//fmt.Printf("finding sync point  ( Registration point %d)\n", w.account.Balance_Result.Registration)
+	//fmt.Printf("finding sync point  ( Registration point %d)\n", w.getEncryptedBalanceresult(scid).Registration)
 
 	entries := w.account.EntriesNative[scid]
 
@@ -520,11 +520,13 @@ func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
 				return 0
 			}
 
-			if i >= 1 && last_topo_height == entries[i-1].TopoHeight { // skipping any entries withing same block
-				for ; i >= 1; i-- {
-					if last_topo_height != entries[i-1].TopoHeight {
-						entries = entries[:i]
-						w.account.EntriesNative[scid] = entries
+			if entries[i].BlockHash != result.Block_Header.Hash {
+				if i >= 1 && last_topo_height == entries[i-1].TopoHeight { // skipping any entries withing same block
+					for ; i >= 1; i-- {
+						if last_topo_height == entries[i-1].TopoHeight {
+							entries = entries[:i]
+							w.account.EntriesNative[scid] = entries
+						}
 					}
 				}
 			}
@@ -543,7 +545,7 @@ func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
 
 	}
 
-	//fmt.Printf("syncing loop using Registration %+v\n", w.account.Balance_Result[scid])
+	//fmt.Printf("syncing loop using Registration %+v\n",w.getEncryptedBalanceresult(scid).Registration)
 
 	// if we reached here, means we should sync from scratch
 	w.synchistory_internal(scid, w.getEncryptedBalanceresult(scid).Registration, w.getEncryptedBalanceresult(scid).Topoheight)
@@ -577,13 +579,15 @@ func (w *Wallet_Memory) synchistory_internal(scid crypto.Hash, start_topo, end_t
 		return err
 	}
 
-	return w.synchistory_internal_binary_search(scid, start_topo, start_balance_e, end_topo, end_balance_e)
+	return w.synchistory_internal_binary_search(0, scid, start_topo, start_balance_e, end_topo, end_balance_e)
 
 }
 
-func (w *Wallet_Memory) synchistory_internal_binary_search(scid crypto.Hash, start_topo int64, start_balance_e *crypto.ElGamal, end_topo int64, end_balance_e *crypto.ElGamal) error {
+func (w *Wallet_Memory) synchistory_internal_binary_search(level int, scid crypto.Hash, start_topo int64, start_balance_e *crypto.ElGamal, end_topo int64, end_balance_e *crypto.ElGamal) error {
 
-	//fmt.Printf("end %d start %d\n", end_topo, start_topo)
+	var err error
+
+	//defer fmt.Printf("end %d start %d err %s\n", end_topo, start_topo, err)
 
 	if end_topo < 0 {
 		return fmt.Errorf("done")
@@ -594,33 +598,33 @@ func (w *Wallet_Memory) synchistory_internal_binary_search(scid crypto.Hash, sta
 		}
 	*/
 
+	defer globals.Recover(0)
+
 	//for start_topo <= end_topo{
 	{
 		median := (start_topo + end_topo) / 2
-
-		//fmt.Printf("low %d high %d median %d\n", start_topo,end_topo,median)
-
+		//fmt.Printf("%slevel %d low %d high %d median %d\n", strings.Repeat("\t",level),level, start_topo,end_topo,median)
 		if start_topo == median {
-			//fmt.Printf("syncing block %d\n", start_topo)
-			err := w.synchistory_block(scid, start_topo)
-			if err != nil {
+			if err = w.synchistory_block(scid, start_topo); err != nil {
 				return err
 			}
 		}
 
 		if end_topo-start_topo <= 1 {
-			return w.synchistory_block(scid, end_topo)
+			err = w.synchistory_block(scid, end_topo)
+			return err
 		}
 
 		_, _, _, median_balance_e, err := w.GetEncryptedBalanceAtTopoHeight(scid, median, w.GetAddress().String())
 		if err != nil {
+			fmt.Printf("getting block err %s\n", err)
 			return err
 		}
 
 		// check if there is a change in lower section, if yes process more
+		//fmt.Printf("%slevel %d checking lower\n", strings.Repeat("\t",level),level)
 		if start_topo == w.getEncryptedBalanceresult(scid).Registration || bytes.Compare(start_balance_e.Serialize(), median_balance_e.Serialize()) != 0 {
-			//fmt.Printf("lower\n")
-			err = w.synchistory_internal_binary_search(scid, start_topo, start_balance_e, median, median_balance_e)
+			err = w.synchistory_internal_binary_search(level+1, scid, start_topo, start_balance_e, median, median_balance_e)
 			if err != nil {
 				return err
 			}
@@ -628,56 +632,12 @@ func (w *Wallet_Memory) synchistory_internal_binary_search(scid crypto.Hash, sta
 
 		// check if there is a change in higher section, if yes process more
 		if bytes.Compare(median_balance_e.Serialize(), end_balance_e.Serialize()) != 0 {
-			//fmt.Printf("higher\n")
-			err = w.synchistory_internal_binary_search(scid, median, median_balance_e, end_topo, end_balance_e)
+			err = w.synchistory_internal_binary_search(level+1, scid, median, median_balance_e, end_topo, end_balance_e)
 			if err != nil {
 				return err
 			}
 		}
-
-		/*if IsRegisteredAtTopoHeight (addr,median) {
-		            high = median - 1
-				}else{
-					low = median + 1
-				}*/
-
 	}
-
-	/*
-	       if end_topo - start_topo <= 1 {
-	   		err :=  w.synchistory_block(start_topo)
-	   		if err != nil {
-	   			return err
-	   		}
-	   		return w.synchistory_block(end_topo)
-	   	}
-
-
-	       // this means the address is either a ring member or a sender or a receiver in atleast one of the blocks
-	       middle :=  start_topo +  (end_topo-start_topo)/2
-	       middle_balance_e, err := w.GetEncryptedBalanceAtTopoHeight( middle ,w.account.GetAddress().String())
-	   	if err != nil {
-	   		return err
-	   	}
-
-	   	// check if there is a change in lower section, if yes process more
-	   	if bytes.Compare(start_balance_e.Serialize(), middle_balance_e.Serialize()) != 0 {
-	   		fmt.Printf("lower\n")
-	           err = w.synchistory_internal_binary_search(start_topo,start_balance_e, middle, middle_balance_e )
-	           if err != nil {
-	           	return err
-	           }
-	       }
-
-	       // check if there is a change in lower section, if yes process more
-	       if bytes.Compare(middle_balance_e.Serialize(), end_balance_e.Serialize()) != 0 {
-	       	fmt.Printf("higher\n")
-	           err = w.synchistory_internal_binary_search(middle, middle_balance_e, end_topo,end_balance_e )
-	           if err != nil {
-	           	return err
-	           }
-	       }
-	*/
 
 	return nil
 }
@@ -710,6 +670,16 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 		return err
 	}
 
+	var bl block.Block
+	var bresult rpc.GetBlock_Result
+	if err = rpc_client.Call("DERO.GetBlock", rpc.GetBlock_Params{Height: uint64(topo)}, &bresult); err != nil {
+		return fmt.Errorf("getblock rpc failed")
+	}
+
+	if bresult.Block_Header.SideBlock {
+		return nil
+	}
+
 	EWData := fmt.Sprintf("%x", current_balance_e.Serialize())
 
 	previous_balance = w.DecodeEncryptedBalance_Memory(previous_balance_e, 0)
@@ -718,14 +688,6 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 	// we can skip some check if both balances are equal ( means we are ring members in this block)
 	// this check will also fail if we total spend == total receivein the block
 	// currently it is not implmented, and we bruteforce everything
-
-	_ = current_balance
-
-	var bl block.Block
-	var bresult rpc.GetBlock_Result
-	if err = rpc_client.Call("DERO.GetBlock", rpc.GetBlock_Params{Height: uint64(topo)}, &bresult); err != nil {
-		return fmt.Errorf("getblock rpc failed")
-	}
 
 	block_bin, _ := hex.DecodeString(bresult.Blob)
 	bl.Deserialize(block_bin)
@@ -768,6 +730,16 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 			previous_balance_e_tx := new(crypto.ElGamal).Deserialize(previous_balance_e.Serialize())
 
 			for t := range tx.Payloads {
+				if len(tx_result.Txs) == 0 {
+					continue
+				}
+				if len(tx_result.Txs[0].Ring) == 0 {
+					continue
+				}
+				_ = int(tx.Payloads[t].Statement.RingSize)
+				_ = tx_result.Txs[0]
+				_ = tx_result.Txs[0].Ring
+				_ = tx_result.Txs[0].Ring[t]
 				if int(tx.Payloads[t].Statement.RingSize) != len(tx_result.Txs[0].Ring[t]) {
 					logger.V(1).Error(fmt.Errorf("missing ring members"), "missing ring members", "txid", bl.Tx_hashes[i].String(), "expected", int(tx.Payloads[t].Statement.RingSize), "got", len(tx_result.Txs[t].Ring))
 					continue
@@ -825,7 +797,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 						//fmt.Printf("%d changed_balance %d previous_balance %d len payload %d\n", t, changed_balance, previous_balance, len(tx.Payloads[t].RPCPayload))
 
-						entry := rpc.Entry{Height: bl.Height, Pos: t, TopoHeight: topo, BlockHash: bl.GetHash().String(), TransactionPos: i, TXID: tx.GetHash().String(), Time: time.UnixMicro(int64(bl.Timestamp)), Fees: tx.Fees()}
+						entry := rpc.Entry{Height: bl.Height, Pos: t, TopoHeight: topo, BlockHash: bl.GetHash().String(), TransactionPos: i, TXID: tx.GetHash().String(), Time: time.UnixMilli(int64(bl.Timestamp)), Fees: tx.Fees()}
 
 						entry.EWData = EWData
 						ring_member := false
@@ -1007,7 +979,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 	//fmt.Printf("ht %d coinbase_reward %d   curent balance %d previous_balance %d sent %d received %d\n", bl.Height, coinbase_reward, current_balance, previous_balance, total_sent, total_received)
 
 	if bytes.Compare(compressed_address, bl.Miner_TX.MinerAddress[:]) == 0 || coinbase_reward > 0 { // wallet user  has minted a block
-		entry := rpc.Entry{Height: bl.Height, TopoHeight: topo, BlockHash: bl.GetHash().String(), TransactionPos: -1, Time: time.UnixMicro(int64(bl.Timestamp))}
+		entry := rpc.Entry{Height: bl.Height, TopoHeight: topo, BlockHash: bl.GetHash().String(), TransactionPos: -1, Time: time.UnixMilli(int64(bl.Timestamp))}
 
 		entry.EWData = EWData
 		entry.Amount = current_balance - (previous_balance - total_sent + total_received)

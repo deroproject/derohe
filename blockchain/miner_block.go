@@ -249,24 +249,24 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 				}
 
 				if tx.IsProofRequired() && len(bl.Tips) == 2 {
-					if tx.BLID == bl.Tips[0] || tx.BLID == bl.Tips[1] {
+					if tx.BLID == bl.Tips[0] || tx.BLID == bl.Tips[1] { // delay txs by a  block if they would collide
 						logger.V(8).Info("not selecting tx due to probable collision", "txid", tx_hash_list_sorted[i].Hash)
 						continue
 					}
-				} else {
-					version, err := chain.ReadBlockSnapshotVersion(tx.BLID)
-					if err != nil {
-						continue
-					}
-					hash, err := chain.Load_Merkle_Hash(version)
-					if err != nil {
-						continue
-					}
+				}
 
-					if hash != tx.Payloads[0].Statement.Roothash {
-						//return fmt.Errorf("Tx statement roothash mismatch expected %x actual %x", tx.Payloads[0].Statement.Roothash, hash[:])
-						continue
-					}
+				version, err := chain.ReadBlockSnapshotVersion(tx.BLID)
+				if err != nil {
+					continue
+				}
+				hash, err := chain.Load_Merkle_Hash(version)
+				if err != nil {
+					continue
+				}
+
+				if hash != tx.Payloads[0].Statement.Roothash {
+					//return fmt.Errorf("Tx statement roothash mismatch expected %x actual %x", tx.Payloads[0].Statement.Roothash, hash[:])
+					continue
 				}
 
 				if height-int64(tx.Height) < TX_VALIDITY_HEIGHT {
@@ -353,7 +353,7 @@ func ConvertBlockToMiniblock(bl block.Block, miniblock_miner_address rpc.Address
 
 	timestamp := uint64(globals.Time().UTC().UnixMilli())
 	mbl.Timestamp = uint16(timestamp) // this will help us better understand network conditions
-	
+
 	mbl.PastCount = byte(len(bl.Tips))
 	for i := range bl.Tips {
 		mbl.Past[i] = binary.BigEndian.Uint32(bl.Tips[i][:])

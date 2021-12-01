@@ -76,6 +76,7 @@ type CHAIN_CONFIG struct {
 	Name       string
 	Network_ID uuid.UUID // network ID
 
+	GETWORK_Default_Port    int // used for miner getwork as effeciently as poosible
 	P2P_Default_Port        int
 	RPC_Default_Port        int
 	Wallet_RPC_Default_Port int
@@ -87,6 +88,7 @@ type CHAIN_CONFIG struct {
 
 var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x45, 0x0}),
+	GETWORK_Default_Port:    10100,
 	P2P_Default_Port:        10101,
 	RPC_Default_Port:        10102,
 	Wallet_RPC_Default_Port: 10103,
@@ -103,7 +105,8 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x73, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x74, 0x00, 0x00, 0x00}),
+	GETWORK_Default_Port:    10100,
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
 	Wallet_RPC_Default_Port: 40403,

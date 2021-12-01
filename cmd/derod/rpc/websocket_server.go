@@ -117,10 +117,7 @@ func Notify_MiniBlock_Addition() {
 		chain.RPC_NotifyNewMiniBlock.L.Unlock()
 		go func() {
 			defer globals.Recover(2)
-			client_connections.Range(func(key, value interface{}) bool {
-				key.(*jrpc2.Server).Notify(context.Background(), "MiniBlock", nil)
-				return true
-			})
+			SendJob()
 		}()
 	}
 }

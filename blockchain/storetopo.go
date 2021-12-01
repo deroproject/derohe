@@ -277,8 +277,22 @@ func (chain *Blockchain) Find_Blocks_Height_Range(startheight, stopheight int64)
 	}
 	_, topos_end := chain.Store.Topo_store.binarySearchHeight(stopheight)
 
+	lowest := topos_start[0]
+	for _, t := range topos_start {
+		if t < lowest {
+			lowest = t
+		}
+	}
+
+	highest := topos_end[0]
+	for _, t := range topos_end {
+		if t > highest {
+			highest = t
+		}
+	}
+
 	blid_map := map[crypto.Hash]bool{}
-	for i := topos_start[0]; i <= topos_end[0]; i++ {
+	for i := lowest; i <= highest; i++ {
 		if toporecord, err := chain.Store.Topo_store.Read(i); err != nil {
 			panic(err)
 		} else {
