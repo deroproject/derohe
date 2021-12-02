@@ -224,8 +224,8 @@ func (p *poller) stop() {
 }
 
 func (p *poller) addRead(fd int) error {
-	switch p.g.epollMod {
-	case EPOLLET:
+	switch int64(p.g.epollMod) {
+	case int64(EPOLLET):
 		return syscall.EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{Fd: int32(fd), Events: epollEventsReadET})
 	default:
 		return syscall.EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{Fd: int32(fd), Events: epollEventsRead})
@@ -237,8 +237,8 @@ func (p *poller) addRead(fd int) error {
 // }
 
 func (p *poller) modWrite(fd int) error {
-	switch p.g.epollMod {
-	case EPOLLET:
+	switch int64(p.g.epollMod) {
+	case int64(EPOLLET):
 		return syscall.EpollCtl(p.epfd, syscall.EPOLL_CTL_ADD, fd, &syscall.EpollEvent{Fd: int32(fd), Events: epollEventsReadWriteET})
 	default:
 		return syscall.EpollCtl(p.epfd, syscall.EPOLL_CTL_MOD, fd, &syscall.EpollEvent{Fd: int32(fd), Events: epollEventsReadWrite})
