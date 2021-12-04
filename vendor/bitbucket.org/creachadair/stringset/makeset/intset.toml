@@ -1,8 +1,0 @@
-desc       = "A set of int values."
-type       = "int"
-package    = "intset"
-zero       = "0"
-toString   = 'return strconv.Itoa(x)'
-imports    = ["strconv"]
-transforms = true
-testValues = [0, 1, 2, 3, 5, 7, 11, 13, 17, 19]
