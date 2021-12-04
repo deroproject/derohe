@@ -1,0 +1,34 @@
+{{define "txpool"}}
+<h2 style="margin-bottom: 0px">
+   Transaction pool
+</h2>
+<h4 style="font-size: 12px; margin-top: 0px">(no of txs: {{ .txpool_size }}, size: 0.00 kB, updated every 5 seconds)</h4>
+<div class="center">
+    
+      <table class="center" style="width:80%">
+            <tr>
+                <td>height built</td>
+                <td>transaction hash</td>
+                <td>fee</td>
+                <td>ring size</td>
+                <td>tx size [kB]</td>
+            </tr>
+            
+           
+            {{range .mempool}}
+            <tr>
+                    <td>{{.HeightBuilt}}</td>
+                    <td><a href="/tx/{{.Hash}}">{{.Hash}}</a></td>
+                    <td>{{.Fee}}</td>
+                    <td>{{.Ring_size}}</td>
+                    <td>{{.Size}}</td>
+
+            </tr>
+            
+            {{end}}
+        </table>
+
+
+
+</div>
+{{end}}

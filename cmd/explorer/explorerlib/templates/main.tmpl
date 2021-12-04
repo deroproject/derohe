@@ -1,0 +1,72 @@
+
+{{define "main"}}
+{{ template "header" . }}
+{{ template "txpool" . }}
+
+      <h2 style="margin-bottom: 0px">Transactions in the last 11 blocks</h2>
+
+    <h4 style="font-size: 14px; margin-top: 0px">(Median size of these blocks: 0.09 kB)</h4>
+    {{ template "paging" . }}
+    <div class="center">
+
+            <table class="center">
+                <tr>
+                    <td>height</td>
+                    <td>topo height</td>
+                    <td>age [h:m:s.ms]<!--(Δm)--></td>
+                    <td>miniblocks</td>
+                    <td>size [kiB]<!--(Δm)--></td>
+                    <td>tx hash</td>
+                    <td>type</td>
+                    <td>fees</td>
+                    <td>ring size</td>
+                    <td>tx size [kB]</td>
+                </tr>
+                
+                
+                {{range .block_array}}
+                <tr>
+                    <td>  {{if .SyncBlock }} <strong>{{.Height}}</strong> {{else}} <font color="purple">{{.Height}}</font>   {{end}} </td>
+                    <td><a href="/block/{{.TopoHeight}}">{{.TopoHeight}}</a></td>
+                    
+                    <td>{{.Age}}</td>
+                    <td>{{len .Block.MiniBlocks}}</td>
+                    <td>{{.Size}}</td>
+                    <td>block <a href="/block/{{.Hash}}">{{.Hash}}  </a></td>
+                    <td>N/A</td>
+                    <td>{{.Mtx.Amount}}</td>
+                    
+                    <td></td>
+                    <td>{{.Mtx.Size}}</td>
+
+                </tr>
+                
+                {{range .Txs}}
+                <tr>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    
+                    {{if .Skipped }}<td><a href="/tx/{{.Hash}}"><font color="indianred">{{.Hash}}</font>  </a></td>
+                    {{else}}
+                    <td><a href="/tx/{{.Hash}}">{{.Hash}}</a></td>
+                    {{end}}
+                    
+                    
+                    <td>{{.TransactionType}}</td>
+                    <td>{{.Fee}}</td>
+                    <td>{{.Ring_size}}</td>
+                    <td>{{.Size}}</td>
+
+                </tr>
+                {{end}}
+                
+                {{end}}
+              </table>  
+        {{ template "paging" . }}
+        
+        </div>
+       {{ template "footer" . }}         
+{{end}}

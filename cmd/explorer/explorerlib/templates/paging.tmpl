@@ -1,0 +1,10 @@
+{{ define "paging"}}
+
+<div id="pages" class="center" style="text-align: center;">
+               <a href="/page/{{.previous_page}}">previous page</a> |
+               <a href="/page/1">first page</a> |
+                current page: {{.current_page}}/<a href="/page/{{.total_page}}">{{.total_page}}</a>
+                | <a href="/page/{{.next_page}}">next page</a> |  <a href="/">last page</a>
+            </div>
+
+{{end}}

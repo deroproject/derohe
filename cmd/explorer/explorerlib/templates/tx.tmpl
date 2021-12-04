@@ -1,0 +1,245 @@
+{{define "tx"}}
+{{ template "header" . }}
+            <div>
+                <H4 style="margin:5px">Tx hash: {{.info.Hash}} Type {{.info.TransactionType }}</H4>
+                
+                {{if eq .info.TransactionType "BURN" }}
+                    <H4 style="margin:5px; color: red">Burns: {{.info.Burn_Value }} DERO</H4>
+                {{end}}
+
+                <H5>Block: <a href="/block/{{.info.ValidBlock}}">{{.info.ValidBlock}}</a> (VALID) </H5>
+
+                {{range $i, $e := .info.InvalidBlock}} 
+                 <H5>Block: <a href="/block/{{$e}}">{{$e}}</a></H5>
+                {{end}}
+
+{{if eq .info.TransactionType "PREMINE"}}
+   <table class="center" style="width: 80%; margin-top:10px">
+                    <tr>
+                        <td>{{index .info.OutAddress 0}} Registered with funds {{.info.Amount}}</td>
+                    </tr>
+    </table>
+
+{{end}}
+
+{{if eq .info.TransactionType "REGISTRATION"}}
+   <table class="center" style="width: 80%; margin-top:10px">
+                    <tr>
+                        <td>{{index .info.OutAddress 0}} Registered </td>
+                    </tr>
+    </table>
+
+{{end}}
+
+
+{{if .info.SC_Install }}
+
+<div class="center" style="border: 1px;width: 100%;overflow: hidden; text-overflow: ellipsis;">
+    <H5 style="margin:5px">SCID current reserves </H5>
+
+   <table class="center" style="width: 80%; margin-top:10px;border: 1px">
+                    <tr>
+                        <td>SCID</td> <td style="width: 20%">Amount(in atomic units)</td>
+                    </tr>
+
+                    {{range $k, $v := .info.SC_State.Balances}} 
+                      <tr>
+                          <td>{{ $k }}</td> <td>  {{ $v }}  </td>
+                      </tr>
+                    {{end}}
+    </table>
+
+    <H5 style="margin:5px">SCID string variables </H5>
+    <table class="center" style="border: 1px;width: 80%; margin-top:10px;overflow: hidden; text-overflow: ellipsis;">
+                    <tr>
+                        <td>key</td> <td style="width: 20%;text-align:left">value</td>
+                    </tr>
+                    {{range $k, $v := .info.SC_State.VariableStringKeys}} 
+                      <tr>
+                          <td>{{ $k }}</td> <td style="width: 20%;text-align:left;overflow: hidden; text-overflow: ellipsis;">  {{ $v }}  </td>
+                      </tr>
+                    {{end}}
+    </table>
+    <H5 style="margin:5px">SCID uint64 variables </H5>
+    <table class="center" style="border: 1px;width: 80%; margin-top:10px">
+                    <tr>
+                        <td>key</td> <td style="width: 20%;text-align:left">value</td>
+                    </tr>
+                    {{range $k, $v := .info.SC_State.VariableUint64Keys}} 
+                      <tr>
+                          <td>{{ $k }}</td> <td style="width: 20%;text-align:left;overflow: hidden; text-overflow: ellipsis;">  {{ $v }}  </td>
+                      </tr>
+                    {{end}}
+    </table>
+
+</div>
+{{end}}
+
+{{if or (eq .info.TransactionType "NORMAL")  (eq .info.TransactionType "BURN")  (eq .info.TransactionType "SC") }}
+
+                <H5 style="margin:5px">Tx RootHash: {{.info.RootHash}}  built height : {{.info.HeightBuilt}} </H5>
+
+  
+                <table class="center" style="width: 80%; margin-top:10px">
+                    <tr>
+                        <td>Timestamp: {{.info.Timestamp}} </td>
+                        <td>Timestamp [UTC]: {{.info.Block_time}}</td>
+                        <td>Age [y:d:h:m:s]: {{.info.Age}} </td>
+                    </tr>
+                    <tr>
+                        <td>Block: <a href="/block/{{.info.Height}}">{{.info.Height}}</a></td>
+                        <td>Fee: {{.info.Fee}}</td>
+                        <td>Tx size: {{.info.Size}} kB</td>
+                    </tr>
+                    <tr>
+                        <td>Tx version: {{.info.Version}}</td>
+                        <td>No of confirmations: {{.info.Depth}}</td>
+                        <td>Signature type:  {{.info.Type}}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="3">Extra: {{.info.Extra}}</td>
+                    </tr>
+                </table>
+
+             {{range $ii, $ee := .info.Assets}} 
+                {{if eq $ee.SCID "0000000000000000000000000000000000000000000000000000000000000000" }}
+                 <H5>DERO : {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} 
+
+                 {{if eq $.info.TransactionType "SC"}}
+                        Deposited to SC {{$ee.Burn}}
+                    {{else}}
+                        Burned {{$ee.Burn}}
+                 {{end}}
+
+                 </H5>
+
+                 {{else}}
+                    <H5>Token: {{$ee.SCID}}   {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} {{if eq $.info.TransactionType "SC"}}
+                        Deposited Tokens to SC {{$ee.Burn}}
+                    {{else}}
+                        Burned {{$ee.Burn}}
+                 {{end}}
+
+                 </H5>
+                 {{end}}
+                 <div class="center">
+                  <table class="center">
+                      <tr>
+                          <td>address</td>
+                      </tr>
+                      
+                      {{range $i, $e := $ee.Ring}} 
+                      <tr>
+                          <td>{{ $e }}</td>
+                      </tr>
+                      {{end}}
+                  </table>
+              </div>
+
+            {{end}}
+              
+{{if eq .info.TransactionType "SC"}}
+   <table class="center" style="width: 80%; margin-top:10px">
+                    <tr>
+                        <td>SC Balance:  {{  .info.SC_Balance_string }} DERO</td>
+                    </tr>
+                    <tr>
+                        <td>SC CODE:<pre style="text-align: left;">  {{  .info.SC_Code }}</pre></td>
+                    </tr>
+                    <tr>
+                        <td>SC Arguments: {{  .info.SC_Args }}</td>
+                    </tr>
+    </table>
+
+{{end}}
+<!-- TODO currently we donot enable user to prove or decode something -->
+<br/>
+<br/>
+<div class="center" style="border: 1px">
+                  <table class="center" border="1">
+                      <tr>
+                           
+
+                          <td> <h3>Prove to someone that you have sent them DERO in this transaction</h3>  </td>
+                      </tr>
+                      <tr>
+                      <td>
+                      proof can be obtained using wallet
+                                    command in  <i>dero-wallet-cli</i> or from the statement
+                                    <br>
+                                        Note: proof is sent to the server, as the calculations are done on the server side
+                                
+                      </td>
+                      </tr>
+                      <tr>
+                      <td>
+
+
+
+                                <form  method="post" style="width:100%;margin-top:2px" class="style-1">
+                                   <input name="txproof" size="120" placeholder="Tx Proof here" type="text"><br>
+                                    <input name="raw_tx_data" value="" type="hidden">
+                                    <!--above raw_tx_data field only used when checking raw tx data through tx pusher         NOTE: comment should be be closed -->
+                                    <input value="Prove sending" style="margin-top:5px" type="submit">
+            
+                                </form>
+                        </td>
+                        </tr>
+
+                        {{if .info.Proof_amount }}
+                        <tr>
+                        <td><h2><font color="blue">{{.info.Proof_address}} Received {{.info.Proof_amount}} DERO
+
+
+                        {{if .info.Proof_Payload}}
+                            <br/> Decoded Data {{ .info.Proof_Payload}}
+
+                           <br/> Raw Data 
+                            <br/><pre>{{ .info.Proof_Payload_raw}}</pre>
+                           
+                        {{end}}
+                     </font>  </h2> 
+   </td>
+                        </tr>
+                        {{end}} 
+
+                        {{if .info.Proof_error }}
+                        <tr>
+                        <td>   <font color="red">{{.info.Proof_error}}</font>
+   </td>
+                        </tr>
+                        {{end}}
+            
+
+
+                        </table>
+
+                     </div>
+{{end}}
+
+
+<div class="center" style="border: 1px;width: 100%;overflow: hidden; text-overflow: ellipsis;">
+                  <table class="center" border="1">
+                      <tr>
+<br/> TX hex bytes 
+<br/>{{ .info.Hex}}
+</tr>
+</table>
+</div>
+
+{{if eq .info.CoinBase false}}
+
+                 <!--   <h3>{{.info.In}} input(s) for total of ? dero</h3>
+                <div class="center">
+                   <table class="center">
+                   <tr>
+                   <td>
+
+                  </table>
+              </div>
+        -->
+            {{end}}
+           </div>
+{{ template "footer" . }} 
+              
+{{end}}
