@@ -76,7 +76,7 @@
 {{end}}
 
 {{if or (eq .info.TransactionType "NORMAL")  (eq .info.TransactionType "BURN")  (eq .info.TransactionType "SC") }}
-
+                 <H5 style="margin:5px">built BLID : <a href="/block/{{.info.BLID}}">{{.info.BLID}}</a> </H5>
                 <H5 style="margin:5px">Tx RootHash: {{.info.RootHash}}  built height : {{.info.HeightBuilt}} </H5>
 
   

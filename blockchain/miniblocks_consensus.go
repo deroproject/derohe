@@ -122,6 +122,8 @@ func (chain *Blockchain) InsertMiniBlock(mbl block.MiniBlock) (err error, result
 		chain.RPC_NotifyNewMiniBlock.L.Lock()
 		chain.RPC_NotifyNewMiniBlock.Broadcast()
 		chain.RPC_NotifyNewMiniBlock.L.Unlock()
+
+		chain.flip_top()
 	}
 	return err, result
 }

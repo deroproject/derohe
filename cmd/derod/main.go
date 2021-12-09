@@ -351,7 +351,7 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 
 	}()
 
-	//restart_loop:
+restart_loop:
 	for {
 		line, err := l.Readline()
 		if err == io.EOF {
@@ -534,7 +534,54 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 
 		case command == "print_tree": // prints entire block chain tree
 			//WriteBlockChainTree(chain, "/tmp/graph.dot")
-		case command == "install_block":
+
+		case command == "block_export":
+			var hash crypto.Hash
+
+			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
+				bl_raw, err := hex.DecodeString(strings.ToLower(line_parts[1]))
+				if err != nil {
+					fmt.Printf("err while decoding blid err %s\n", err)
+					continue
+				}
+				copy(hash[:32], []byte(bl_raw))
+			} else {
+				fmt.Printf("block_export  needs a single block id as argument\n")
+				continue
+			}
+
+			var cbl *block.Complete_Block
+
+			bl, err := chain.Load_BL_FROM_ID(hash)
+			if err != nil {
+				fmt.Printf("Err %s\n", err)
+				continue
+			}
+			cbl = &block.Complete_Block{Bl: bl}
+			for _, txid := range bl.Tx_hashes {
+
+				var tx transaction.Transaction
+				if tx_bytes, err := chain.Store.Block_tx_store.ReadTX(txid); err != nil {
+					fmt.Printf("err while reading txid err %s\n", err)
+					continue restart_loop
+				} else if err = tx.Deserialize(tx_bytes); err != nil {
+					fmt.Printf("err deserializing tx err %s\n", err)
+					continue restart_loop
+				}
+				cbl.Txs = append(cbl.Txs, &tx)
+
+			}
+
+			cbl_bytes := p2p.Convert_CBL_TO_P2PCBL(cbl, true)
+
+			if err := os.WriteFile(fmt.Sprintf("/tmp/%s.block", hash), cbl_bytes, 0755); err != nil {
+				fmt.Printf("err writing block %s\n", err)
+				continue
+			}
+
+			fmt.Printf("successfully exported block to %s\n", fmt.Sprintf("/tmp/%s.block", hash))
+
+		case command == "block_import":
 			var hash crypto.Hash
 
 			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
@@ -549,26 +596,15 @@ func readline_loop(l *readline.Instance, chain *blockchain.Blockchain, logger lo
 				continue
 			}
 
-			var bl block.Block
 			var cbl *block.Complete_Block
 
-			if block_data, err := os.ReadFile(fmt.Sprintf("/tmp/blocks/%s", hash)); err == nil {
+			if block_data, err := os.ReadFile(fmt.Sprintf("/tmp/%s.block", hash)); err == nil {
 
-				if err = bl.Deserialize(block_data); err != nil { // we should deserialize the block here
-					logger.Error(err, "fError deserialiing block, block id %x len(data) %d data %x", hash[:], len(block_data), block_data, err)
-					continue
-				}
-
-				cbl = &block.Complete_Block{Bl: &bl}
+				cbl = p2p.Convert_P2PCBL_TO_CBL(block_data)
 			} else {
 				fmt.Printf("err reading block %s\n", err)
 				continue
 			}
-
-			//	bl, err := chain.Load_BL_FROM_ID(hash)
-			//	if err != nil {
-			//		fmt.Printf("Err %s\n", err)
-			//	}
 
 			err, _ = chain.Add_Complete_Block(cbl)
 			fmt.Printf("err adding block %s\n", err)
@@ -1007,6 +1043,8 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("peer_list"),
 	readline.PcItem("print_bc"),
 	readline.PcItem("print_block"),
+	readline.PcItem("block_export"),
+	readline.PcItem("block_import"),
 	//	readline.PcItem("print_tx"),
 	readline.PcItem("status"),
 	readline.PcItem("sync_info"),

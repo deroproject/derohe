@@ -33,6 +33,8 @@ import "github.com/deroproject/graviton"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/block"
+import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/cryptography/bn256"
@@ -178,7 +180,12 @@ func (chain *Blockchain) Verify_Transaction_NonCoinbase_CheckNonce_Tips(hf_versi
 
 				//fmt.Printf("tx nonce %d  tip nonce %d\n", tx_nb.NonceHeight, tip_nb.NonceHeight)
 				if tip_nb.NonceHeight > tx_nb.NonceHeight {
-					return fmt.Errorf("Invalid Nonce, not usable, expected %d actual %d", tip_nb.NonceHeight, tx_nb.NonceHeight)
+					addr, err1 := rpc.NewAddressFromCompressedKeys(key_compressed)
+					if err1 != nil {
+						panic(err1)
+					}
+					addr.Mainnet = globals.IsMainnet()
+					return fmt.Errorf("Invalid Nonce, not usable, expected %d actual %d address %s", tip_nb.NonceHeight, tx_nb.NonceHeight, addr.String())
 				}
 			}
 		}

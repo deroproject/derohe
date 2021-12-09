@@ -191,7 +191,7 @@ func (bl *Block) Deserialize(buf []byte) (err error) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("Invalid Block cannot deserialize '%x' stack %s", hex.EncodeToString(buf), string(debug.Stack()))
+			err = fmt.Errorf("Invalid Block cannot deserialize '%s' stack %s", hex.EncodeToString(buf), string(debug.Stack()))
 			return
 		}
 	}()

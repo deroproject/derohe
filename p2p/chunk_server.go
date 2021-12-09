@@ -11,6 +11,7 @@ import "github.com/fxamacker/cbor/v2"
 
 import "github.com/klauspost/reedsolomon"
 import "github.com/deroproject/derohe/block"
+import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/config"
@@ -246,6 +247,51 @@ func is_already_chunked_by_us(blid crypto.Hash, data_shard_count, parity_shard_c
 		return true
 	})
 	return
+}
+
+// convert complete block to p2p block format
+func Convert_CBL_TO_P2PCBL(cbl *block.Complete_Block, processblock bool) []byte {
+	var cbor_cbl Complete_Block
+
+	if processblock {
+		cbor_cbl.Block = cbl.Bl.Serialize()
+	}
+	for _, tx := range cbl.Txs {
+		cbor_cbl.Txs = append(cbor_cbl.Txs, tx.Serialize())
+	}
+	if len(cbor_cbl.Txs) != len(cbl.Bl.Tx_hashes) {
+		panic("invalid complete block")
+	}
+
+	cbl_serialized, err := cbor.Marshal(cbor_cbl)
+	if err != nil {
+		panic(err)
+	}
+	return cbl_serialized
+}
+
+// convert p2p complete block to complete block format
+func Convert_P2PCBL_TO_CBL(input []byte) *block.Complete_Block {
+	var cbor_cbl Complete_Block
+	cbl := &block.Complete_Block{Bl: &block.Block{}}
+
+	if err := cbor.Unmarshal(input, &cbor_cbl); err != nil {
+		panic(err)
+	}
+
+	if err := cbl.Bl.Deserialize(cbor_cbl.Block); err != nil {
+		panic(err)
+	}
+
+	for _, tx_bytes := range cbor_cbl.Txs {
+		var tx transaction.Transaction
+		if err := tx.Deserialize(tx_bytes); err != nil {
+			panic(err)
+		}
+		cbl.Txs = append(cbl.Txs, &tx)
+	}
+
+	return cbl
 }
 
 // note we do not send complete block,

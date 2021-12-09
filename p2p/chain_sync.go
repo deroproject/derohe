@@ -174,8 +174,9 @@ try_again:
 	} else if chain.Get_Height()-response.Common.Height != 0 && chain.Get_Height()-response.Start_height <= config.STABLE_LIMIT {
 		pop_count = chain.Load_TOPO_HEIGHT() - response.Start_topoheight
 	} else if chain.Get_Height() < connection.Height && chain.Get_Height()-response.Start_height > config.STABLE_LIMIT { // we must somehow notify that deviation is way too much and manual interaction is necessary, so as any bug for chain deviationmay be detected
-		connection.logger.V(1).Error(nil, "we have or others have deviated too much.you may have to use --sync-node option", "our topoheight", chain.Load_TOPO_HEIGHT(), "peer topoheight start", response.Start_topoheight)
-		return
+		//connection.logger.V(1).Error(nil, "we have or others have deviated too much.you may have to use --sync-node option", "our topoheight", chain.Load_TOPO_HEIGHT(), "peer topoheight start", response.Start_topoheight)
+		//return
+		pop_count = chain.Load_TOPO_HEIGHT() - response.Start_topoheight
 	}
 
 	if pop_count >= 1 { // peer is claiming his chain is good and we should rewind
@@ -211,7 +212,7 @@ try_again:
 				var orequest ObjectList
 				var oresponse Objects
 
-				//fmt.Printf("inserting blocks %d\n", (int64(i) + response.Start_topoheight))
+				//fmt.Printf("inserting blocks %d %x\n", (int64(i) + response.Start_topoheight), response.Block_list[i][:])
 				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
 				fill_common(&orequest.Common)
 				if err := connection.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {
@@ -226,7 +227,7 @@ try_again:
 
 		// if we reached here we were able to verify basic chain structure
 
-		chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
+		//	chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary, assumming peer has given us good chain
 
 		failcount := 0
 		for i := range response.Block_list {

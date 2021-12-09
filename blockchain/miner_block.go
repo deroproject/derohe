@@ -163,7 +163,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	for i := range tips {
-		if len(bl.Tips) < 2 { //only 2 tips max
+		if len(bl.Tips) < 1 { //only 1 tip max
 			var check_tips []crypto.Hash
 			check_tips = append(check_tips, bl.Tips...)
 			check_tips = append(check_tips, tips[i])
@@ -176,7 +176,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	height := chain.Calculate_Height_At_Tips(bl.Tips) // we are 1 higher than previous highest tip
-	history := map[crypto.Hash]bool{}
+	history := map[crypto.Hash]crypto.Hash{}
 
 	var history_array []crypto.Hash
 	for i := range bl.Tips {
@@ -187,7 +187,17 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 		history_array = append(history_array, chain.get_ordered_past(bl.Tips[i], h)...)
 	}
 	for _, h := range history_array {
-		history[h] = true
+
+		version, err := chain.ReadBlockSnapshotVersion(h)
+		if err != nil {
+			panic(err)
+		}
+		hash, err := chain.Load_Merkle_Hash(version)
+		if err != nil {
+			panic(err)
+		}
+
+		history[h] = hash
 	}
 
 	var tx_hash_list_included []crypto.Hash // these tx will be included ( due to  block size limit )
@@ -243,7 +253,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 
 		if tx := chain.Mempool.Mempool_Get_TX(tx_hash_list_sorted[i].Hash); tx != nil {
 			if int64(tx.Height) < height {
-				if history[tx.BLID] != true {
+				if _, ok := history[tx.BLID]; !ok {
 					logger.V(8).Info("not selecting tx since the reference with which it was made is not in history", "txid", tx_hash_list_sorted[i].Hash)
 					continue
 				}
@@ -255,16 +265,7 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 					}
 				}
 
-				version, err := chain.ReadBlockSnapshotVersion(tx.BLID)
-				if err != nil {
-					continue
-				}
-				hash, err := chain.Load_Merkle_Hash(version)
-				if err != nil {
-					continue
-				}
-
-				if hash != tx.Payloads[0].Statement.Roothash {
+				if history[tx.BLID] != tx.Payloads[0].Statement.Roothash {
 					//return fmt.Errorf("Tx statement roothash mismatch expected %x actual %x", tx.Payloads[0].Statement.Roothash, hash[:])
 					continue
 				}
@@ -276,12 +277,12 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 							sizeoftxs += tx_hash_list_sorted[i].Size
 							cbl.Txs = append(cbl.Txs, tx)
 							tx_hash_list_included = append(tx_hash_list_included, tx_hash_list_sorted[i].Hash)
-							logger.V(8).Info("tx selected for mining ", "txlist", tx_hash_list_sorted[i].Hash)
+							logger.V(1).Info("tx selected for mining ", "txlist", tx_hash_list_sorted[i].Hash)
 						} else {
 							logger.V(8).Info("not selecting tx due to pre_check failure", "txid", tx_hash_list_sorted[i].Hash)
 						}
 					} else {
-						logger.V(8).Info("not selecting tx due to nonce failure", "txid", tx_hash_list_sorted[i].Hash)
+						logger.V(1).Info("not selecting tx due to nonce failure", "txid", tx_hash_list_sorted[i].Hash)
 					}
 				} else {
 					logger.V(8).Info("not selecting tx due to height difference", "txid", tx_hash_list_sorted[i].Hash)

@@ -220,6 +220,7 @@ type txinfo struct {
 	Hex             string // raw tx
 	Height          string // height at which tx was mined
 	HeightBuilt     uint64 // height at which tx was built
+	BLID            string // BLID in whose reference this tx was built
 	RootHash        string // roothash which forms the basis for balance tree
 	TransactionType string // transaction type
 	Depth           int64
@@ -424,6 +425,7 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 		info.RootHash = fmt.Sprintf("%x", tx.Payloads[0].Statement.Roothash[:])
 	}
 	info.HeightBuilt = tx.Height
+	info.BLID = fmt.Sprintf("%x", tx.BLID)
 	//info.In = len(tx.Vin)
 	//info.Out = len(tx.Vout)
 

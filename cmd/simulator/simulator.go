@@ -210,6 +210,7 @@ func main() {
 	}
 
 	go mine_block_auto(chain, genesis_wallet.GetAddress()) // automatically keep mining blocks
+	globals.Cron.Start()                                   // start cron jobs
 
 	// This tiny goroutine continuously updates status as required
 	go func() {
