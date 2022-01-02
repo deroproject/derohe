@@ -331,7 +331,7 @@ func (in *inner) MarshalTo(store *Store, buf []byte, bucket string) (int, error)
 		done += tsize
 		tsize = binary.PutUvarint(buf[done:], uint64(len(bucket))) // bucket name length
 		done += tsize
-		done += copy(buf[done:], []byte(bucket)) // write bucket name
+		done += copy(buf[done: done+len(bucket)], []byte(bucket)) // write bucket name, panic if buffer is small
 
 	}
 
@@ -345,7 +345,7 @@ func (in *inner) MarshalTo(store *Store, buf []byte, bucket string) (int, error)
 
 		lhash, err := in.lhash(store)
 		errors = append(errors, err)
-		done += copy(buf[done:], lhash) // insert left hash
+		done += copy(buf[done: done+32], lhash) // insert left hash
 
 	}
 	switch getNodeType(in.right) {
@@ -357,7 +357,7 @@ func (in *inner) MarshalTo(store *Store, buf []byte, bucket string) (int, error)
 		done += tsize
 		rhash, err := in.rhash(store)
 		errors = append(errors, err)
-		done += copy(buf[done:], rhash) // insert right hash
+		done += copy(buf[done:done+32], rhash) // insert right hash
 	}
 
 	buf[0] = byte(done) // prepend with length
@@ -427,7 +427,7 @@ func parse_node(level byte, nodetype byte, buf []byte) (node, int, error) {
 		done += tsize
 
 		if len(buf) < done+HASHSIZE {
-			return nil, 0, xerrors.Errorf("Probably data corruption, input buffer has incomplete data")
+			return nil, 0, xerrors.Errorf("Probably data corruption, input buffer has incomplete data len(buf) %d done %d (%s)\n",len(buf),done, string(buf))
 		}
 
 		copy(left.hash[:], buf[done:done+HASHSIZE])

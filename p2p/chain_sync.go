@@ -134,11 +134,11 @@ try_again:
 		switch {
 		case len(request.Block_list) < 20: // 20 blocks raw
 			i++
-		case len(request.Block_list) < 100: // 20 block with 5 steps
+		case len(request.Block_list) < 40: // 20 block with 5 steps
 			i += 5
-		case len(request.Block_list) < 1000: // 20 block with 50 steps
+		case len(request.Block_list) < 60: // 20 block with 50 steps
 			i += 50
-		case len(request.Block_list) < 10000: // 20 block with 500 steps
+		case len(request.Block_list) < 80: // 20 block with 500 steps
 			i += 500
 		default:
 			i = i * 2
@@ -212,7 +212,7 @@ try_again:
 				var orequest ObjectList
 				var oresponse Objects
 
-				//fmt.Printf("inserting blocks %d %x\n", (int64(i) + response.Start_topoheight), response.Block_list[i][:])
+				fmt.Printf("inserting blocks %d %x\n", (int64(i) + response.Start_topoheight), response.Block_list[i][:])
 				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
 				fill_common(&orequest.Common)
 				if err := connection.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {

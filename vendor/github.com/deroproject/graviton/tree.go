@@ -362,7 +362,7 @@ func (t *Tree) commit_inner(gv *Snapshot, specialversion bool, level int, in *in
 
 	}
 
-	var buf [128]byte
+	var buf [384]byte
 	var done int
 	if done, err = in.MarshalTo(t.store, buf[:], t.treename); err == nil {
 

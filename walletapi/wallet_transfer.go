@@ -214,11 +214,15 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	topoheight := int64(-1)
 	var block_hash crypto.Hash
 
-	{ // if wallet has been recently used, increase probability  of user's tx being successfully mined
+	{ // if wallet has not been recently used, increase probability  of user's tx being successfully mined
 		var zeroscid crypto.Hash
-		if w.getEncryptedBalanceresult(zeroscid).Topoheight+3 < daemon_topoheight {
+		if w.getEncryptedBalanceresult(zeroscid).Topoheight+2 <= daemon_topoheight {
+			topoheight = daemon_topoheight - 2
+		}
+		if w.getEncryptedBalanceresult(zeroscid).Topoheight+3 <= daemon_topoheight {
 			topoheight = daemon_topoheight - 3
 		}
+
 	}
 
 	_, _, block_hash, self_e, _ := w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight, w.GetAddress().String())
