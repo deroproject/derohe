@@ -100,11 +100,10 @@ func Mine_block_single(chain *blockchain.Blockchain, miner_address rpc.Address) 
 	//	return fmt.Errorf("this function can only run in simulator mode")
 	//}
 
-	for i := uint64(0); i < config.BLOCK_TIME; i++ {
+	for i := uint64(0); i < config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF; i++ {
 		bl, mbl, _, _, err := chain.Create_new_block_template_mining(miner_address)
 		if err != nil {
 			logger.Error(err, "err while request block template")
-
 			return err
 		}
 		if _, blid, _, err = chain.Accept_new_block(bl.Timestamp, mbl.Serialize()); blid.IsZero() || err != nil {

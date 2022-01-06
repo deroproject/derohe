@@ -436,7 +436,7 @@ func getwork(wallet_address string) {
 		our_height = int64(job.Height)
 		Difficulty = job.Difficultyuint64
 
-		//fmt.Printf("recv: %s", result)
+		//fmt.Printf("recv: %+v diff %d\n", result, Difficulty)
 		goto wait_for_another_job
 	}
 

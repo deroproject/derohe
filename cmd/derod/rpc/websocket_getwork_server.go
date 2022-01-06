@@ -31,6 +31,7 @@ import "crypto/x509"
 import "encoding/pem"
 
 import "github.com/deroproject/derohe/globals"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/graviton"
 import "github.com/go-logr/logr"
@@ -93,6 +94,9 @@ func SendJob() {
 
 	params.Height = bl.Height
 	params.Prev_Hash = prev_hash
+	if mbl.HighDiff {
+		diff.Mul(diff, new(big.Int).SetUint64(config.MINIBLOCK_HIGHDIFF))
+	}
 	params.Difficultyuint64 = diff.Uint64()
 	params.Difficulty = diff.String()
 	client_list_mutex.Lock()

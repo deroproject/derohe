@@ -103,7 +103,7 @@ func (pool *Mempool) HouseKeeping(height uint64) {
 	pool.txs.Range(func(k, value interface{}) bool {
 		txhash := k.(crypto.Hash)
 		v := value.(*mempool_object)
-		if height >= (v.Tx.Height + 10) { // if we have moved 10 heights, chances of reorg are almost nil
+		if height >= (v.Tx.Height) { // if we have moved 10 heights, chances of reorg are almost nil
 			delete_list = append(delete_list, txhash)
 		}
 		return true

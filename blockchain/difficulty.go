@@ -169,6 +169,10 @@ func (chain *Blockchain) VerifyMiniblockPoW(bl *block.Block, mbl block.MiniBlock
 		logger.Panicf("Difficuly mismatch between big and uint64 diff ")
 	}*/
 
+	if mbl.HighDiff {
+		block_difficulty.Mul(block_difficulty, new(big.Int).SetUint64(config.MINIBLOCK_HIGHDIFF))
+	}
+
 	if CheckPowHashBig(PoW, block_difficulty) == true {
 		if chain.cache_enabled {
 			chain.cache_IsMiniblockPowValid.Add(fmt.Sprintf("%s", cachekey), true) // set in cache

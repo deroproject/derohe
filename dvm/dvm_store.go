@@ -35,8 +35,6 @@ type DataAtom struct {
 	Value      Variable // current value if any
 }
 
-type Object map[Variable]Variable
-
 type TransferInternal struct {
 	Asset  crypto.Hash `cbor:"Asset,omitempty" json:"Asset,omitempty"` //  transfer this asset
 	SCID   string      `cbor:"A,omitempty" json:"A,omitempty"`         //  transfer to this SCID
@@ -62,25 +60,15 @@ type TX_Storage struct {
 	BalanceLoader  func(DataKey) uint64            // used to load balance
 	DiskLoaderRaw  func([]byte) ([]byte, bool)
 	SCID           crypto.Hash
-	BalanceAtStart uint64               // at runtime this will be fed balance
-	Keys           map[DataKey]Variable // this keeps the in-transit DB updates, just in case we have to discard instantly
-	RawKeys        map[string][]byte
+	BalanceAtStart uint64            // at runtime this will be fed balance
+	RawKeys        map[string][]byte // this keeps the in-transit DB updates, just in case we have to discard instantly
 
 	Transfers map[crypto.Hash]SC_Transfers // all transfers ( internal/external )
 }
 
-var DVM_STORAGE_BACKEND DVM_Storage_Loader // this variable can be hijacked at runtime to offer different stores such as RAM/file/DB etc
-
-type DVM_Storage_Loader interface {
-	Load(DataKey, *uint64) Variable
-	Store(DataKey, Variable)
-	RawLoad([]byte) ([]byte, bool)
-	RawStore([]byte, []byte)
-}
-
 // initialize tx store
 func Initialize_TX_store() (tx_store *TX_Storage) {
-	tx_store = &TX_Storage{Keys: map[DataKey]Variable{}, RawKeys: map[string][]byte{}, Transfers: map[crypto.Hash]SC_Transfers{}}
+	tx_store = &TX_Storage{RawKeys: map[string][]byte{}, Transfers: map[crypto.Hash]SC_Transfers{}}
 	return
 }
 
@@ -99,15 +87,24 @@ func (tx_store *TX_Storage) RawStore(key []byte, value []byte) {
 	return
 }
 
+func (tx_store *TX_Storage) Delete(dkey DataKey) {
+	tx_store.RawStore(dkey.MarshalBinaryPanic(), []byte{})
+	return
+}
+
 // this will load the variable, and if the key is found
 func (tx_store *TX_Storage) Load(dkey DataKey, found_value *uint64) (value Variable) {
 
 	//fmt.Printf("Loading %+v   \n", dkey)
 
 	*found_value = 0
-	if result, ok := tx_store.Keys[dkey]; ok { // if it was modified in current TX, use it
+	if result, ok := tx_store.RawKeys[string(dkey.MarshalBinaryPanic())]; ok { // if it was modified in current TX, use it
 		*found_value = 1
-		return result
+
+		if err := value.UnmarshalBinary(result); err != nil {
+			panic(err)
+		}
+		return value
 	}
 
 	if tx_store.DiskLoader == nil {
@@ -123,7 +120,7 @@ func (tx_store *TX_Storage) Load(dkey DataKey, found_value *uint64) (value Varia
 func (tx_store *TX_Storage) Store(dkey DataKey, v Variable) {
 	//fmt.Printf("Storing request %+v   : %+v\n", dkey, v)
 
-	tx_store.Keys[dkey] = v
+	tx_store.RawKeys[string(dkey.MarshalBinaryPanic())] = v.MarshalBinaryPanic()
 }
 
 // store variable

@@ -212,7 +212,7 @@ try_again:
 				var orequest ObjectList
 				var oresponse Objects
 
-				fmt.Printf("inserting blocks %d %x\n", (int64(i) + response.Start_topoheight), response.Block_list[i][:])
+				//fmt.Printf("inserting blocks %d %x\n", (int64(i) + response.Start_topoheight), response.Block_list[i][:])
 				orequest.Block_list = append(orequest.Block_list, response.Block_list[i])
 				fill_common(&orequest.Common)
 				if err := connection.Client.Call("Peer.GetObject", orequest, &oresponse); err != nil {

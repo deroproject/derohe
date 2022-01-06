@@ -468,8 +468,14 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 		if _, ok := globals.Arguments["--debug"]; ok && globals.Arguments["--debug"] != nil && chain.simulator {
 			logger.V(1).Info("Writing", "txid", txhash, "scid", scid, "key", fmt.Sprintf("%x", k), "value", fmt.Sprintf("%x", v))
 		}
-		if err = w_sc_data_tree.tree.Put([]byte(k), v); err != nil {
-			return
+		if len(v) == 0 {
+			if err = w_sc_data_tree.tree.Delete([]byte(k)); err != nil {
+				return
+			}
+		} else {
+			if err = w_sc_data_tree.tree.Put([]byte(k), v); err != nil {
+				return
+			}
 		}
 	}
 

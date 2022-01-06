@@ -214,18 +214,19 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	topoheight := int64(-1)
 	var block_hash crypto.Hash
 
-	{ // if wallet has not been recently used, increase probability  of user's tx being successfully mined
-		var zeroscid crypto.Hash
-		if w.getEncryptedBalanceresult(zeroscid).Topoheight+2 <= daemon_topoheight {
-			topoheight = daemon_topoheight - 2
-		}
-		if w.getEncryptedBalanceresult(zeroscid).Topoheight+3 <= daemon_topoheight {
-			topoheight = daemon_topoheight - 3
-		}
-
+	var zeroscid crypto.Hash
+	_, noncetopo, block_hash, self_e, err := w.GetEncryptedBalanceAtTopoHeight(zeroscid, -1, w.GetAddress().String())
+	if err != nil {
+		return
 	}
 
-	_, _, block_hash, self_e, _ := w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight, w.GetAddress().String())
+	// TODO, we should check nonce for base token and other tokens at the same time
+	// right now, we are probably using a bit of luck here
+	if daemon_topoheight >= int64(noncetopo)+3 { // if wallet has not been recently used, increase probability  of user's tx being successfully mined
+		topoheight = daemon_topoheight - 3
+	}
+
+	_, _, block_hash, self_e, _ = w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight, w.GetAddress().String())
 	if err != nil {
 		fmt.Printf("self unregistered err %s\n", err)
 		return

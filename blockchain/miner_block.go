@@ -332,8 +332,8 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	if mbls := chain.MiniBlocks.GetAllMiniBlocks(key); len(mbls) > 0 {
-		if uint64(len(mbls)) > config.BLOCK_TIME-1 {
-			mbls = mbls[:config.BLOCK_TIME-1]
+		if uint64(len(mbls)) > config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF {
+			mbls = mbls[:config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF]
 		}
 		bl.MiniBlocks = mbls
 	}
@@ -360,11 +360,12 @@ func ConvertBlockToMiniblock(bl block.Block, miniblock_miner_address rpc.Address
 		mbl.Past[i] = binary.BigEndian.Uint32(bl.Tips[i][:])
 	}
 
-	if uint64(len(bl.MiniBlocks)) != config.BLOCK_TIME-1 {
+	if uint64(len(bl.MiniBlocks)) < config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF {
 		miner_address_hashed_key := graviton.Sum(miniblock_miner_address.Compressed())
 		copy(mbl.KeyHash[:], miner_address_hashed_key[:])
 	} else {
 		mbl.Final = true
+		mbl.HighDiff = true
 		block_header_hash := sha3.Sum256(bl.Serialize()) // note here this block is not present
 		for i := range mbl.KeyHash {
 			mbl.KeyHash[i] = block_header_hash[i]
@@ -477,14 +478,14 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 	}
 
 	// lets try to check pow to detect whether the miner is cheating
-	if !chain.VerifyMiniblockPoW(&bl, mbl) {
-		logger.V(1).Error(err, "Error ErrInvalidPoW ")
+
+	if !chain.simulator && !chain.VerifyMiniblockPoW(&bl, mbl) {
+		logger.V(1).Error(err, "Error ErrInvalidPoW")
 		err = errormsg.ErrInvalidPoW
 		return
 	}
 
 	if !mbl.Final {
-
 		var miner_hash crypto.Hash
 		copy(miner_hash[:], mbl.KeyHash[:])
 		if !chain.IsAddressHashValid(true, miner_hash) {

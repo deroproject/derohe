@@ -23,16 +23,18 @@ import "fmt"
 import "encoding/binary"
 
 import "github.com/deroproject/derohe/block"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 import "golang.org/x/crypto/sha3"
 
-const miniblock_genesis_distance = 0
-const miniblock_normal_distance = 2
-
 // last miniblock must be extra checked for corruption/attacks
 func (chain *Blockchain) Verify_MiniBlocks_HashCheck(cbl *block.Complete_Block) (err error) {
 	last_mini_block := cbl.Bl.MiniBlocks[len(cbl.Bl.MiniBlocks)-1]
+
+	if !last_mini_block.HighDiff {
+		return fmt.Errorf("corrupted block")
+	}
 
 	if !last_mini_block.Final {
 		return fmt.Errorf("corrupted block")
@@ -70,8 +72,13 @@ func Verify_MiniBlocks(bl block.Block) (err error) {
 			final_count++
 		}
 	}
-	if final_count != 1 {
+	if final_count < 1 {
 		err = fmt.Errorf("No final miniblock")
+		return
+	}
+
+	if uint64(len(bl.MiniBlocks)) != (config.BLOCK_TIME - config.MINIBLOCK_HIGHDIFF + 1) {
+		err = fmt.Errorf("incorrect number of miniblocks expected %d actual %d", config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF+1, len(bl.MiniBlocks))
 		return
 	}
 
@@ -90,7 +97,9 @@ func Verify_MiniBlocks(bl block.Block) (err error) {
 			if binary.BigEndian.Uint32(bl.Tips[0][:]) != mbl.Past[0] {
 				return fmt.Errorf("MiniBlock has invalid tip")
 			}
-		} else if len(bl.Tips) == 2 {
+		} else {
+			panic("we only support 1 tips")
+		} /*else if len(bl.Tips) == 2 {
 			if binary.BigEndian.Uint32(bl.Tips[0][:]) != mbl.Past[0] {
 				return fmt.Errorf("MiniBlock has invalid tip")
 			}
@@ -101,8 +110,8 @@ func Verify_MiniBlocks(bl block.Block) (err error) {
 				return fmt.Errorf("MiniBlock refers to same tip twice")
 			}
 		} else {
-			panic("we only support  2 tips")
-		}
+			panic("we only support 1 tips")
+		}*/
 	}
 
 	return nil

@@ -39,6 +39,7 @@ var hasherPool = sync.Pool{
 type MiniBlock struct {
 	//  below 3 fields are serialized into single byte
 	Version   uint8 // 1 byte    // lower 5 bits (0,1,2,3,4)
+	HighDiff  bool  // bit 4  // triggers high diff
 	Final     bool  // bit 5
 	PastCount uint8 // previous  count  // bits 6,7
 
@@ -76,6 +77,10 @@ func (mbl MiniBlock) String() string {
 		fmt.Fprintf(r, " Final ")
 	}
 
+	if mbl.HighDiff {
+		fmt.Fprintf(r, " HighDiff ")
+	}
+
 	if mbl.PastCount == 1 {
 		fmt.Fprintf(r, " Past [%08x]", mbl.Past[0])
 	} else {
@@ -108,7 +113,7 @@ func (mbl *MiniBlock) GetPoWHash() (hash crypto.Hash) {
 }
 
 func (mbl *MiniBlock) SanityCheck() error {
-	if mbl.Version >= 31 {
+	if mbl.Version >= 16 {
 		return fmt.Errorf("version not supported")
 	}
 	if mbl.PastCount > 2 {
@@ -133,11 +138,15 @@ func (mbl *MiniBlock) Serialize() (result []byte) {
 	}
 
 	var b bytes.Buffer
-	if mbl.Final {
-		b.WriteByte(mbl.Version | mbl.PastCount<<6 | 0x20)
-	} else {
-		b.WriteByte(mbl.Version | mbl.PastCount<<6)
+
+	versionbyte := mbl.Version | mbl.PastCount<<6
+	if mbl.HighDiff {
+		versionbyte |= 0x10
 	}
+	if mbl.Final {
+		versionbyte |= 0x20
+	}
+	b.WriteByte(versionbyte)
 
 	binary.Write(&b, binary.BigEndian, mbl.Timestamp)
 
@@ -164,11 +173,14 @@ func (mbl *MiniBlock) Deserialize(buf []byte) (err error) {
 		return fmt.Errorf("Expected %d bytes. Actual %d", MINIBLOCK_SIZE, len(buf))
 	}
 
-	if mbl.Version = buf[0] & 0x1f; mbl.Version != 1 {
+	if mbl.Version = buf[0] & 0xf; mbl.Version != 1 {
 		return fmt.Errorf("unknown version '%d'", mbl.Version)
 	}
 
 	mbl.PastCount = buf[0] >> 6
+	if buf[0]&0x10 > 0 {
+		mbl.HighDiff = true
+	}
 	if buf[0]&0x20 > 0 {
 		mbl.Final = true
 	}

@@ -226,9 +226,6 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 	}
 
 	if err == nil && result.Type == dvm.Uint64 && result.ValueUint64 == 0 { // confirm the changes
-		for k, v := range tx_store.Keys {
-			chain.StoreSCValue(data_tree, scid, k.MarshalBinaryPanic(), v.MarshalBinaryPanic())
-		}
 		for k, v := range tx_store.RawKeys {
 			chain.StoreSCValue(data_tree, scid, []byte(k), v)
 		}

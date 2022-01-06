@@ -392,9 +392,18 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 	count := 0
 	unique_map := UniqueConnections()
 
+	var connections []*Connection
+	for _, v := range unique_map {
+		connections = append(connections, v)
+	}
+
+	sort.SliceStable(connections, func(i, j int) bool {
+		return connections[i].Latency < connections[j].Latency
+	})
+
 	for { // we must send all blocks atleast once, once we are done, break ut
 		old_count := count
-		for _, v := range unique_map {
+		for _, v := range connections {
 			select {
 			case <-Exit_Event:
 				return

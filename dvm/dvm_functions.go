@@ -54,6 +54,7 @@ func init() {
 	func_table["load"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_load}}
 	func_table["exists"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_exists}}
 	func_table["store"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_store}}
+	func_table["delete"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_delete}}
 	func_table["random"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_random}}
 	func_table["scid"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_scid}}
 	func_table["blid"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), Cost: 1, Ptr: dvm_blid}}
@@ -137,6 +138,10 @@ func (dvm *DVM_Interpreter) Store(key Variable, value Variable) {
 	dvm.State.Store.Store(DataKey{SCID: dvm.State.Chain_inputs.SCID, Key: key}, value)
 }
 
+func (dvm *DVM_Interpreter) Delete(key Variable) {
+	dvm.State.Store.Delete(DataKey{SCID: dvm.State.Chain_inputs.SCID, Key: key})
+}
+
 func dvm_version(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
 	if len(expr.Args) != 1 { // expression without limit
 		panic("version expects 1 parameters")
@@ -206,6 +211,26 @@ func dvm_store(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result i
 	}
 
 	dvm.Store(key, value)
+	return true, nil
+}
+
+func dvm_delete(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
+	if len(expr.Args) != 1 {
+		panic("Delete function expects 2 variables as parameter")
+	}
+	key_eval := dvm.eval(expr.Args[0])
+	var key Variable
+	switch k := key_eval.(type) {
+	case uint64:
+		key = Variable{Type: Uint64, ValueUint64: k}
+
+	case string:
+		key = Variable{Type: String, ValueString: k}
+	default:
+		panic("This variable cannot be deleted")
+	}
+
+	dvm.Delete(key)
 	return true, nil
 }
 
@@ -289,7 +314,7 @@ func dvm_update_sc_code(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool,
 	code_eval := dvm.eval(expr.Args[0])
 	switch k := code_eval.(type) {
 	case string:
-		dvm.State.Store.Keys[DataKey{Key: Variable{Type: String, ValueString: "C"}}] = Variable{Type: String, ValueString: k} // TODO verify code authenticity how
+		dvm.State.Store.Store(DataKey{Key: Variable{Type: String, ValueString: "C"}}, Variable{Type: String, ValueString: k}) // TODO verify code authenticity how
 		return true, uint64(1)
 	default:
 		return true, uint64(0)
