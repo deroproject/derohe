@@ -24,8 +24,10 @@ import "runtime/debug"
 
 //import "github.com/romana/rlog"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/dvm"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/blockchain"
@@ -115,7 +117,7 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 
 											if sc_data_tree, err := ss.GetTree(string(scid[:])); err == nil {
 												var code_bytes []byte
-												if code_bytes, err = sc_data_tree.Get(blockchain.SC_Code_Key(scid)); err == nil {
+												if code_bytes, err = sc_data_tree.Get(dvm.SC_Code_Key(scid)); err == nil {
 													related.Code = string(code_bytes)
 
 												}
@@ -147,6 +149,15 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 
 										}
 										related.Ring = append(related.Ring, ring)
+									}
+
+									if signer, err1 := blockchain.Extract_signer(&tx); err1 == nil {
+										var p bn256.G1
+										if err = p.DecodeCompressed(signer[:]); err == nil {
+											s := rpc.NewAddressFromKeys((*crypto.Point)(&p))
+											s.Mainnet = globals.Config.Name == config.Mainnet.Name
+											related.Signer = s.String()
+										}
 									}
 
 								}

@@ -115,10 +115,13 @@ func Notify_MiniBlock_Addition() {
 		chain.RPC_NotifyNewMiniBlock.L.Lock()
 		chain.RPC_NotifyNewMiniBlock.Wait()
 		chain.RPC_NotifyNewMiniBlock.L.Unlock()
-		go func() {
-			defer globals.Recover(2)
-			SendJob()
-		}()
+
+		if globals.Arguments["--simulator"] == nil || (globals.Arguments["--simulator"] != nil && globals.Arguments["--simulator"].(bool) == false) {
+			go func() {
+				defer globals.Recover(2)
+				SendJob()
+			}()
+		}
 	}
 }
 
@@ -310,6 +313,7 @@ var historical_apis = handler.Map{"getinfo": handler.New(GetInfo),
 	"getblocktemplate":           handler.New(GetBlockTemplate),
 	"getencryptedbalance":        handler.New(GetEncryptedBalance),
 	"getsc":                      handler.New(GetSC),
+	"getgasestimate":             handler.New(GetGasEstimate),
 	"nametoaddress":              handler.New(NameToAddress)}
 
 var servicemux = handler.ServiceMap{
@@ -331,6 +335,7 @@ var servicemux = handler.ServiceMap{
 		"GetBlockTemplate":           handler.New(GetBlockTemplate),
 		"GetEncryptedBalance":        handler.New(GetEncryptedBalance),
 		"GetSC":                      handler.New(GetSC),
+		"GetGasEstimate":             handler.New(GetGasEstimate),
 		"NameToAddress":              handler.New(NameToAddress),
 	},
 	"DAEMON": handler.Map{

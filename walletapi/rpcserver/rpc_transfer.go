@@ -64,15 +64,18 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCID, DataType: rpc.DataHash, Value: crypto.HashHexToHash(p.SC_ID)})
 	}
 
-	tx, err := w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, false)
-	if err != nil {
-		w.logger.V(1).Error(err, "Error building tx")
-		return result, err
-	}
+	var tx *transaction.Transaction
+	for tries := 0; tries < 2; tries++ {
+		tx, err = w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, p.Fees, false)
+		if err != nil {
+			w.logger.V(1).Error(err, "Error building tx")
+			return result, err
+		}
 
-	err = w.wallet.SendTransaction(tx)
-	if err != nil {
-		return result, err
+		err = w.wallet.SendTransaction(tx)
+		if err == nil {
+			break
+		}
 	}
 
 	// we must return a txid if everything went alright

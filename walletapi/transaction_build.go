@@ -19,7 +19,7 @@ type GenerateProofFunc func(scid crypto.Hash, scid_index int, s *crypto.Statemen
 var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 
 // generate proof  etc
-func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int) *transaction.Transaction {
+func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int, fees uint64) *transaction.Transaction {
 
 	sender := w.account.Keys.Public.G1()
 	sender_secret := w.account.Keys.Secret.BigInt()
@@ -34,12 +34,7 @@ rebuild_tx:
 	tx.Height = height
 	tx.BLID = block_hash
 	tx.TransactionType = transaction.NORMAL
-	/*
-		if burn_value >= 1 {
-			tx.TransactionType = transaction.BURN_TX
-			tx.Value = burn_value
-		}
-	*/
+
 	if len(scdata) >= 1 {
 		tx.TransactionType = transaction.SC_TX
 		tx.SCDATA = scdata
@@ -138,15 +133,14 @@ rebuild_tx:
 		asset.SCID = transfers[t].SCID
 		asset.BurnValue = transfers[t].Burn
 
-		fees := uint64(0)
 		value := transfers[t].Amount
 		burn_value := transfers[t].Burn
-		if asset.SCID.IsZero() && !fees_done {
-			fees = uint64(len(transfers)+2) * config.FEE_PER_KB
+		if fees == 0 && asset.SCID.IsZero() && !fees_done {
+			fees = fees + uint64(len(transfers)+2)*config.FEE_PER_KB
 			if data, err := scdata.MarshalBinary(); err != nil {
 				panic(err)
 			} else {
-				fees = fees + uint64((len(data)/1024)+3)*config.FEE_PER_KB
+				fees = fees + (uint64(len(data))*15)/10
 			}
 			fees_done = true
 		}
@@ -155,8 +149,14 @@ rebuild_tx:
 			var x bn256.G1
 			switch {
 			case i == witness_index[0]:
-				x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(fees)-int64(burn_value))) // decrease senders balance
+
+				if asset.SCID.IsZero() {
+					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(fees)-int64(burn_value))) // decrease senders balance
+				} else {
+					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(burn_value))) // decrease senders balance
+				}
 				//fmt.Printf("sender %d %s \n", i, sender.String())
+
 			case i == witness_index[1]:
 				x.ScalarMult(crypto.G, new(big.Int).SetInt64(int64(value))) // increase receiver's balance
 				//fmt.Printf("receiver %d %s \n",i, receiver.String())
@@ -217,12 +217,16 @@ rebuild_tx:
 		//fmt.Printf("t %d scid %s  balance %d\n", t, transfers[t].SCID, balance)
 
 		// time for bullets-sigma
-		statement := GenerateStatement(CLn, CRn, publickeylist, C, &D, fees) // generate statement
+		fees_currentasset := uint64(0)
+		if asset.SCID.IsZero() {
+			fees_currentasset = fees
+		}
+		statement := GenerateStatement(CLn, CRn, publickeylist, C, &D, fees_currentasset) // generate statement
 
 		copy(statement.Roothash[:], roothash[:])
 		statement.Bytes_per_publickey = byte(max_bits / 8)
 
-		witness := GenerateWitness(sender_secret, r, value, balance-value-fees-burn_value, witness_index)
+		witness := GenerateWitness(sender_secret, r, value, balance-value-fees_currentasset-burn_value, witness_index)
 
 		witness_list = append(witness_list, witness)
 

@@ -29,12 +29,6 @@ type DataKey struct {
 	Key     Variable
 }
 
-type DataAtom struct {
-	Key        DataKey
-	Prev_Value Variable // previous Value if any
-	Value      Variable // current value if any
-}
-
 type TransferInternal struct {
 	Asset  crypto.Hash `cbor:"Asset,omitempty" json:"Asset,omitempty"` //  transfer this asset
 	SCID   string      `cbor:"A,omitempty" json:"A,omitempty"`         //  transfer to this SCID
@@ -64,6 +58,8 @@ type TX_Storage struct {
 	RawKeys        map[string][]byte // this keeps the in-transit DB updates, just in case we have to discard instantly
 
 	Transfers map[crypto.Hash]SC_Transfers // all transfers ( internal/external )
+
+	State *Shared_State // only for book keeping of storage gas
 }
 
 // initialize tx store
@@ -82,17 +78,13 @@ func (tx_store *TX_Storage) RawLoad(key []byte) (value []byte, found bool) {
 	return
 }
 
-func (tx_store *TX_Storage) RawStore(key []byte, value []byte) {
-	tx_store.RawKeys[string(key)] = value
-	return
-}
-
 func (tx_store *TX_Storage) Delete(dkey DataKey) {
-	tx_store.RawStore(dkey.MarshalBinaryPanic(), []byte{})
+	tx_store.RawKeys[string(dkey.MarshalBinaryPanic())] = []byte{}
 	return
 }
 
 // this will load the variable, and if the key is found
+// loads are cheaper
 func (tx_store *TX_Storage) Load(dkey DataKey, found_value *uint64) (value Variable) {
 
 	//fmt.Printf("Loading %+v   \n", dkey)
@@ -104,6 +96,15 @@ func (tx_store *TX_Storage) Load(dkey DataKey, found_value *uint64) (value Varia
 		if err := value.UnmarshalBinary(result); err != nil {
 			panic(err)
 		}
+
+		if tx_store.State != nil {
+			if value.Length() > 10 {
+				tx_store.State.ConsumeStorageGas(value.Length() / 10)
+			} else {
+				tx_store.State.ConsumeStorageGas(1)
+			}
+		}
+
 		return value
 	}
 
@@ -112,6 +113,13 @@ func (tx_store *TX_Storage) Load(dkey DataKey, found_value *uint64) (value Varia
 	}
 
 	value = tx_store.DiskLoader(dkey, found_value)
+	if tx_store.State != nil {
+		if value.Length() > 10 {
+			tx_store.State.ConsumeStorageGas(value.Length() / 10)
+		} else {
+			tx_store.State.ConsumeStorageGas(1)
+		}
+	}
 
 	return
 }
@@ -120,7 +128,10 @@ func (tx_store *TX_Storage) Load(dkey DataKey, found_value *uint64) (value Varia
 func (tx_store *TX_Storage) Store(dkey DataKey, v Variable) {
 	//fmt.Printf("Storing request %+v   : %+v\n", dkey, v)
 
-	tx_store.RawKeys[string(dkey.MarshalBinaryPanic())] = v.MarshalBinaryPanic()
+	kbytes := dkey.MarshalBinaryPanic()
+	vbytes := v.MarshalBinaryPanic()
+	tx_store.State.ConsumeStorageGas(int64(len(vbytes)) * 1)
+	tx_store.RawKeys[string(kbytes)] = vbytes
 }
 
 // store variable
@@ -169,6 +180,22 @@ func (dkey DataKey) MarshalBinaryPanic() (ser []byte) {
 	}
 	if ser, err = dkey.Key.MarshalBinary(); err != nil {
 		panic(err)
+	}
+	return
+}
+
+func (v Variable) Length() (length int64) {
+	switch v.Type {
+	case Invalid:
+		return
+	case Uint64:
+		var buf [binary.MaxVarintLen64]byte
+		done := binary.PutUvarint(buf[:], v.ValueUint64) // uint64 data type
+		length += int64(done) + 1
+	case String:
+		length = int64(len([]byte(v.ValueString)) + 1)
+	default:
+		panic("unknown variable type not implemented")
 	}
 	return
 }

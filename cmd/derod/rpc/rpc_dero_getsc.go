@@ -30,7 +30,6 @@ import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/dvm"
 
 //import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/blockchain"
 
 import "github.com/deroproject/graviton"
 
@@ -87,7 +86,7 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 				if p.Code { // give SC code
 					var code_bytes []byte
 					var v dvm.Variable
-					if code_bytes, err = sc_data_tree.Get(blockchain.SC_Code_Key(scid)); err == nil {
+					if code_bytes, err = sc_data_tree.Get(dvm.SC_Code_Key(scid)); err == nil {
 						if err = v.UnmarshalBinary(code_bytes); err != nil {
 							result.Code = "Unmarshal error"
 						} else {

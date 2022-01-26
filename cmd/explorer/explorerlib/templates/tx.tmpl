@@ -103,7 +103,12 @@
 
              {{range $ii, $ee := .info.Assets}} 
                 {{if eq $ee.SCID "0000000000000000000000000000000000000000000000000000000000000000" }}
-                 <H5>DERO : {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} 
+
+
+                
+                  <H5>DERO : {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} 
+
+                 
 
                  {{if eq $.info.TransactionType "SC"}}
                         Deposited to SC {{$ee.Burn}}
@@ -112,6 +117,7 @@
                  {{end}}
 
                  </H5>
+                {{if eq $.info.TransactionType "SC"}} <H5>Sender :  {{  $.info.SC_Signer }} </H5> {{end}}
 
                  {{else}}
                     <H5>Token: {{$ee.SCID}}   {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} {{if eq $.info.TransactionType "SC"}}

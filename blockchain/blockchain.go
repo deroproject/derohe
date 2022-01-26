@@ -45,6 +45,7 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/errormsg"
 import "github.com/deroproject/derohe/metrics"
 
+import "github.com/deroproject/derohe/dvm"
 import "github.com/deroproject/derohe/block"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/transaction"
@@ -901,12 +902,12 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 			// at this point, we must commit all the SCs, so entire tree hash is interlinked
 			for scid, v := range sc_change_cache {
-				meta_bytes, err := sc_meta.Get(SC_Meta_Key(scid))
+				meta_bytes, err := sc_meta.Get(dvm.SC_Meta_Key(scid))
 				if err != nil {
 					panic(err)
 				}
 
-				var meta SC_META_DATA // the meta contains metadata about SC
+				var meta dvm.SC_META_DATA // the meta contains metadata about SC
 				if err := meta.UnmarshalBinary(meta_bytes); err != nil {
 					panic(err)
 				}
@@ -915,7 +916,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 					panic(err)
 				}
 
-				sc_meta.Put(SC_Meta_Key(scid), meta.MarshalBinary())
+				sc_meta.Put(dvm.SC_Meta_Key(scid), meta.MarshalBinary())
 				data_trees = append(data_trees, v)
 
 				/*fmt.Printf("will commit tree name %x \n", v.GetName())
@@ -1161,6 +1162,14 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	if _, err = chain.Store.Block_tx_store.ReadTX(txhash); err == nil {
 		//rlog.Tracef(2, "TX %s rejected Already mined in some block", txhash)
 		return fmt.Errorf("TX %s rejected Already mined in some block", txhash)
+	}
+
+	toporecord, err := chain.Store.Topo_store.Read(int64(tx.Height))
+	if err != nil {
+		return fmt.Errorf("TX %s rejected height(%d) reference not found", txhash, tx.Height)
+	}
+	if toporecord.BLOCK_ID != tx.BLID {
+		return fmt.Errorf("TX %s rejected block (%s) reference not found", txhash, tx.BLID)
 	}
 
 	hf_version := chain.Get_Current_Version_at_Height(int64(chain_height))

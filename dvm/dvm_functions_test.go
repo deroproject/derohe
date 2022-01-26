@@ -219,6 +219,53 @@ var execution_tests_functions = []struct {
 		nil,
 		Variable{Type: String, ValueString: string("")},
 	},
+	{
+		"mapget()",
+		`Function TestRun(input String) String
+		 10 mapstore("input",input)
+		 30 return  mapget("input") + mapget("input")
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("01234567890123456789")},
+	},
+	{
+		"mapget()",
+		`Function TestRun(input String) String
+		 10 mapstore("input",input)
+		 15 mapstore("input",input+input)
+		 30 return  mapget("input")
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("01234567890123456789")},
+	},
+
+	{
+		"mapexists()",
+		`Function TestRun(input String) Uint64
+		 10 mapstore("input",input)
+		 30 return  mapexists("input") + mapexists("input1")
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(1)},
+	},
+	{
+		"mapdelete()",
+		`Function TestRun(input String) Uint64
+		 10 mapstore("input",input)
+		 15 mapdelete("input")
+		 30 return  mapexists("input")
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(0)},
+	},
 }
 
 func decodeHex(s string) []byte {
@@ -238,7 +285,7 @@ func Test_FUNCTION_execution(t *testing.T) {
 		}
 
 		state := &Shared_State{Chain_inputs: &Blockchain_Input{BL_HEIGHT: 5, BL_TIMESTAMP: 9, SCID: crypto.ZEROHASH,
-			BLID: crypto.ZEROHASH, TXID: crypto.ZEROHASH}}
+			BLID: crypto.ZEROHASH, TXID: crypto.ZEROHASH}, RamStore: map[Variable]Variable{}}
 		result, err := RunSmartContract(&sc, test.EntryPoint, state, test.Args)
 		switch {
 		case test.Eerr == nil && err == nil:

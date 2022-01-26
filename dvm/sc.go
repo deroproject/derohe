@@ -14,7 +14,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package blockchain
+package dvm
 
 // this file implements necessary structure to  SC handling
 
@@ -24,12 +24,12 @@ import "runtime/debug"
 import "encoding/binary"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
-import "github.com/deroproject/derohe/dvm"
-
-//import "github.com/deroproject/graviton"
+import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
+import "github.com/deroproject/graviton"
+
+//import "github.com/deroproject/derohe/transaction"
 
 // currently DERO hash 2 contract types
 // 1 OPEN
@@ -60,47 +60,74 @@ func SC_Meta_Key(scid crypto.Hash) []byte {
 	return scid[:]
 }
 func SC_Code_Key(scid crypto.Hash) []byte {
-	return dvm.Variable{Type: dvm.String, ValueString: "C"}.MarshalBinaryPanic()
+	return Variable{Type: String, ValueString: "C"}.MarshalBinaryPanic()
 }
 func SC_Asset_Key(asset crypto.Hash) []byte {
 	return asset[:]
 }
 
+// used to wrap a graviton tree, so it could be discarded at any time
+type Tree_Wrapper struct {
+	Tree      *graviton.Tree
+	Entries   map[string][]byte
+	Transfere []TransferExternal
+}
+
+func (t *Tree_Wrapper) Get(key []byte) ([]byte, error) {
+	if value, ok := t.Entries[string(key)]; ok {
+		return value, nil
+	} else {
+		return t.Tree.Get(key)
+	}
+}
+
+func (t *Tree_Wrapper) Put(key []byte, value []byte) error {
+	t.Entries[string(key)] = append([]byte{}, value...)
+	return nil
+}
+
+// checks cache and returns a wrapped tree if possible
+func Wrapped_tree(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, id crypto.Hash) *Tree_Wrapper {
+	if cached_tree, ok := cache[id]; ok { // tree is in cache return it
+		return &Tree_Wrapper{Tree: cached_tree, Entries: map[string][]byte{}}
+	}
+
+	if tree, err := ss.GetTree(string(id[:])); err != nil {
+		panic(err)
+	} else {
+		return &Tree_Wrapper{Tree: tree, Entries: map[string][]byte{}}
+	}
+}
+
 // this will process the SC transaction
 // the tx should only be processed , if it has been processed
 
-func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid crypto.Hash, bl_height, bl_topoheight, bl_timestamp uint64, bl_hash crypto.Hash, tx transaction.Transaction, entrypoint string, hard_fork_version_current int64) (gas uint64, err error) {
+func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid crypto.Hash, bl_height, bl_topoheight, bl_timestamp uint64, blid crypto.Hash, txid crypto.Hash, sc_parsed SmartContract, entrypoint string, hard_fork_version_current int64, balance_at_start uint64, signer [33]byte, incoming_value map[crypto.Hash]uint64, SCDATA rpc.Arguments, gasstorage_incoming uint64, simulator bool) (gascompute, gasstorage uint64, err error) {
 	defer func() {
 		if r := recover(); r != nil { // safety so if anything wrong happens, verification fails
 			if err == nil {
 				err = fmt.Errorf("Stack trace  \n%s", debug.Stack())
 			}
-			logger.V(1).Error(err, "Recovered while rewinding chain,", "r", r, "stack trace", string(debug.Stack()))
+			//logger.V(1).Error(err, "Recovered while rewinding chain,", "r", r, "stack trace", string(debug.Stack()))
 		}
 	}()
 
-	//fmt.Printf("executing entrypoint %s\n", entrypoint)
+	//fmt.Printf("executing entrypoint %s  values %+v feees %d\n", entrypoint, incoming_value, fees)
 
-	//if !tx.Verify_SC_Signature() { // if tx is not SC TX, or Signature could not be verified skip it
-	//	return
-	//}
-
-	tx_hash := tx.GetHash()
-	tx_store := dvm.Initialize_TX_store()
+	tx_store := Initialize_TX_store()
 
 	// used as value loader from disk
 	// this function is used to load any data required by the SC
-
-	balance_loader := func(key dvm.DataKey) (result uint64) {
+	balance_loader := func(key DataKey) (result uint64) {
 		var found bool
 		_ = found
-		result, found = chain.LoadSCAssetValue(data_tree, key.SCID, key.Asset)
+		result, found = LoadSCAssetValue(data_tree, key.SCID, key.Asset)
 		return result
 	}
 
-	diskloader := func(key dvm.DataKey, found *uint64) (result dvm.Variable) {
+	diskloader := func(key DataKey, found *uint64) (result Variable) {
 		var exists bool
-		if result, exists = chain.LoadSCValue(data_tree, key.SCID, key.MarshalBinaryPanic()); exists {
+		if result, exists = LoadSCValue(data_tree, key.SCID, key.MarshalBinaryPanic()); exists {
 			*found = uint64(1)
 		}
 		//fmt.Printf("Loading from disk %+v  result %+v found status %+v \n", key, result, exists)
@@ -123,73 +150,48 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 		return value, true
 	}
 
-	balance, sc_parsed, found := chain.ReadSC(w_sc_tree, data_tree, scid)
-	if !found {
-		logger.V(1).Error(nil, "SC not found", "scid", scid)
-		err = fmt.Errorf("SC not found %s", scid)
-		return
-	}
 	//fmt.Printf("sc_parsed %+v\n", sc_parsed)
 	// if we found the SC in parsed form, check whether entrypoint is found
 	function, ok := sc_parsed.Functions[entrypoint]
 	if !ok {
-		logger.V(1).Error(fmt.Errorf("stored SC does not contain entrypoint"), "", "entrypoint", entrypoint, "scid", scid)
 		err = fmt.Errorf("stored SC  does not contain entrypoint '%s' scid %s \n", entrypoint, scid)
 		return
 	}
-	_ = function
-
-	//fmt.Printf("entrypoint found '%s' scid %s\n", entrypoint, scid)
-	//if len(sc_tx.Params) == 0 { // initialize params if not initialized earlier
-	//	sc_tx.Params = map[string]string{}
-	//}
-	//sc_tx.Params["value"] = fmt.Sprintf("%d", sc_tx.Value) // overide value
-
-	tx_store.DiskLoader = diskloader // hook up loading from chain
-	tx_store.DiskLoaderRaw = diskloader_raw
-	tx_store.BalanceLoader = balance_loader
-	tx_store.BalanceAtStart = balance
-	tx_store.SCID = scid
-
-	//fmt.Printf("tx store %v\n", tx_store)
-
-	// we can skip proof check, here
-	if err = chain.Expand_Transaction_NonCoinbase(&tx); err != nil {
-		return
-	}
-	signer, err := extract_signer(&tx)
-	if err != nil { // allow anonymous SC transactions with condition that SC will not call Signer
-		// this allows anonymous voting and numerous other applications
-		// otherwise SC receives signer as all zeroes
-	}
 
 	// setup block hash, height, topoheight correctly
-	state := &dvm.Shared_State{
+	state := &Shared_State{
 		Store:    tx_store,
 		Assets:   map[crypto.Hash]uint64{},
+		RamStore: map[Variable]Variable{},
 		SCIDSELF: scid,
-		Chain_inputs: &dvm.Blockchain_Input{
+		Chain_inputs: &Blockchain_Input{
 			BL_HEIGHT:     bl_height,
 			BL_TOPOHEIGHT: uint64(bl_topoheight),
 			BL_TIMESTAMP:  bl_timestamp,
 			SCID:          scid,
-			BLID:          bl_hash,
-			TXID:          tx_hash,
+			BLID:          blid,
+			TXID:          txid,
 			Signer:        string(signer[:]),
 		},
 	}
 
-	if _, ok = globals.Arguments["--debug"]; ok && globals.Arguments["--debug"] != nil && chain.simulator {
-		state.Trace = true // enable tracing for dvm simulator
+	tx_store.DiskLoader = diskloader // hook up loading from chain
+	tx_store.DiskLoaderRaw = diskloader_raw
+	tx_store.BalanceLoader = balance_loader
+	tx_store.BalanceAtStart = balance_at_start
+	tx_store.SCID = scid
+	tx_store.State = state
 
+	if _, ok = globals.Arguments["--debug"]; ok && globals.Arguments["--debug"] != nil && simulator {
+		state.Trace = true // enable tracing for dvm simulator
 	}
 
-	for _, payload := range tx.Payloads {
+	for asset, value := range incoming_value {
 		var new_value [8]byte
-		stored_value, _ := chain.LoadSCAssetValue(data_tree, scid, payload.SCID)
-		binary.BigEndian.PutUint64(new_value[:], stored_value+payload.BurnValue)
-		chain.StoreSCValue(data_tree, scid, payload.SCID[:], new_value[:])
-		state.Assets[payload.SCID] += payload.BurnValue
+		stored_value, _ := LoadSCAssetValue(data_tree, scid, asset)
+		binary.BigEndian.PutUint64(new_value[:], stored_value+value)
+		StoreSCValue(data_tree, scid, asset[:], new_value[:])
+		state.Assets[asset] += value
 	}
 
 	// we have an entrypoint, now we must setup parameters and dvm
@@ -199,16 +201,16 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 	for _, p := range function.Params {
 		var zerohash crypto.Hash
 		switch {
-		case p.Type == dvm.Uint64 && p.Name == "value":
+		case p.Type == Uint64 && p.Name == "value":
 			params[p.Name] = fmt.Sprintf("%d", state.Assets[zerohash]) // overide value
-		case p.Type == dvm.Uint64 && tx.SCDATA.Has(p.Name, rpc.DataUint64):
-			params[p.Name] = fmt.Sprintf("%d", tx.SCDATA.Value(p.Name, rpc.DataUint64).(uint64))
-		case p.Type == dvm.String && tx.SCDATA.Has(p.Name, rpc.DataString):
-			params[p.Name] = tx.SCDATA.Value(p.Name, rpc.DataString).(string)
-		case p.Type == dvm.String && tx.SCDATA.Has(p.Name, rpc.DataHash):
-			h := tx.SCDATA.Value(p.Name, rpc.DataHash).(crypto.Hash)
+		case p.Type == Uint64 && SCDATA.Has(p.Name, rpc.DataUint64):
+			params[p.Name] = fmt.Sprintf("%d", SCDATA.Value(p.Name, rpc.DataUint64).(uint64))
+		case p.Type == String && SCDATA.Has(p.Name, rpc.DataString):
+			params[p.Name] = SCDATA.Value(p.Name, rpc.DataString).(string)
+		case p.Type == String && SCDATA.Has(p.Name, rpc.DataHash):
+			h := SCDATA.Value(p.Name, rpc.DataHash).(crypto.Hash)
 			params[p.Name] = string(h[:])
-			fmt.Printf("%s:%x\n", p.Name, string(h[:]))
+			//fmt.Printf("%s:%x\n", p.Name, string(h[:]))
 
 		default:
 			err = fmt.Errorf("entrypoint '%s' parameter type missing or not yet supported (%+v)", entrypoint, p)
@@ -216,22 +218,53 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 		}
 	}
 
-	result, err := dvm.RunSmartContract(&sc_parsed, entrypoint, state, params)
+	state.GasComputeLimit = int64(10000000) // everyone has fixed amount of compute gas
+	if state.GasComputeLimit > 0 {
+		state.GasComputeCheck = true
+	}
+
+	// gas consumed in parameters to avoid tx bloats
+	if gasstorage_incoming > 0 {
+		if gasstorage_incoming > config.MAX_STORAGE_GAS_ATOMIC_UNITS {
+			gasstorage_incoming = config.MAX_STORAGE_GAS_ATOMIC_UNITS // whatever gas may be provided, upper limit of gas is this
+		}
+
+		state.GasStoreLimit = int64(gasstorage_incoming)
+		state.GasStoreCheck = true
+	}
+
+	// deduct gas from whatever has been included in TX
+	var scdata_bytes []byte
+	if scdata_bytes, err = SCDATA.MarshalBinary(); err != nil {
+		return
+	}
+
+	scdata_length := len(scdata_bytes)
+	state.ConsumeStorageGas(int64(scdata_length))
+
+	result, err := RunSmartContract(&sc_parsed, entrypoint, state, params)
+
+	if state.GasComputeUsed > 0 {
+		gascompute = uint64(state.GasComputeUsed)
+	}
+	if state.GasStoreUsed > 0 {
+		gasstorage = uint64(state.GasStoreUsed)
+	}
 
 	//fmt.Printf("result value %+v\n", result)
 
 	if err != nil {
-		logger.V(2).Error(err, "error execcuting SC", "entrypoint", entrypoint, "scid", scid)
+		//logger.V(2).Error(err, "error execcuting SC", "entrypoint", entrypoint, "scid", scid)
 		return
 	}
 
-	if err == nil && result.Type == dvm.Uint64 && result.ValueUint64 == 0 { // confirm the changes
+	if err == nil && result.Type == Uint64 && result.ValueUint64 == 0 { // confirm the changes
 		for k, v := range tx_store.RawKeys {
-			chain.StoreSCValue(data_tree, scid, []byte(k), v)
+			StoreSCValue(data_tree, scid, []byte(k), v)
+
+			//			fmt.Printf("storing %x %x\n", k,v)
 		}
-
-		data_tree.transfere = append(data_tree.transfere, tx_store.Transfers[scid].TransferE...)
-
+		data_tree.Transfere = append(data_tree.Transfere, tx_store.Transfers[scid].TransferE...)
 	} else { // discard all changes, since we never write to store immediately, they are purged, however we need to  return any value associated
 		err = fmt.Errorf("Discarded knowingly")
 		return
@@ -243,7 +276,7 @@ func (chain *Blockchain) execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree 
 }
 
 // reads SC, balance
-func (chain *Blockchain) ReadSC(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid crypto.Hash) (balance uint64, sc dvm.SmartContract, found bool) {
+func ReadSC(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid crypto.Hash) (balance uint64, sc SmartContract, found bool) {
 	meta_bytes, err := w_sc_tree.Get(SC_Meta_Key(scid))
 	if err != nil {
 		return
@@ -254,19 +287,19 @@ func (chain *Blockchain) ReadSC(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper
 		return
 	}
 	var zerohash crypto.Hash
-	balance, _ = chain.LoadSCAssetValue(data_tree, scid, zerohash)
+	balance, _ = LoadSCAssetValue(data_tree, scid, zerohash)
 
 	sc_bytes, err := data_tree.Get(SC_Code_Key(scid))
 	if err != nil {
 		return
 	}
 
-	var v dvm.Variable
+	var v Variable
 	if err = v.UnmarshalBinary(sc_bytes); err != nil {
 		return
 	}
 
-	sc, pos, err := dvm.ParseSmartContract(v.ValueString)
+	sc, pos, err := ParseSmartContract(v.ValueString)
 	if err != nil {
 		return
 	}
@@ -277,7 +310,7 @@ func (chain *Blockchain) ReadSC(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper
 	return
 }
 
-func (chain *Blockchain) LoadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key []byte) (v dvm.Variable, found bool) {
+func LoadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key []byte) (v Variable, found bool) {
 	//fmt.Printf("loading fromdb %s %s \n", scid, key)
 
 	object_data, err := data_tree.Get(key[:])
@@ -296,7 +329,7 @@ func (chain *Blockchain) LoadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, 
 	return v, true
 }
 
-func (chain *Blockchain) LoadSCAssetValue(data_tree *Tree_Wrapper, scid crypto.Hash, asset crypto.Hash) (v uint64, found bool) {
+func LoadSCAssetValue(data_tree *Tree_Wrapper, scid crypto.Hash, asset crypto.Hash) (v uint64, found bool) {
 	//fmt.Printf("loading fromdb %s %s \n", scid, key)
 
 	object_data, err := data_tree.Get(asset[:])
@@ -315,7 +348,7 @@ func (chain *Blockchain) LoadSCAssetValue(data_tree *Tree_Wrapper, scid crypto.H
 }
 
 // reads a value from SC, always read balance
-func (chain *Blockchain) ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key interface{}) (value interface{}) {
+func ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key interface{}) (value interface{}) {
 	var keybytes []byte
 
 	if key == nil {
@@ -323,22 +356,22 @@ func (chain *Blockchain) ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, 
 	}
 	switch k := key.(type) {
 	case uint64:
-		keybytes = dvm.DataKey{Key: dvm.Variable{Type: dvm.Uint64, ValueUint64: k}}.MarshalBinaryPanic()
+		keybytes = DataKey{Key: Variable{Type: Uint64, ValueUint64: k}}.MarshalBinaryPanic()
 	case string:
-		keybytes = dvm.DataKey{Key: dvm.Variable{Type: dvm.String, ValueString: k}}.MarshalBinaryPanic()
+		keybytes = DataKey{Key: Variable{Type: String, ValueString: k}}.MarshalBinaryPanic()
 	//case int64:
 	//	keybytes = dvm.DataKey{Key: dvm.Variable{Type: dvm.String, Value: k}}.MarshalBinaryPanic()
 	default:
 		return
 	}
 
-	value_var, found := chain.LoadSCValue(data_tree, scid, keybytes)
+	value_var, found := LoadSCValue(data_tree, scid, keybytes)
 	//fmt.Printf("read value %+v", value_var)
-	if found && value_var.Type != dvm.Invalid {
+	if found && value_var.Type != Invalid {
 		switch value_var.Type {
-		case dvm.Uint64:
+		case Uint64:
 			value = value_var.ValueUint64
-		case dvm.String:
+		case String:
 			value = value_var.ValueString
 		default:
 			panic("This variable cannot be loaded")
@@ -348,7 +381,7 @@ func (chain *Blockchain) ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, 
 }
 
 // store the value in the chain
-func (chain *Blockchain) StoreSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key, value []byte) {
+func StoreSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key, value []byte) {
 	if bytes.Compare(scid[:], key) == 0 { // an scid can mint its assets infinitely
 		return
 	}

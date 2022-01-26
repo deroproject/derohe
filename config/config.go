@@ -39,8 +39,12 @@ const SC_META = "M"      // keeps all SCs balance, their state, their OWNER, the
 // one are open SCs, which provide i/o privacy
 // one are private SCs which are truly private, in which no one has visibility of io or functionality
 
-// 10.25 MB block every 12 secs is equal to roughly 410 TX per second
-// if we consider side blocks, TPS increase to > 500 TPS
+// this limits the contract size or amount of data it can store per interaction
+const MAX_STORAGE_GAS_ATOMIC_UNITS = 20000
+
+// Minimum FEE calculation constants are here
+const FEE_PER_KB = uint64(100) // .00100 dero per kb
+
 // we can easily improve TPS by changing few parameters in this file
 // the resources compute/network may not be easy for the developing countries
 // we need to trade of TPS  as per community
@@ -50,9 +54,6 @@ const STARGATE_HE_MAX_TX_SIZE = 300 * 1024 // max size
 
 const MIN_RINGSIZE = 2   //  >= 2 ,   ringsize will be accepted
 const MAX_RINGSIZE = 128 // <= 128,  ringsize will be accepted
-
-// Minimum FEE calculation constants are here
-const FEE_PER_KB = uint64(100) // .00100 dero per kb
 
 type SettingsStruct struct {
 	MAINNET_BOOTSTRAP_DIFFICULTY uint64 `env:"MAINNET_BOOTSTRAP_DIFFICULTY" envDefault:"80000000"`
@@ -106,7 +107,7 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x77, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x78, 0x00, 0x00, 0x00}),
 	GETWORK_Default_Port:    10100,
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,

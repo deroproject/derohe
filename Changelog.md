@@ -24,12 +24,17 @@
 - Few more ideas implemented and will be tested for review in upcoming technology preview.
 - 
 
+
+
 ###3.4
 
 - DAG/MINIDAG with blocks flowing every second
 - Mining Decentralization.No more mining pools, daily 100000 reward blocks, no need for pools and thus no attacks
 - Erasure coded blocks, lower bandwidth requirements, very low propagation time. Tested with upto 20 MB blocks.
 - DERO Simulator for faster Development cycle 
+- Gas Support implemented ( both storage gas/compute gas)
+- Implemented gas estimation
+- DVM simulator to test all edge cases for SC dev, see dvm/simulator_test.go to see it in action for lotter SC. 
 
 ###3.3 
 

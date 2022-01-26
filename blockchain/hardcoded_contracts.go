@@ -74,31 +74,31 @@ func (chain *Blockchain) install_hardcoded_contracts(cache map[crypto.Hash]*grav
 
 // hard coded contracts generally do not do any initialization
 func (chain *Blockchain) install_hardcoded_sc(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, balance_tree *graviton.Tree, sc_tree *graviton.Tree, source string, scid crypto.Hash) (err error) {
-	w_sc_tree := &Tree_Wrapper{tree: sc_tree, entries: map[string][]byte{}}
-	var w_sc_data_tree *Tree_Wrapper
+	w_sc_tree := &dvm.Tree_Wrapper{Tree: sc_tree, Entries: map[string][]byte{}}
+	var w_sc_data_tree *dvm.Tree_Wrapper
 
-	meta := SC_META_DATA{}
-	w_sc_data_tree = wrapped_tree(cache, ss, scid)
+	meta := dvm.SC_META_DATA{}
+	w_sc_data_tree = dvm.Wrapped_tree(cache, ss, scid)
 
 	// install SC, should we check for sanity now, why or why not
-	w_sc_data_tree.Put(SC_Code_Key(scid), dvm.Variable{Type: dvm.String, ValueString: source}.MarshalBinaryPanic())
-	w_sc_tree.Put(SC_Meta_Key(scid), meta.MarshalBinary())
+	w_sc_data_tree.Put(dvm.SC_Code_Key(scid), dvm.Variable{Type: dvm.String, ValueString: source}.MarshalBinaryPanic())
+	w_sc_tree.Put(dvm.SC_Meta_Key(scid), meta.MarshalBinary())
 
 	// we must commit all the changes
 
 	// anything below should never give error
 	if _, ok := cache[scid]; !ok {
-		cache[scid] = w_sc_data_tree.tree
+		cache[scid] = w_sc_data_tree.Tree
 	}
 
-	for k, v := range w_sc_data_tree.entries { // commit entire data to tree
-		if err = w_sc_data_tree.tree.Put([]byte(k), v); err != nil {
+	for k, v := range w_sc_data_tree.Entries { // commit entire data to tree
+		if err = w_sc_data_tree.Tree.Put([]byte(k), v); err != nil {
 			return
 		}
 	}
 
-	for k, v := range w_sc_tree.entries {
-		if err = w_sc_tree.tree.Put([]byte(k), v); err != nil {
+	for k, v := range w_sc_tree.Entries {
+		if err = w_sc_tree.Tree.Put([]byte(k), v); err != nil {
 			return
 		}
 	}

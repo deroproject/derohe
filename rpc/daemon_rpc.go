@@ -217,6 +217,7 @@ type (
 		ValidBlock     string     `json:"valid_block"`   // TX is valid in this block
 		InvalidBlock   []string   `json:"invalid_block"` // TX is invalid in this block,  0 or more
 		Ring           [][]string `json:"ring"`          // ring members completed, since tx contains compressed
+		Signer         string     `json:"signer"`        // if signer could be extracted, it will be placed here
 		Balance        uint64     `json:"balance"`       // if tx is SC, give SC balance at start
 		Code           string     `json:"code"`          // smart contract code at start
 		BalanceNow     uint64     `json:"balancenow"`    // if tx is SC, give SC balance at current topo height
@@ -269,27 +270,6 @@ type (
 	}
 )
 
-/*
-{
-  "id": "0",
-  "jsonrpc": "2.0",
-  "result": {
-    "alt_blocks_count": 5,
-    "difficulty": 972165250,
-    "grey_peerlist_size": 2280,
-    "height": 993145,
-    "incoming_connections_count": 0,
-    "outgoing_connections_count": 8,
-    "status": "OK",
-    "target": 60,
-    "target_height": 993137,
-    "testnet": false,
-    "top_block_hash": "",
-    "tx_count": 564287,
-    "tx_pool_size": 45,
-    "white_peerlist_size": 529
-  }
-}*/
 type (
 	GetInfo_Params struct{} // no params
 	GetInfo_Result struct {
@@ -319,3 +299,10 @@ type (
 		Status string `json:"status"`
 	}
 )
+
+type GasEstimate_Params Transfer_Params // same structure as used by transfer call
+type GasEstimate_Result struct {
+	GasCompute uint64 `json:"gascompute"`
+	GasStorage uint64 `json:"gasstorage"`
+	Status     string `json:"status"`
+}

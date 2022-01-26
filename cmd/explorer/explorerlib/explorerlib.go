@@ -474,6 +474,7 @@ func load_tx_info_from_tx(info *txinfo, tx *transaction.Transaction) (err error)
 
 	if tx.TransactionType == transaction.SC_TX {
 		info.SC_Args = tx.SCDATA
+
 	}
 
 	// if outputs cannot be located, do not panic
@@ -556,6 +557,10 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 
 	info.Ring = tx_result.Txs[0].Ring
 
+	if tx.TransactionType == transaction.SC_TX {
+		info.SC_Signer = "Unknown"
+	}
+
 	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.SC_TX {
 
 		for t := range tx.Payloads {
@@ -570,6 +575,7 @@ func load_tx_from_rpc(info *txinfo, txhash string) (err error) {
 
 			a.Ring_size = len(tx_result.Txs[0].Ring[t])
 			a.Ring = tx_result.Txs[0].Ring[t]
+			info.SC_Signer = tx_result.Txs[0].Signer
 
 			info.Assets = append(info.Assets, a)
 

@@ -218,7 +218,7 @@ func Test_Creation_TX(t *testing.T) {
 	// here we are collecting proofs for later on bennhcmarking
 	for j := 2; j <= 128; j = j * 2 {
 		wsrc.account.Ringsize = j
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {
@@ -236,7 +236,7 @@ func Test_Creation_TX(t *testing.T) {
 
 	// accounts are reversed
 	wdst.Sync_Wallet_Memory_With_Daemon()
-	reverse_tx, err := wdst.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wsrc.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, false)
+	reverse_tx, err := wdst.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wsrc.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 	if err != nil {
 		t.Fatalf("Cannot create transaction, err %s", err)
 	}
@@ -250,7 +250,7 @@ func Test_Creation_TX(t *testing.T) {
 	pre_transfer_src_balance := wsrc.account.Balance_Mature
 	pre_transfer_dst_balance := wdst.account.Balance_Mature
 
-	tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, false)
+	tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 	if err != nil {
 		t.Fatalf("Cannot create transaction, err %s", err)
 	} else {
@@ -292,7 +292,7 @@ func Test_Creation_TX(t *testing.T) {
 	var tx_set []*transaction.Transaction
 
 	for i := 0; i < 6; i++ {
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {

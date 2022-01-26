@@ -57,7 +57,7 @@ func (w *Wallet_Memory) Transfer_Simplified(addr string, value uint64, data []by
 // we should reply to an entry
 
 // send amount to specific addresses
-func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, dry_run bool) (tx *transaction.Transaction, err error) {
+func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, gasstorage uint64, dry_run bool) (tx *transaction.Transaction, err error) {
 
 	//    var  transfer_details structures.Outgoing_Transfer_Details
 	w.transfer_mutex.Lock()
@@ -215,6 +215,10 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	var block_hash crypto.Hash
 
 	var zeroscid crypto.Hash
+
+	// noncetopo should be verified for all ring members simultaneously
+	// this can lead to tx rejection
+	// we currently bypass this since random members are chosen which have not been used in last 5 block
 	_, noncetopo, block_hash, self_e, err := w.GetEncryptedBalanceAtTopoHeight(zeroscid, -1, w.GetAddress().String())
 	if err != nil {
 		return
@@ -362,7 +366,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	max_bits += 6 // extra 6 bits
 
 	if !dry_run {
-		tx = w.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits)
+		tx = w.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage)
 	}
 
 	if tx == nil {

@@ -78,7 +78,7 @@ type Transaction_Prefix struct {
 
 	TransactionType TransactionType `json:"txtype"`
 
-	Value        uint64        `json:"value"`         // represents value for premine, SC, BURN transactions
+	Value        uint64        `json:"value"`         // represents value for premine, Gas for SC, BURN transactions
 	MinerAddress [33]byte      `json:"miner_address"` // miner address  // 33 bytes also used for registration
 	C            [32]byte      `json:"c"`             // used for registration
 	S            [32]byte      `json:"s"`             // used for registration
@@ -226,6 +226,27 @@ func (tx *Transaction) Fees() (fees uint64) {
 	return fees
 }
 
+// tx storage gas
+func (tx *Transaction) GasStorage() (fees uint64) {
+	return tx.Fees()
+	/*
+	       if !tx.IsSC(){
+	           return 0
+	       }
+	   	var zero_scid [32]byte
+	       count := 0
+	   	for i := range tx.Payloads {
+	   		if zero_scid == tx.Payloads[i].SCID {
+	   			count++
+	   		}
+	   	}
+	       if count == 1 {
+	           return tx.Value
+	       }
+	   	return 0
+	*/
+}
+
 func (tx *Transaction) IsRegistrationValid() (result bool) {
 
 	var u bn256.G1
@@ -293,7 +314,7 @@ func (tx *Transaction) Deserialize(buf []byte) (err error) {
 		panic("unknown transaction type")
 	}
 
-	if tx.TransactionType == PREMINE || tx.TransactionType == BURN_TX || tx.TransactionType == SC_TX {
+	if tx.TransactionType == PREMINE || tx.TransactionType == SC_TX { // represents Gas in SC tx
 		tx.Value, done = binary.Uvarint(buf)
 		if done <= 0 {
 			return fmt.Errorf("Invalid Premine value  in Transaction\n")
@@ -420,7 +441,7 @@ func (tx *Transaction) SerializeHeader() []byte {
 	n = binary.PutUvarint(buf, uint64(tx.TransactionType))
 	serialised_header.Write(buf[:n])
 
-	if tx.TransactionType == PREMINE || tx.TransactionType == BURN_TX || tx.TransactionType == SC_TX {
+	if tx.TransactionType == PREMINE || tx.TransactionType == SC_TX {
 		n := binary.PutUvarint(buf, tx.Value)
 		serialised_header.Write(buf[:n])
 	}

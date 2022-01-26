@@ -21,6 +21,7 @@ import "os"
 import "time"
 import "fmt"
 import "bytes"
+import "errors"
 
 import "strings"
 import "strconv"
@@ -67,7 +68,7 @@ DERO : A secure, private blockchain with smart-contracts
 Simulates DERO block single node which helps in development and tests
 
 Usage:
-  simulator [--help] [--version] [--testnet] [--debug]  [--sync-node] [--data-dir=<directory>] [--rpc-bind=<127.0.0.1:9999>] [--http-address=<0.0.0.0:8080>] [--clog-level=1] [--flog-level=1]
+  simulator [--help] [--version] [--testnet] [--debug] [--noautomine] [--sync-node] [--data-dir=<directory>] [--rpc-bind=<127.0.0.1:9999>] [--http-address=<0.0.0.0:8080>] [--clog-level=1] [--flog-level=1]
   simulator -h | --help
   simulator --version
 
@@ -76,6 +77,7 @@ Options:
   --version     Show version.
   --testnet  	Run in testnet mode.
   --debug       Debug mode enabled, print more log messages
+  --noautomine  No blocks will be mined (except genesis), used for testing, supported only on linux
   --clog-level=1	Set console log level (0 to 127) 
   --flog-level=1	Set file log level (0 to 127)
   --data-dir=<directory>    Store blockchain data at this location
@@ -89,6 +91,8 @@ var logger logr.Logger
 
 var rpcport = "127.0.0.1:20000"
 
+var TRIGGER_MINE_BLOCK string = "/dev/shm/mineblocknow"
+
 const wallet_ports_start = 30000 // all wallets will rpc activated on ports
 
 // this is a crude function used during tests
@@ -100,16 +104,17 @@ func Mine_block_single(chain *blockchain.Blockchain, miner_address rpc.Address) 
 	//	return fmt.Errorf("this function can only run in simulator mode")
 	//}
 
-	for i := uint64(0); i < config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF; i++ {
+	for {
 		bl, mbl, _, _, err := chain.Create_new_block_template_mining(miner_address)
 		if err != nil {
 			logger.Error(err, "err while request block template")
 			return err
 		}
-		if _, blid, _, err = chain.Accept_new_block(bl.Timestamp, mbl.Serialize()); blid.IsZero() || err != nil {
-			if err != nil {
-				logger.Error(err, "err while accepting block template")
-			}
+		if _, blid, _, err = chain.Accept_new_block(bl.Timestamp, mbl.Serialize()); err != nil {
+			logger.Error(err, "err while accepting block template")
+			return err
+		} else if !blid.IsZero() {
+			break
 		}
 	}
 	return nil
@@ -546,26 +551,46 @@ exit:
 	}
 }
 
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return !errors.Is(err, os.ErrNotExist)
+}
+
+func trigger_block_creation() {
+	fmt.Printf("triggering fie creation\n")
+	if globals.Arguments["--noautomine"].(bool) == true {
+		err := os.WriteFile(TRIGGER_MINE_BLOCK, []byte("HELLO"), 0666)
+		fmt.Printf("triggering fie creation %s err %s\n", TRIGGER_MINE_BLOCK, err)
+	}
+}
+
 // generate a block as soon as tx appears in blockchain
 // or 15 sec pass
 func mine_block_auto(chain *blockchain.Blockchain, miner_address rpc.Address) {
+
 	last_block_time := time.Now()
 	for {
 		bl, _, _, _, err := chain.Create_new_block_template_mining(miner_address)
 		if err != nil {
 			logger.Error(err, "error while building mining block")
+			continue
 		}
 
-		if time.Now().Sub(last_block_time) > time.Duration(config.BLOCK_TIME)*time.Second || // every X secs generate a block
-			len(bl.Tx_hashes) >= 1 { //pools have a tx, try to mine them ASAP
-
-			if err := Mine_block_single(chain, miner_address); err != nil {
-				time.Sleep(time.Second)
-				continue
+		if globals.Arguments["--noautomine"].(bool) == true && exists(TRIGGER_MINE_BLOCK) {
+			if err = Mine_block_single(chain, miner_address); err == nil {
+				last_block_time = time.Now()
+				os.Remove(TRIGGER_MINE_BLOCK)
+			} else {
+				logger.Error(err, "error while mining single block")
 			}
-
-			last_block_time = time.Now()
-
+		}
+		if globals.Arguments["--noautomine"].(bool) == false {
+			if time.Now().Sub(last_block_time) > time.Duration(config.BLOCK_TIME)*time.Second || // every X secs generate a block
+				len(bl.Tx_hashes) >= 1 { //pools have a tx, try to mine them ASAP
+				if err := Mine_block_single(chain, miner_address); err == nil {
+					last_block_time = time.Now()
+				}
+			}
 		}
 		time.Sleep(900 * time.Millisecond)
 	}

@@ -157,10 +157,10 @@ func check_valid_name(name string) bool {
 }
 
 func check_valid_type(name string) Vtype {
-	switch name {
-	case "Uint64":
+	switch strings.ToLower(name) {
+	case "uint64":
 		return Uint64
-	case "String":
+	case "string":
 		return String
 	}
 	return Invalid
@@ -405,16 +405,25 @@ type Blockchain_Input struct {
 // all storage state is shared, this means something similar to solidity delegatecall
 // this is necessary to prevent number of attacks
 type Shared_State struct {
-	SCIDZERO    crypto.Hash // points to DERO SCID , which is zero
-	SCIDSELF    crypto.Hash // points to SELF SCID
-	Persistance bool        // whether the results will be persistant or it's just a demo/test call
-	Trace       bool        // enables tracing to screen
+	SCIDZERO crypto.Hash // points to DERO SCID , which is zero
+	SCIDSELF crypto.Hash // points to SELF SCID, this separation is necessary, if we enable cross SC calls
+	// but note they bring all sorts of mess, bugs
+	Persistance     bool // whether the results will be persistant or it's just a demo/test call
+	Trace           bool // enables tracing to screen
+	GasComputeUsed  int64
+	GasComputeLimit int64
+	GasComputeCheck bool // if gascheck is true, bail out as soon as limit is breached
+	GasStoreUsed    int64
+	GasStoreLimit   int64
+	GasStoreCheck   bool // storage gas, bail out as soon as limit is breached
 
 	Chain_inputs *Blockchain_Input // all blockchain info is available here
 
 	Assets          map[crypto.Hash]uint64       // all assets supplied with this tx, including DERO main asset
 	Assets_Transfer map[string]map[string]uint64 // any Assets that this TX wants to send OUT
 	// transfers are only processed after the contract has terminated successfully
+
+	RamStore map[Variable]Variable
 
 	RND   *RND        // this is initialized only once  while invoking entrypoint
 	Store *TX_Storage // mechanism to access a data store, can discard changes
@@ -425,10 +434,28 @@ type Shared_State struct {
 
 }
 
+//consumr and check compute gas
+func (state *Shared_State) ConsumeGas(c int64) {
+	if state != nil {
+		state.GasComputeUsed += c
+		if state.GasComputeCheck && state.GasComputeUsed > state.GasComputeLimit {
+			panic("Insufficient Gas")
+		}
+	}
+}
+
+// consume and check storage gas
+func (state *Shared_State) ConsumeStorageGas(c int64) {
+	if state != nil {
+		state.GasStoreUsed += c
+		if state.GasStoreCheck && state.GasStoreUsed > state.GasStoreLimit {
+			panic("Insufficient Storage Gas")
+		}
+	}
+}
+
 type DVM_Interpreter struct {
 	Version     semver.Version // current version set by setversion
-	Cost        int64
-	CostLimit   int64
 	SCID        string
 	SC          *SmartContract
 	EntryPoint  string
@@ -449,10 +476,8 @@ type DVM_Interpreter struct {
 
 func (i *DVM_Interpreter) incrementIP(newip uint64) (line []string, err error) {
 	var ok bool
+
 try_again:
-
-	// increase cost here
-
 	if newip == 0 { // we are simply falling through
 		index := i.f.LinesNumberIndex[i.IP] // find the pos in the line numbers and find the current line_number
 		index++
@@ -493,10 +518,12 @@ func (i *DVM_Interpreter) interpret_SmartContract() (err error) {
 			return
 		}
 
+		i.State.ConsumeGas(5000) // every line number has some gas costs
+
 		newIP = 0 // this is necessary otherwise, it will trigger an infinite loop in the case given below
 
 		/*
-			                 * Function SetOwner(value Uint64, newowner String) Uint64
+			    * Function SetOwner(value Uint64, newowner String) Uint64
 				10  IF LOAD("owner") == SIGNER() THEN GOTO 30
 				20  RETURN 1
 				30  STORE("owner",newowner)
@@ -963,6 +990,8 @@ func IsZero(value interface{}) uint64 {
 
 func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 
+	dvm.State.ConsumeGas(800) // every expr evaluation has some cost
+
 	left := dvm.eval(exp.X)
 	right := dvm.eval(exp.Y)
 
@@ -992,7 +1021,6 @@ func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 			return uint64(1)
 		}
 		return uint64(0)
-
 	}
 
 	// handle string operands
@@ -1002,6 +1030,9 @@ func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 
 		switch exp.Op {
 		case token.ADD:
+			if len(left_string)+len(right_string) >= 1024*1024 {
+				panic("too big string value")
+			}
 			return left_string + right_string
 		case token.EQL:
 			if left_string == right_string {
@@ -1016,7 +1047,6 @@ func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 		default:
 			panic(fmt.Sprintf("String data type only support addition operation ('%s') not supported", exp.Op))
 		}
-
 	}
 
 	left_uint64 := left.(uint64)
@@ -1071,65 +1101,7 @@ func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 			return uint64(1)
 		}
 	default:
-		panic("This operation  cannot be handled")
+		panic("This operation cannot be handled")
 	}
 	return uint64(0)
 }
-
-/*
-func main() {
-
-	const src = `
-        Function HelloWorld(s Uint64) Uint64
-
-        5
-        10 Dim x1, x2 as Uint64
-        20 LET x1 = 3
-        25 LET x1 = 3 + 5 - 1
-        27 LET x2 = x1 + 3
-        28 RETURN HelloWorld2(s*s)
-        30 Printf "x1=%d x2=%d s = %d" x1 x2 s
-        35 IF x1 == 7 THEN GOTO 100 ELSE GOTO 38
-        38 Dim y1, y2 as String
-        40 LET y1 = "first string" + "second string"
-
-
-        60 GOTO 100
-        80 GOTO 10
-        100 RETURN 0
-        500 LET y = 45
-        501 y = 45
-
-        End Function
-
-
-        Function HelloWorld2(s Uint64) Uint64
-
-	900 Return s
-	950 y = 45
-    // Comment begins at column 5.
-
-   ;  This line should not be included in the output.
-REM jj
-
-
-
-7000 let x.ku[1+1]=0x55
-End Function
-
-`
-
-	// we should be build an AST here
-
-	sc, pos, err := ParseSmartContract(src)
-	if err != nil {
-		fmt.Printf("Error while parsing smart contract pos %s err : %s\n", pos, err)
-		return
-	}
-
-	result, err := RunSmartContract(&sc, "HelloWorld", map[string]interface{}{"s": "9999"})
-
-	fmt.Printf("result %+v err %s\n", result, err)
-
-}
-*/

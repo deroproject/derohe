@@ -17,6 +17,7 @@
 package rpc
 
 import "fmt"
+import "bytes"
 import "context"
 import "runtime/debug"
 import "github.com/deroproject/derohe/config"
@@ -26,6 +27,7 @@ import "github.com/deroproject/derohe/rpc"
 
 //import "github.com/deroproject/derohe/blockchain"
 
+// only give random members who have not been used in last 5 blocks
 func GetRandomAddress(ctx context.Context, p rpc.GetRandomAddress_Params) (result rpc.GetRandomAddress_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
@@ -33,9 +35,10 @@ func GetRandomAddress(ctx context.Context, p rpc.GetRandomAddress_Params) (resul
 		}
 	}()
 	topoheight := chain.Load_TOPO_HEIGHT()
+	old_topoheight := topoheight
 
-	if topoheight > 100 {
-		topoheight -= 5
+	if old_topoheight > 100 {
+		old_topoheight -= 5
 	}
 
 	var cursor_list []string
@@ -43,11 +46,19 @@ func GetRandomAddress(ctx context.Context, p rpc.GetRandomAddress_Params) (resul
 	{
 
 		toporecord, err := chain.Store.Topo_store.Read(topoheight)
-
 		if err != nil {
 			panic(err)
 		}
+		toporecord_old, err := chain.Store.Topo_store.Read(old_topoheight)
+		if err != nil {
+			panic(err)
+		}
+
 		ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+		if err != nil {
+			panic(err)
+		}
+		ss_old, err := chain.Store.Balance_store.LoadSnapshot(toporecord_old.State_Version)
 		if err != nil {
 			panic(err)
 		}
@@ -61,13 +72,25 @@ func GetRandomAddress(ctx context.Context, p rpc.GetRandomAddress_Params) (resul
 		if err != nil {
 			panic(err)
 		}
+		balance_tree_old, err := ss_old.GetTree(treename)
+		if err != nil {
+			panic(err)
+		}
 
 		account_map := map[string]bool{}
 
 		for i := 0; i < 100; i++ {
 
-			k, _, err := balance_tree.Random()
+			k, v, err := balance_tree.Random()
 			if err != nil {
+				continue
+			}
+			v_old, err := balance_tree_old.Get(k)
+			if err != nil {
+				continue
+			}
+
+			if bytes.Compare(v, v_old) != 0 {
 				continue
 			}
 

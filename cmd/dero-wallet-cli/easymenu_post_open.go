@@ -177,7 +177,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 		}
 
 		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{SCID: scid, Amount: amount_to_transfer, Destination: a.String()}}, 0, false, rpc.Arguments{}, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{SCID: scid, Amount: amount_to_transfer, Destination: a.String()}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")
@@ -332,7 +332,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 			//src_port := uint64(0xffffffffffffffff)
 
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, 0, false, rpc.Arguments{}, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")

@@ -205,6 +205,8 @@ type (
 		SC_ID     string     `json:"scid"`
 		SC_RPC    Arguments  `json:"sc_rpc"`
 		Ringsize  uint64     `json:"ringsize"`
+		Fees      uint64     `json:"fees"`
+		Signer    string     `json:"signer"` // only used for gas estimation
 	}
 	Transfer_Result struct {
 		TXID string `json:"txid,omitempty"`

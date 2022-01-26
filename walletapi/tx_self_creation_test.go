@@ -87,6 +87,10 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 	}
 
 	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
+	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
+	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
+	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
+	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
 
 	wgenesis.SetDaemonAddress(rpcport)
 	wsrc.SetDaemonAddress(rpcport)
@@ -102,6 +106,9 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 	if err = wsrc.Sync_Wallet_Memory_With_Daemon(); err != nil {
 		t.Fatalf("wallet sync error err %s", err)
 	}
+	if err = wdst.Sync_Wallet_Memory_With_Daemon(); err != nil {
+		t.Fatalf("wallet sync error err %s", err)
+	}
 
 	wsrc.account.Ringsize = 2
 	wdst.account.Ringsize = 2
@@ -109,7 +116,12 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 	var txs []transaction.Transaction
 	for i := 0; i < 7; i++ {
 
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 700000}}, 0, false, rpc.Arguments{}, false)
+		wsrc.Sync_Wallet_Memory_With_Daemon()
+		wdst.Sync_Wallet_Memory_With_Daemon()
+
+		t.Logf("Chain height %d\n", chain.Get_Height())
+
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 700000}}, 0, false, rpc.Arguments{}, 100000, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {

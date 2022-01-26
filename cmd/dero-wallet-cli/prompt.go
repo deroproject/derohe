@@ -216,7 +216,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 
 			//uid, err := wallet.PoolTransferWithBurn(addr, send_amount, burn_amount, data, rpc.Arguments{})
 
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{Amount: send_amount, Burn: burn_amount, Destination: addr}}, 0, false, rpc.Arguments{}, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{Amount: send_amount, Burn: burn_amount, Destination: addr}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")

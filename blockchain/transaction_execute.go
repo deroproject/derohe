@@ -24,7 +24,6 @@ import "strings"
 import "strconv"
 import "runtime/debug"
 import "encoding/hex"
-import "encoding/binary"
 import "math/big"
 import "golang.org/x/xerrors"
 
@@ -243,38 +242,6 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 	}
 }
 
-type Tree_Wrapper struct {
-	tree      *graviton.Tree
-	entries   map[string][]byte
-	transfere []dvm.TransferExternal
-}
-
-func (t *Tree_Wrapper) Get(key []byte) ([]byte, error) {
-	if value, ok := t.entries[string(key)]; ok {
-		return value, nil
-	} else {
-		return t.tree.Get(key)
-	}
-}
-
-func (t *Tree_Wrapper) Put(key []byte, value []byte) error {
-	t.entries[string(key)] = append([]byte{}, value...)
-	return nil
-}
-
-// checks cache and returns a wrapped tree if possible
-func wrapped_tree(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, id crypto.Hash) *Tree_Wrapper {
-	if cached_tree, ok := cache[id]; ok { // tree is in cache return it
-		return &Tree_Wrapper{tree: cached_tree, entries: map[string][]byte{}}
-	}
-
-	if tree, err := ss.GetTree(string(id[:])); err != nil {
-		panic(err)
-	} else {
-		return &Tree_Wrapper{tree: tree, entries: map[string][]byte{}}
-	}
-}
-
 // does additional processing for SC
 // all processing occurs in wrapped trees, if any error occurs we dicard all trees
 func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, bl_height, bl_topoheight, bl_timestamp uint64, blid crypto.Hash, tx transaction.Transaction, balance_tree *graviton.Tree, sc_tree *graviton.Tree) (gas uint64, err error) {
@@ -285,11 +252,13 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 
 	gas = tx.Fees()
 
-	w_balance_tree := &Tree_Wrapper{tree: balance_tree, entries: map[string][]byte{}}
-	w_sc_tree := &Tree_Wrapper{tree: sc_tree, entries: map[string][]byte{}}
+	var gascompute, gasstorage uint64
 
-	_ = w_balance_tree
-	var w_sc_data_tree *Tree_Wrapper
+	_ = gascompute
+	_ = gasstorage
+
+	w_sc_tree := &dvm.Tree_Wrapper{Tree: sc_tree, Entries: map[string][]byte{}}
+	var w_sc_data_tree *dvm.Tree_Wrapper
 
 	txhash := tx.GetHash()
 	scid := txhash
@@ -302,8 +271,20 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 	}()
 
 	if !tx.SCDATA.Has(rpc.SCACTION, rpc.DataUint64) { //  tx doesn't have sc action
-		//err = fmt.Errorf("no scid provided")
 		return tx.Fees(), nil
+	}
+
+	incoming_value := map[crypto.Hash]uint64{}
+	for _, payload := range tx.Payloads {
+		incoming_value[payload.SCID] = payload.BurnValue
+	}
+
+	chain.Expand_Transaction_NonCoinbase(&tx)
+
+	signer, err := Extract_signer(&tx)
+	if err != nil { // allow anonymous SC transactions with condition that SC will not call Signer
+		// this allows anonymous voting and numerous other applications
+		// otherwise SC receives signer as all zeroes
 	}
 
 	action_code := rpc.SC_ACTION(tx.SCDATA.Value(rpc.SCACTION, rpc.DataUint64).(uint64))
@@ -329,21 +310,28 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 			break
 		}
 
-		meta := SC_META_DATA{}
+		meta := dvm.SC_META_DATA{}
 		if _, ok := sc.Functions["InitializePrivate"]; ok {
 			meta.Type = 1
 		}
 
-		w_sc_data_tree = wrapped_tree(cache, ss, scid)
+		w_sc_data_tree = dvm.Wrapped_tree(cache, ss, scid)
 
 		// install SC, should we check for sanity now, why or why not
-		w_sc_data_tree.Put(SC_Code_Key(scid), dvm.Variable{Type: dvm.String, ValueString: sc_code}.MarshalBinaryPanic())
-		w_sc_tree.Put(SC_Meta_Key(scid), meta.MarshalBinary())
+		w_sc_data_tree.Put(dvm.SC_Code_Key(scid), dvm.Variable{Type: dvm.String, ValueString: sc_code}.MarshalBinaryPanic())
+		w_sc_tree.Put(dvm.SC_Meta_Key(scid), meta.MarshalBinary())
 
+		entrypoint := "Initialize"
 		if meta.Type == 1 { // if its a a private SC
-			gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, bl_timestamp, blid, tx, "InitializePrivate", 1)
+			entrypoint = "InitializePrivate"
+		}
+
+		balance, sc_parsed, found := dvm.ReadSC(w_sc_tree, w_sc_data_tree, scid)
+		if found {
+			gascompute, gasstorage, err = dvm.Execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, bl_timestamp, blid, txhash, sc_parsed, entrypoint, 1, balance, signer, incoming_value, tx.SCDATA, tx.Fees(), chain.simulator)
 		} else {
-			gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, bl_timestamp, blid, tx, "Initialize", 1)
+			logger.V(1).Error(nil, "SC not found", "scid", scid)
+			err = fmt.Errorf("SC not found %s", scid)
 		}
 
 		if err != nil {
@@ -364,17 +352,23 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 
 		scid = tx.SCDATA.Value(rpc.SCID, rpc.DataHash).(crypto.Hash)
 
-		if _, err = w_sc_tree.Get(SC_Meta_Key(scid)); err != nil {
+		if _, err = w_sc_tree.Get(dvm.SC_Meta_Key(scid)); err != nil {
 			err = fmt.Errorf("scid %s not installed", scid)
 			return
 		}
 
-		w_sc_data_tree = wrapped_tree(cache, ss, scid)
+		w_sc_data_tree = dvm.Wrapped_tree(cache, ss, scid)
 
 		entrypoint := tx.SCDATA.Value("entrypoint", rpc.DataString).(string)
 		//fmt.Printf("We must call the SC %s function\n", entrypoint)
 
-		gas, err = chain.execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, bl_timestamp, blid, tx, entrypoint, 1)
+		balance, sc_parsed, found := dvm.ReadSC(w_sc_tree, w_sc_data_tree, scid)
+		if found {
+			gascompute, gasstorage, err = dvm.Execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, bl_timestamp, blid, txhash, sc_parsed, entrypoint, 1, balance, signer, incoming_value, tx.SCDATA, tx.Fees(), chain.simulator)
+		} else {
+			logger.V(1).Error(nil, "SC not found", "scid", scid)
+			err = fmt.Errorf("SC not found %s", scid)
+		}
 
 	default: // unknown  what to do
 		err = fmt.Errorf("unknown action what to do scid %x", scid)
@@ -384,48 +378,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 	// we must commit all the changes
 	// check whether we are not overflowing/underflowing, means SC is not over sending
 	if err == nil {
-		total_per_asset := map[crypto.Hash]uint64{}
-		for _, transfer := range w_sc_data_tree.transfere { // do external tranfer
-			if transfer.Amount == 0 {
-				continue
-			}
-
-			// an SCID can generate it's token infinitely
-			if transfer.Asset != scid && total_per_asset[transfer.Asset]+transfer.Amount <= total_per_asset[transfer.Asset] {
-				err = fmt.Errorf("Balance calculation overflow")
-				break
-			} else {
-				total_per_asset[transfer.Asset] = total_per_asset[transfer.Asset] + transfer.Amount
-			}
-		}
-
-		if err == nil {
-			for asset, value := range total_per_asset {
-				stored_value, _ := chain.LoadSCAssetValue(w_sc_data_tree, scid, asset)
-				// an SCID can generate it's token infinitely
-				if asset != scid && stored_value-value > stored_value {
-					err = fmt.Errorf("Balance calculation underflow stored_value %d  transferring %d\n", stored_value, value)
-					break
-				}
-
-				var new_value [8]byte
-				binary.BigEndian.PutUint64(new_value[:], stored_value-value)
-				chain.StoreSCValue(w_sc_data_tree, scid, asset[:], new_value[:])
-			}
-		}
-
-		//also check whether all destinations are registered
-		if err == nil {
-			for _, transfer := range w_sc_data_tree.transfere {
-				if _, err = balance_tree.Get([]byte(transfer.Address)); err == nil || xerrors.Is(err, graviton.ErrNotFound) {
-					// everything is okay
-				} else {
-					err = fmt.Errorf("account is unregistered")
-					logger.V(1).Error(err, "account is unregistered", "txhash", txhash, "scid", scid, "address", transfer.Address)
-					break
-				}
-			}
-		}
+		err = dvm.SanityCheckExternalTransfers(w_sc_data_tree, balance_tree, scid)
 	}
 
 	if err != nil { // error occured, give everything to SC, since we may not have information to send them back
@@ -433,111 +386,15 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 			logger.Error(err, "error executing sc", "txid", txhash)
 		}
 
-		for _, payload := range tx.Payloads {
-			var new_value [8]byte
-
-			w_sc_data_tree = wrapped_tree(cache, ss, scid) // get a new tree, discarding everything
-
-			stored_value, _ := chain.LoadSCAssetValue(w_sc_data_tree, scid, payload.SCID)
-			binary.BigEndian.PutUint64(new_value[:], stored_value+payload.BurnValue)
-			chain.StoreSCValue(w_sc_data_tree, scid, payload.SCID[:], new_value[:])
-
-			for k, v := range w_sc_data_tree.entries { // commit incoming balances to tree
-				if err = w_sc_data_tree.tree.Put([]byte(k), v); err != nil {
-					return
-				}
-			}
-
-			//for k, v := range w_sc_tree.entries {
-			//	if err = w_sc_tree.tree.Put([]byte(k), v); err != nil {
-			//		return
-			//	}
-			//}
-
+		if signer, err1 := Extract_signer(&tx); err1 == nil { // if we can identify sender, return funds to him
+			dvm.ErrorRevert(ss, cache, balance_tree, signer, scid, incoming_value)
+		} else { //  we could not extract signer, give burned funds to SC
+			dvm.ErrorRevert(ss, cache, balance_tree, signer, scid, incoming_value)
 		}
 
 		return
 	}
-
-	// anything below should never give error
-	if _, ok := cache[scid]; !ok {
-		cache[scid] = w_sc_data_tree.tree
-	}
-
-	for k, v := range w_sc_data_tree.entries { // commit entire data to tree
-		if _, ok := globals.Arguments["--debug"]; ok && globals.Arguments["--debug"] != nil && chain.simulator {
-			logger.V(1).Info("Writing", "txid", txhash, "scid", scid, "key", fmt.Sprintf("%x", k), "value", fmt.Sprintf("%x", v))
-		}
-		if len(v) == 0 {
-			if err = w_sc_data_tree.tree.Delete([]byte(k)); err != nil {
-				return
-			}
-		} else {
-			if err = w_sc_data_tree.tree.Put([]byte(k), v); err != nil {
-				return
-			}
-		}
-	}
-
-	for k, v := range w_sc_tree.entries {
-		if err = w_sc_tree.tree.Put([]byte(k), v); err != nil {
-			return
-		}
-	}
-
-	for i, transfer := range w_sc_data_tree.transfere { // do external tranfer
-		if transfer.Amount == 0 {
-			continue
-		}
-		//fmt.Printf("%d sending to external %s %x\n", i,transfer.Asset,transfer.Address)
-		var zeroscid crypto.Hash
-
-		var curbtree *graviton.Tree
-		switch transfer.Asset {
-		case zeroscid: // main dero balance, handle it
-			curbtree = balance_tree
-		case scid: // this scid balance, handle it
-			curbtree = cache[scid]
-		default: // any other asset scid
-			var ok bool
-			if curbtree, ok = cache[transfer.Asset]; !ok {
-				if curbtree, err = ss.GetTree(string(transfer.Asset[:])); err != nil {
-					panic(err)
-				}
-				cache[transfer.Asset] = curbtree
-			}
-		}
-
-		if curbtree == nil {
-			panic("tree cannot be nil at this point in time")
-		}
-
-		addr_bytes := []byte(transfer.Address)
-		if _, err = balance_tree.Get(addr_bytes); err != nil { // first check whether address is registered
-			err = fmt.Errorf("sending to non registered account acc %x err %s", addr_bytes, err) // this can only occur, if account no registered or dis corruption
-			panic(err)
-		}
-
-		var balance_serialized []byte
-		balance_serialized, err = curbtree.Get(addr_bytes)
-		if err != nil && xerrors.Is(err, graviton.ErrNotFound) { // if the address is not found, lookup in main tree
-			var p bn256.G1
-			if err = p.DecodeCompressed(addr_bytes[:]); err != nil {
-				panic(fmt.Errorf("key %x could not be decompressed", addr_bytes))
-			}
-
-			balance := crypto.ConstructElGamal(&p, crypto.ElGamal_BASE_G) // init zero balance
-			nb := crypto.NonceBalance{NonceHeight: 0, Balance: balance}
-			balance_serialized = nb.Serialize()
-		} else if err != nil {
-			fmt.Printf("%s %d  could not transfer %d  %+v\n", scid, i, transfer.Amount, addr_bytes)
-			panic(err) // only disk corruption can reach here
-		}
-
-		nb := new(crypto.NonceBalance).Deserialize(balance_serialized)
-		nb.Balance = nb.Balance.Plus(new(big.Int).SetUint64(transfer.Amount)) // add transfer to users balance homomorphically
-		curbtree.Put(addr_bytes, nb.Serialize())                              // reserialize and store
-	}
+	dvm.ProcessExternal(ss, cache, balance_tree, signer, scid, w_sc_data_tree, w_sc_tree)
 
 	//c := w_sc_data_tree.tree.Cursor()
 	//for k, v, err := c.First(); err == nil; k, v, err = c.Next() {
@@ -553,7 +410,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 
 // func extract signer from a tx, if possible
 // extract signer is only possible if ring size is 2
-func extract_signer(tx *transaction.Transaction) (signer [33]byte, err error) {
+func Extract_signer(tx *transaction.Transaction) (signer [33]byte, err error) {
 	for t := range tx.Payloads {
 		if uint64(len(tx.Payloads[t].Statement.Publickeylist_compressed)) != tx.Payloads[t].Statement.RingSize {
 			panic("tx is not expanded")
