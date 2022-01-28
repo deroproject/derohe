@@ -37,6 +37,7 @@ type Vtype int
 
 // the numbers start from 3 to avoid collisions and can go max upto 0x7f before collision occur
 const (
+	None    Vtype = 0x0
 	Invalid Vtype = 0x3 // default is  invalid
 	Uint64  Vtype = 0x4 // uint64 data type
 	String  Vtype = 0x5 // string

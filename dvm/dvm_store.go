@@ -186,7 +186,7 @@ func (dkey DataKey) MarshalBinaryPanic() (ser []byte) {
 
 func (v Variable) Length() (length int64) {
 	switch v.Type {
-	case Invalid:
+	case Invalid, None:
 		return
 	case Uint64:
 		var buf [binary.MaxVarintLen64]byte
@@ -203,7 +203,7 @@ func (v Variable) Length() (length int64) {
 // these are used by lowest layers
 func (v Variable) MarshalBinary() (data []byte, err error) {
 	switch v.Type {
-	case Invalid:
+	case Invalid, None:
 		return
 	case Uint64:
 		var buf [binary.MaxVarintLen64]byte
@@ -212,7 +212,7 @@ func (v Variable) MarshalBinary() (data []byte, err error) {
 	case String:
 		data = append(data, ([]byte(v.ValueString))...) // string
 	default:
-		panic("unknown variable type not implemented")
+		panic("unknown variable type not implemented2")
 	}
 	data = append(data, byte(v.Type)) // add object type
 	return
@@ -231,7 +231,7 @@ func (v *Variable) UnmarshalBinary(buf []byte) (err error) {
 	}
 
 	switch Vtype(buf[len(buf)-1]) {
-	case Invalid:
+	case Invalid, None:
 		return fmt.Errorf("Invalid cannot be deserialized")
 	case Uint64:
 		v.Type = Uint64
@@ -247,7 +247,7 @@ func (v *Variable) UnmarshalBinary(buf []byte) (err error) {
 		return nil
 
 	default:
-		panic("unknown variable type not implemented")
+		panic("unknown variable type not implemented3")
 
 	}
 	return
