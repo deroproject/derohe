@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2
 
 import (
@@ -21,10 +23,11 @@ type Client struct {
 	log   func(string, ...interface{}) // write debug logs here
 	enctx encoder
 	snote func(*jmessage)
-	scall func(*jmessage) []byte
+	scall func(context.Context, *jmessage) []byte
 	chook func(*Client, *Response)
 
-	allow1 bool // tolerate v1 replies with no version marker
+	cbctx    context.Context // terminates when the client is closed
+	cbcancel func()          // cancels cbctx
 
 	mu      sync.Mutex           // protects the fields below
 	ch      channel.Channel      // channel to the server
@@ -35,14 +38,17 @@ type Client struct {
 
 // NewClient returns a new client that communicates with the server via ch.
 func NewClient(ch channel.Channel, opts *ClientOptions) *Client {
+	cbctx, cbcancel := context.WithCancel(context.Background())
 	c := &Client{
-		done:   new(sync.WaitGroup),
-		log:    opts.logFunc(),
-		allow1: opts.allowV1(),
-		enctx:  opts.encodeContext(),
-		snote:  opts.handleNotification(),
-		scall:  opts.handleCallback(),
-		chook:  opts.handleCancel(),
+		done:  new(sync.WaitGroup),
+		log:   opts.logFunc(),
+		enctx: opts.encodeContext(),
+		snote: opts.handleNotification(),
+		scall: opts.handleCallback(),
+		chook: opts.handleCancel(),
+
+		cbctx:    cbctx,
+		cbcancel: cbcancel,
 
 		// Lock-protected fields
 		ch:      ch,
@@ -99,7 +105,7 @@ func (c *Client) accept(ch receiver) error {
 }
 
 // handleRequest handles a callback or notification from the server. The
-// caller must hold c.mu, and this blocks until the handler completes.
+// caller must hold c.mu. This function does not block for the handler.
 // Precondition: msg is a request or notification, not a response or error.
 func (c *Client) handleRequest(msg *jmessage) {
 	if msg.isNotification() {
@@ -113,10 +119,22 @@ func (c *Client) handleRequest(msg *jmessage) {
 	} else if c.ch == nil {
 		c.log("Client channel is closed; discarding callback: %v", msg)
 	} else {
-		bits := c.scall(msg)
-		if err := c.ch.Send(bits); err != nil {
-			c.log("Sending reply for callback %v failed: %v", msg, err)
-		}
+		// Run the callback handler in its own goroutine. The context will be
+		// cancelled automatically when the client is closed.
+		ctx := context.WithValue(c.cbctx, clientKey{}, c)
+		c.done.Add(1)
+		go func() {
+			defer c.done.Done()
+			bits := c.scall(ctx, msg)
+
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.err != nil {
+				c.log("Discarding callback response: %v", c.err)
+			} else if err := c.ch.Send(bits); err != nil {
+				c.log("Sending reply for callback %v failed: %v", msg, err)
+			}
+		}()
 	}
 }
 
@@ -365,7 +383,7 @@ func (c *Client) Notify(ctx context.Context, method string, params interface{}) 
 	return err
 }
 
-// Close shuts down the client, abandoning any pending in-flight requests.
+// Close shuts down the client, terminating any pending in-flight requests.
 func (c *Client) Close() error {
 	c.mu.Lock()
 	c.stop(errClientStopped)
@@ -392,20 +410,19 @@ func (c *Client) stop(err error) {
 	}
 	c.ch.Close()
 
+	// Unblock and fail any pending callbacks.
+	c.cbcancel()
+
 	// Unblock and fail any pending requests.
 	for _, p := range c.pending {
 		p.cancel()
 	}
+
 	c.err = err
 	c.ch = nil
 }
 
-func (c *Client) versionOK(v string) bool {
-	if v == "" {
-		return c.allow1
-	}
-	return v == Version
-}
+func (c *Client) versionOK(v string) bool { return v == Version }
 
 // marshalParams validates and marshals params to JSON for a request.  The
 // value of params must be either nil or encodable as a JSON object or array.
@@ -417,7 +434,7 @@ func (c *Client) marshalParams(ctx context.Context, method string, params interf
 	if err != nil {
 		return nil, err
 	}
-	if len(pbits) == 0 || (pbits[0] != '[' && pbits[0] != '{' && !isNull(pbits)) {
+	if fb := firstByte(pbits); fb != '[' && fb != '{' && !isNull(pbits) {
 		// JSON-RPC requires that if parameters are provided at all, they are
 		// an array or an object.
 		return nil, &Error{Code: code.InvalidRequest, Message: "invalid parameters: array or object required"}

@@ -17,15 +17,15 @@
 package main
 
 import "io"
-
+import "os"
 import "time"
 import "fmt"
+import "errors"
 
-//import "io/ioutil"
 import "strings"
 
-//import "path/filepath"
-//import "encoding/hex"
+import "path/filepath"
+import "encoding/json"
 
 import "github.com/chzyer/readline"
 
@@ -64,6 +64,7 @@ func display_easymenu_post_open_command(l *readline.Instance) {
 		io.WriteString(w, "\t\033[1m12\033[0m\tTransfer all balance (send  DERO) To Another Wallet\n")
 		io.WriteString(w, "\t\033[1m13\033[0m\tShow transaction history\n")
 		io.WriteString(w, "\t\033[1m14\033[0m\tRescan transaction history\n")
+		io.WriteString(w, "\t\033[1m15\033[0m\tExport all transaction history in json format\n")
 	}
 
 	io.WriteString(w, "\n\t\033[1m9\033[0m\tExit menu and start prompt\n")
@@ -127,10 +128,21 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.This is a pre-condition for using the online chain.It will take few seconds to register.\n", wallet.GetAddress())
 
-			reg_tx := wallet.GetRegistrationTX()
-
 			// at this point we must send the registration transaction
 			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered.Pls wait till the account is registered.\n", wallet.GetAddress())
+
+			fmt.Fprintf(l.Stderr(), "This will take a couple of minutes.Please wait....\n")
+
+			var reg_tx *transaction.Transaction
+			for {
+
+				reg_tx = wallet.GetRegistrationTX()
+				hash := reg_tx.GetHash()
+
+				if hash[0] == 0 && hash[1] == 0 {
+					break
+				}
+			}
 			fmt.Fprintf(l.Stderr(), "Registration TXID %s\n", reg_tx.GetHash())
 			err := wallet.SendTransaction(reg_tx)
 			if err != nil {
@@ -243,6 +255,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 			if a.Arguments.Has(rpc.RPC_COMMENT, rpc.DataString) { // but only it is present
 				logger.Info("Integrated Message", "comment", a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString))
+				arguments = append(arguments, rpc.Argument{rpc.RPC_COMMENT, rpc.DataString, a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString)})
 			}
 		}
 
@@ -291,10 +304,12 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			amount_to_transfer = a.Arguments.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)
 		} else {
 
-			amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter amount to transfer in DERO (max TODO): "))
+			mbal, _ := wallet.Get_Balance()
+			amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter amount to transfer in DERO (current balance %s): ", globals.FormatMoney(mbal)))
 
 			if amount_str == "" {
-				amount_str = ".00001"
+				logger.Error(nil, "Cannot transfer 0")
+				break // invalid amount provided, bail out
 			}
 			amount_to_transfer, err = globals.ParseAmount(amount_str)
 			if err != nil {
@@ -315,8 +330,15 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 		// if no arguments, use space by embedding a small comment
 		if len(arguments) == 0 { // allow user to enter Comment
+			if v, err := ReadUint64(l, "Please enter payment id (or destination port number)", uint64(0)); err == nil {
+				arguments = append(arguments, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: v})
+			} else {
+				logger.Error(err, fmt.Sprintf("%s could not be parsed (type %s),", "Number", rpc.DataUint64))
+				return
+			}
+
 			if v, err := ReadString(l, "Comment", ""); err == nil {
-				arguments = append(arguments, rpc.Argument{Name: "Comment", DataType: rpc.DataString, Value: v})
+				arguments = append(arguments, rpc.Argument{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: v})
 			} else {
 				logger.Error(fmt.Errorf("%s could not be parsed (type %s),", "Comment", rpc.DataString), "")
 				return
@@ -429,6 +451,34 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 	case "14":
 		logger.Info("Rescanning wallet history")
 		rescan_bc(wallet)
+	case "15":
+		if !ValidateCurrentPassword(l, wallet) {
+			logger.Error(fmt.Errorf("Invalid password"), "")
+			break
+		}
+
+		if _, err := os.Stat("./history"); errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir("./history", 0700); err != nil {
+				logger.Error(err, "Error creating directory")
+				break
+			}
+		}
+
+		var zeroscid crypto.Hash
+		account := wallet.GetAccount()
+		for k, v := range account.EntriesNative {
+			filename := filepath.Join("./history", k.String()+".json")
+			if k == zeroscid {
+				filename = filepath.Join("./history", "dero.json")
+			}
+			if data, err := json.Marshal(v); err != nil {
+				logger.Error(err, "Error exporting data")
+			} else if err = os.WriteFile(filename, data, 0600); err != nil {
+				logger.Error(err, "Error exporting data")
+			} else {
+				logger.Info("successfully exported history", "file", filename)
+			}
+		}
 
 	default:
 		processed = false // just loop

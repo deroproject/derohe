@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Package metrics defines a concurrently-accessible metrics collector.
 //
 // A *metrics.M value exports methods to track integer counters and maximum

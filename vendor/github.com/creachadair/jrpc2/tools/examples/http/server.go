@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Program http demonstrates how to set up a JSON-RPC 2.0 server using the
 // github.com/creachadair/jrpc2 package with an HTTP transport.
 //
@@ -45,6 +47,6 @@ func main() {
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))
 }
 
-func ping(ctx context.Context, msg ...string) string {
+func ping(ctx context.Context, msg []string) string {
 	return "OK: " + strings.Join(msg, "|")
 }

@@ -277,6 +277,9 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 func (chain *Blockchain) IntegratorAddress() rpc.Address {
 	return chain.integrator_address
 }
+func (chain *Blockchain) SetIntegratorAddress(addr rpc.Address) {
+	chain.integrator_address = addr
+}
 
 // this function is called to read blockchain state from DB
 // It is callable at any point in time
@@ -614,6 +617,11 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				if _, ok := reg_map[string(cbl.Txs[i].MinerAddress[:])]; ok {
 					block_logger.Error(fmt.Errorf("Double Registration TX"), "duplicate registration", "txid", cbl.Txs[i].GetHash())
 					return errormsg.ErrTXDoubleSpend, false
+				}
+
+				tx_hash := cbl.Txs[i].GetHash()
+				if chain.simulator == false && tx_hash[0] != 0 && tx_hash[1] != 0 {
+					return fmt.Errorf("Registration TX has not solved PoW"), false
 				}
 				reg_map[string(cbl.Txs[i].MinerAddress[:])] = true
 			}
@@ -1112,6 +1120,12 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 		return fmt.Errorf("premine tx not mineable")
 	}
 	if tx.IsRegistration() { // registration tx will not go any forward
+
+		tx_hash := tx.GetHash()
+		if chain.simulator == false && tx_hash[0] != 0 && tx_hash[1] != 0 {
+			return fmt.Errorf("TX doesn't solve Pow")
+		}
+
 		// ggive regpool a chance to register
 		if ss, err := chain.Store.Balance_store.LoadSnapshot(0); err == nil {
 			if balance_tree, err := ss.GetTree(config.BALANCE_TREE); err == nil {

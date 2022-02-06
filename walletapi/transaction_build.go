@@ -136,7 +136,7 @@ rebuild_tx:
 		value := transfers[t].Amount
 		burn_value := transfers[t].Burn
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
-			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(w.GetFeeMultiplier())))
+			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len(publickeylist)/16)+w.GetFeeMultiplier())))
 			if data, err := scdata.MarshalBinary(); err != nil {
 				panic(err)
 			} else {

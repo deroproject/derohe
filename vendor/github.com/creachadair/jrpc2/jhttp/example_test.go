@@ -1,46 +1,45 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jhttp_test
 
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"net/http/httptest"
 	"strings"
 
+	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/jhttp"
 )
 
 func Example() {
-	// Set up a bridge to demonstrate the API.
+	// Set up a bridge exporting a simple service.
 	b := jhttp.NewBridge(handler.Map{
-		"Test": handler.New(func(ctx context.Context, ss []string) (string, error) {
-			return strings.Join(ss, " "), nil
+		"Test": handler.New(func(ctx context.Context, ss []string) string {
+			return strings.Join(ss, " ")
 		}),
 	}, nil)
 	defer b.Close()
 
+	// The bridge can be used as the handler for an HTTP server.
 	hsrv := httptest.NewServer(b)
 	defer hsrv.Close()
 
-	rsp, err := http.Post(hsrv.URL, "application/json", strings.NewReader(`{
-  "jsonrpc": "2.0",
-  "id": 10235,
-  "method": "Test",
-  "params": ["full", "plate", "and", "packing", "steel"]
-}`))
-	if err != nil {
-		log.Fatalf("POST request failed: %v", err)
-	}
-	body, err := io.ReadAll(rsp.Body)
-	rsp.Body.Close()
-	if err != nil {
-		log.Fatalf("Reading response body: %v", err)
+	// Set up a client using an HTTP channel, and use it to call the test
+	// service exported by the bridge.
+	ch := jhttp.NewChannel(hsrv.URL, nil)
+	cli := jrpc2.NewClient(ch, nil)
+
+	var result string
+	if err := cli.CallResult(context.Background(), "Test", []string{
+		"full", "plate", "and", "packing", "steel",
+	}, &result); err != nil {
+		log.Fatalf("Call failed: %v", err)
 	}
 
-	fmt.Println(string(body))
+	fmt.Println("Result:", result)
 	// Output:
-	// {"jsonrpc":"2.0","id":10235,"result":"full plate and packing steel"}
+	// Result: full plate and packing steel
 }

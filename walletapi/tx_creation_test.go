@@ -80,7 +80,7 @@ func simulator_chain_start() (*blockchain.Blockchain, *derodrpc.RPCServer, map[s
 		OptionsFirst: true,
 	}
 
-	globals.Arguments, err = parser.ParseArgs(command_line, []string{"--data-dir", tmpdirectory, "--rpc-bind", rpcport}, config.Version.String())
+	globals.Arguments, err = parser.ParseArgs(command_line, []string{"--data-dir", tmpdirectory, "--rpc-bind", rpcport, "--testnet"}, config.Version.String())
 	if err != nil {
 		//log.Fatalf("Error while parsing options err: %s\n", err)
 		return nil, nil, nil

@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Package code defines error code values used by the jrpc2 package.
 package code
 

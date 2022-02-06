@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package handler
 
 import (
@@ -26,9 +28,9 @@ func NewPos(fn interface{}, names ...string) Func {
 // value of fn must be a function with one of the following type signature
 // schemes:
 //
-//   func(context.Context, X1, x2, ..., Xn) (Y, error)
-//   func(context.Context, X1, x2, ..., Xn) Y
-//   func(context.Context, X1, x2, ..., Xn) error
+//   func(context.Context, X1, X2, ..., Xn) (Y, error)
+//   func(context.Context, X1, X2, ..., Xn) Y
+//   func(context.Context, X1, X2, ..., Xn) error
 //
 // For JSON-marshalable types X_i and Y. If fn does not have one of these
 // forms, Positional reports an error. The given names must match the number of
@@ -56,6 +58,13 @@ func NewPos(fn interface{}, names ...string) Func {
 // field keys generate an error. The field names are not required to match the
 // parameter names declared by the function; it is the names assigned here that
 // determine which object keys are accepted.
+//
+// The wrapped function will also accept a JSON array with with (exactly) the
+// same number of elements as the positional parameters:
+//
+//   [17, 23]
+//
+// Unlike the object format, no arguments can be omitted in this format.
 func Positional(fn interface{}, names ...string) (*FuncInfo, error) {
 	if fn == nil {
 		return nil, errors.New("nil function")
@@ -85,6 +94,7 @@ func Positional(fn interface{}, names ...string) (*FuncInfo, error) {
 	fi, err := Check(makeCaller(ft, fv, atype))
 	if err == nil {
 		fi.strictFields = true
+		fi.posNames = names
 	}
 	return fi, err
 }

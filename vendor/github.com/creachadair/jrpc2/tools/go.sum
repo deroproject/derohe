@@ -1,9 +1,11 @@
-github.com/creachadair/jrpc2 v0.30.3 h1:fz8xYfTmIgxJXvr9HAoz0XBOpNklyixE7Hnh6iQP/4o=
-github.com/creachadair/jrpc2 v0.30.3/go.mod h1:w+GXZGc+NwsH0xsUOgeLBIIRM0jBOSTXhv28KaWGRZU=
-github.com/creachadair/wschannel v0.0.0-20211118152247-10d58f4f0def h1:FV0vHCqItsi0b3LwaEKyxj0su3VKdvbenCOkXnCAXnI=
-github.com/creachadair/wschannel v0.0.0-20211118152247-10d58f4f0def/go.mod h1:/9Csuxj8r9h0YXexL0WmkahIhd85BleYWz7nt42ZgDc=
-github.com/google/go-cmp v0.5.6 h1:BKbKCqvP6I+rmFHt06ZmyQtvB8xAkWdhFyr0ZUNZcxQ=
-github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/creachadair/jrpc2 v0.35.4 h1:5ELLV7CMKLfALzkKNsQ//ngZLWDbEmAXgTgkL3JXAcU=
+github.com/creachadair/jrpc2 v0.35.4/go.mod h1:a53Cer/NMD1y8P9UB2XbuOLRELKRLDf8u7bRi4v1qsE=
+github.com/creachadair/wschannel v0.0.0-20220126134344-769774727b29 h1:EtcZoRTuhqCedRtvfUrzuyrsT53RWNN7xZOE9lljDw0=
+github.com/creachadair/wschannel v0.0.0-20220126134344-769774727b29/go.mod h1:xFi56wWYs7X0OlNzbtz/yzLCuN3a8Hf36QALYnAsO0o=
+github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
+github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
+github.com/google/go-cmp v0.5.7 h1:81/ik6ipDQS2aGcBfIN5dHDB36BwrStyeAQquSYCV4o=
+github.com/google/go-cmp v0.5.7/go.mod h1:n+brtR0CgQNWTVd5ZUFpTBC8YFBDLK/h/bpaJ8/DtOE=
 github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 golang.org/x/sync v0.0.0-20210220032951-036812b2e83c h1:5KslGYwFpkhGh+Q16bwMP3cOontH8FOep7tGV86Y7SQ=

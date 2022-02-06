@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package channel
 
 import (
@@ -6,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/fortytw2/leaktest"
 )
 
 // newPipe creates a pair of connected in-memory channels using the specified
@@ -20,6 +24,8 @@ func newPipe(framing Framing) (client, server Channel) {
 }
 
 func testSendRecv(t *testing.T, s, r Channel, msg string) {
+	defer leaktest.Check(t)()
+
 	var wg sync.WaitGroup
 	var sendErr, recvErr error
 	var data []byte

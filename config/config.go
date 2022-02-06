@@ -43,7 +43,7 @@ const SC_META = "M"      // keeps all SCs balance, their state, their OWNER, the
 const MAX_STORAGE_GAS_ATOMIC_UNITS = 20000
 
 // Minimum FEE calculation constants are here
-const FEE_PER_KB = uint64(100) // .00100 dero per kb
+const FEE_PER_KB = uint64(20) // .00020 dero per kb
 
 // we can easily improve TPS by changing few parameters in this file
 // the resources compute/network may not be easy for the developing countries
@@ -56,8 +56,8 @@ const MIN_RINGSIZE = 2   //  >= 2 ,   ringsize will be accepted
 const MAX_RINGSIZE = 128 // <= 128,  ringsize will be accepted
 
 type SettingsStruct struct {
-	MAINNET_BOOTSTRAP_DIFFICULTY uint64 `env:"MAINNET_BOOTSTRAP_DIFFICULTY" envDefault:"80000000"`
-	MAINNET_MINIMUM_DIFFICULTY   uint64 `env:"MAINNET_MINIMUM_DIFFICULTY" envDefault:"80000000"`
+	MAINNET_BOOTSTRAP_DIFFICULTY uint64 `env:"MAINNET_BOOTSTRAP_DIFFICULTY" envDefault:"10000000"` // mainnet bootstrap is 10 MH/s
+	MAINNET_MINIMUM_DIFFICULTY   uint64 `env:"MAINNET_MINIMUM_DIFFICULTY" envDefault:"100000"`     // mainnet minimum is 100 KH/s
 
 	TESTNET_BOOTSTRAP_DIFFICULTY uint64 `env:"TESTNET_BOOTSTRAP_DIFFICULTY" envDefault:"10000"`
 	TESTNET_MINIMUM_DIFFICULTY   uint64 `env:"TESTNET_MINIMUM_DIFFICULTY" envDefault:"10000"`
@@ -89,7 +89,7 @@ type CHAIN_CONFIG struct {
 }
 
 var Mainnet = CHAIN_CONFIG{Name: "mainnet",
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x45, 0x0}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x40, 0x0}),
 	GETWORK_Default_Port:    10100,
 	P2P_Default_Port:        10101,
 	RPC_Default_Port:        10102,
@@ -101,13 +101,13 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 		"00" + // Source is DERO network
 		"00" + // Dest is DERO network
 		"00" + // PREMINE_FLAG
-		"8fff7f" + // PREMINE_VALUE
+		"80a8b9ceb024" + // PREMINE_VALUE
 		"1f9bcc1208dee302769931ad378a4c0c4b2c21b0cfb3e752607e12d2b6fa642500", // miners public key
 
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x80, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x83, 0x00, 0x00, 0x00}),
 	GETWORK_Default_Port:    10100,
 	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
@@ -120,7 +120,7 @@ var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 b
 		"00" + // Source is DERO network
 		"00" + // Dest is DERO network
 		"00" + // PREMINE_FLAG
-		"8fff7f" + // PREMINE_VALUE
+		"80a8b9ceb024" + // PREMINE_VALUE
 		"1f9bcc1208dee302769931ad378a4c0c4b2c21b0cfb3e752607e12d2b6fa642500", // miners public key
 }
 

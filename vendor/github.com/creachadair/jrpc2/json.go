@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2
 
 import (
@@ -70,7 +72,7 @@ func (j *jmessages) parseJSON(data []byte) error {
 	// or array.
 	var msgs []json.RawMessage
 	var batch bool
-	if len(data) == 0 || data[0] != '[' {
+	if firstByte(data) != '[' {
 		msgs = append(msgs, nil)
 		if err := json.Unmarshal(data, &msgs[0]); err != nil {
 			return errInvalidRequest
@@ -128,7 +130,7 @@ func isValidID(v json.RawMessage) bool {
 }
 
 func (j *jmessage) fail(code code.Code, msg string) {
-	j.err = Errorf(code, msg)
+	j.err = &Error{Code: code, Message: msg}
 }
 
 func (j *jmessage) toJSON() ([]byte, error) {
@@ -205,7 +207,7 @@ func (j *jmessage) parseJSON(data []byte) error {
 			if !isNull(val) {
 				j.P = val
 			}
-			if len(j.P) != 0 && j.P[0] != '[' && j.P[0] != '{' {
+			if fb := firstByte(j.P); fb != 0 && fb != '[' && fb != '{' {
 				j.fail(code.InvalidRequest, "parameters must be array or object")
 			}
 		case "error":
@@ -267,6 +269,15 @@ func isNull(msg json.RawMessage) bool {
 	return len(msg) == 4 && msg[0] == 'n' && msg[1] == 'u' && msg[2] == 'l' && msg[3] == 'l'
 }
 
+// firstByte returns the first non-whitespace byte of data, or 0 if there is none.
+func firstByte(data []byte) byte {
+	clean := bytes.TrimSpace(data)
+	if len(clean) == 0 {
+		return 0
+	}
+	return clean[0]
+}
+
 // strictFielder is an optional interface that can be implemented by a type to
 // reject unknown fields when unmarshaling from JSON.  If a type does not
 // implement this interface, unknown fields are ignored.
@@ -274,8 +285,8 @@ type strictFielder interface {
 	DisallowUnknownFields()
 }
 
-// StrictFields wraps a value v to implement the DisallowUnknownFields method,
-// requiring unknown fields to be rejected when unmarshaling from JSON.
+// StrictFields wraps a value v to require unknown fields to be rejected when
+// unmarshaling from JSON.
 //
 // For example:
 //
@@ -286,4 +297,8 @@ func StrictFields(v interface{}) interface{} { return &strict{v: v} }
 
 type strict struct{ v interface{} }
 
-func (strict) DisallowUnknownFields() {}
+func (s *strict) UnmarshalJSON(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	return dec.Decode(s.v)
+}

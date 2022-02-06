@@ -78,7 +78,7 @@ func Words_To_Key(words_line string) (language_name string, keybig *big.Int, err
 	//rlog.Tracef(1, "len of words %d", words)
 
 	// if seed size is not 24 or 25, return err
-	if len(words) != SEED_LENGTH && len(words) != (SEED_LENGTH+1) {
+	if /*len(words) != SEED_LENGTH &&*/ len(words) != (SEED_LENGTH + 1) {
 		err = fmt.Errorf("Invalid Seed")
 		return
 	}

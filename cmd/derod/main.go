@@ -281,7 +281,9 @@ func main() {
 				}
 
 				testnet_string := ""
-				if !globals.IsMainnet() {
+				if globals.IsMainnet() {
+					testnet_string = "\033[31m MAINNET"
+				} else {
 					testnet_string = "\033[31m TESTNET"
 				}
 
@@ -405,6 +407,19 @@ restart_loop:
 				        	}
 				        	memoryfile.Close()
 			*/
+
+		case command == "setintegratoraddress":
+			if len(line_parts) != 2 {
+				logger.Error(fmt.Errorf("This function requires 1 parameters, dero address"), "")
+				continue
+			}
+			if addr, err := rpc.NewAddress(line_parts[1]); err != nil {
+				logger.Error(err, "invalid address")
+				continue
+			} else {
+				chain.SetIntegratorAddress(*addr)
+				logger.Info("will use", "integrator_address", chain.IntegratorAddress().String())
+			}
 
 		case command == "print_bc":
 
@@ -1023,6 +1038,8 @@ func usage(w io.Writer) {
 	io.WriteString(w, "\t\033[1mregpool_print\033[0m\t\tprint regpool contents\n")
 	io.WriteString(w, "\t\033[1mregpool_delete_tx\033[0m\t\tDelete specific tx from regpool\n")
 	io.WriteString(w, "\t\033[1mregpool_flush\033[0m\t\tFlush mempool\n")
+	io.WriteString(w, "\t\033[1msetintegratoraddress\033[0m\t\tChange current integrated address\n")
+
 	io.WriteString(w, "\t\033[1mversion\033[0m\t\tShow version\n")
 	io.WriteString(w, "\t\033[1mexit\033[0m\t\tQuit the daemon\n")
 	io.WriteString(w, "\t\033[1mquit\033[0m\t\tQuit the daemon\n")
@@ -1046,6 +1063,7 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("block_export"),
 	readline.PcItem("block_import"),
 	//	readline.PcItem("print_tx"),
+	readline.PcItem("setintegratoraddress"),
 	readline.PcItem("status"),
 	readline.PcItem("sync_info"),
 	readline.PcItem("version"),

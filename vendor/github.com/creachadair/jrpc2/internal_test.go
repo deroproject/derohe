@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2
 
 // This file contains tests that need to inspect the internal details of the
@@ -12,6 +14,7 @@ import (
 
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/creachadair/jrpc2/code"
+	"github.com/fortytw2/leaktest"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -150,6 +153,8 @@ func (h hmap) Names() []string                                 { return nil }
 // Verify that if the client context terminates during a request, the client
 // will terminate and report failure.
 func TestClient_contextCancellation(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	started := make(chan struct{})
 	stopped := make(chan struct{})
 	cpipe, spipe := channel.Direct()
@@ -203,6 +208,8 @@ func TestClient_contextCancellation(t *testing.T) {
 }
 
 func TestServer_specialMethods(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	s := NewServer(hmap{
 		"rpc.nonesuch": methodFunc(func(context.Context, *Request) (interface{}, error) {
 			return "OK", nil
@@ -225,6 +232,8 @@ func TestServer_specialMethods(t *testing.T) {
 // Verify that the option to remove the special behaviour of rpc.* methods can
 // be correctly disabled by the server options.
 func TestServer_disableBuiltinHook(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	s := NewServer(hmap{
 		"rpc.nonesuch": methodFunc(func(context.Context, *Request) (interface{}, error) {
 			return "OK", nil
@@ -249,6 +258,8 @@ func TestServer_disableBuiltinHook(t *testing.T) {
 // request. The Client never sends requests like that, but the server needs to
 // cope with it correctly.
 func TestBatchReply(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	cpipe, spipe := channel.Direct()
 	srv := NewServer(hmap{
 		"test": methodFunc(func(_ context.Context, req *Request) (interface{}, error) {

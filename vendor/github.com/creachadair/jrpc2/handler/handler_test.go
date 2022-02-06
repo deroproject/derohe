@@ -1,9 +1,13 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package handler_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/creachadair/jrpc2"
@@ -65,6 +69,49 @@ func TestCheck(t *testing.T) {
 			t.Errorf("Check(%T): unexpected error: %v", test.v, err)
 		} else if test.bad && err == nil {
 			t.Errorf("Check(%T): got %+v, want error", test.v, got)
+		}
+	}
+}
+
+// Verify that the wrappers constructed by FuncInfo.Wrap can properly decode
+// their arguments of different types and structure.
+func TestFuncInfo_wrapDecode(t *testing.T) {
+	tests := []struct {
+		fn   handler.Func
+		p    string
+		want interface{}
+	}{
+		// A positional handler should decode its argument from an array or an object.
+		{handler.NewPos(func(_ context.Context, z int) int { return z }, "arg"),
+			`[25]`, 25},
+		{handler.NewPos(func(_ context.Context, z int) int { return z }, "arg"),
+			`{"arg":109}`, 109},
+
+		// A type with custom marshaling should be properly handled.
+		{handler.NewPos(func(_ context.Context, b stringByte) byte { return byte(b) }, "arg"),
+			`["00111010"]`, byte(0x3a)},
+		{handler.NewPos(func(_ context.Context, b stringByte) byte { return byte(b) }, "arg"),
+			`{"arg":"10011100"}`, byte(0x9c)},
+		{handler.New(func(_ context.Context, v fauxStruct) int { return int(v) }),
+			`{"type":"thing","value":99}`, 99},
+
+		// Plain JSON should get its argument unmodified.
+		{handler.New(func(_ context.Context, v json.RawMessage) string { return string(v) }),
+			`{"x": true, "y": null}`, `{"x": true, "y": null}`},
+
+		// Npn-positional slice argument.
+		{handler.New(func(_ context.Context, ss []string) int { return len(ss) }),
+			`["a", "b", "c"]`, 3},
+	}
+	ctx := context.Background()
+	for _, test := range tests {
+		req := mustParseRequest(t,
+			fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"x","params":%s}`, test.p))
+		got, err := test.fn(ctx, req)
+		if err != nil {
+			t.Errorf("Call %v failed: %v", test.fn, err)
+		} else if diff := cmp.Diff(test.want, got); diff != "" {
+			t.Errorf("Call %v: wrong result (-want, +got)\n%s", test.fn, diff)
 		}
 	}
 }
@@ -132,6 +179,17 @@ func TestNewStrict(t *testing.T) {
 	}
 }
 
+// Verify that a handler with no argument type does not panic attempting to
+// enforce strict field checking.
+func TestNewStrict_argumentRegression(t *testing.T) {
+	defer func() {
+		if x := recover(); x != nil {
+			t.Fatalf("NewStrict panic: %v", x)
+		}
+	}()
+	handler.NewStrict(func(context.Context) error { return nil })
+}
+
 // Verify that the handling of pointer-typed arguments does not incorrectly
 // introduce another pointer indirection.
 func TestNew_pointerRegression(t *testing.T) {
@@ -173,14 +231,18 @@ func TestPositional_decode(t *testing.T) {
 		bad   bool
 	}{
 		{`{"jsonrpc":"2.0","id":1,"method":"add","params":{"first":5,"second":3}}`, 8, false},
-		{`{"jsonrpc":"2.0","id":2,"method":"add","params":{"first":5}}`, 5, false},
-		{`{"jsonrpc":"2.0","id":3,"method":"add","params":{"second":3}}`, 3, false},
-		{`{"jsonrpc":"2.0","id":4,"method":"add","params":{}}`, 0, false},
-		{`{"jsonrpc":"2.0","id":5,"method":"add","params":null}`, 0, false},
-		{`{"jsonrpc":"2.0","id":6,"method":"add"}`, 0, false},
+		{`{"jsonrpc":"2.0","id":2,"method":"add","params":[5,3]}`, 8, false},
+		{`{"jsonrpc":"2.0","id":3,"method":"add","params":{"first":5}}`, 5, false},
+		{`{"jsonrpc":"2.0","id":4,"method":"add","params":{"second":3}}`, 3, false},
+		{`{"jsonrpc":"2.0","id":5,"method":"add","params":{}}`, 0, false},
+		{`{"jsonrpc":"2.0","id":6,"method":"add","params":null}`, 0, false},
+		{`{"jsonrpc":"2.0","id":7,"method":"add"}`, 0, false},
 
-		{`{"jsonrpc":"2.0","id":6,"method":"add","params":["wrong", "type"]}`, 0, true},
-		{`{"jsonrpc":"2.0","id":6,"method":"add","params":{"unknown":"field"}}`, 0, true},
+		{`{"jsonrpc":"2.0","id":10,"method":"add","params":["wrong", "type"]}`, 0, true},
+		{`{"jsonrpc":"2.0","id":12,"method":"add","params":[15, "wrong-type"]}`, 0, true},
+		{`{"jsonrpc":"2.0","id":13,"method":"add","params":{"unknown":"field"}}`, 0, true},
+		{`{"jsonrpc":"2.0","id":14,"method":"add","params":[1]}`, 0, true},     // too few
+		{`{"jsonrpc":"2.0","id":15,"method":"add","params":[1,2,3]}`, 0, true}, // too many
 	}
 	for _, test := range tests {
 		req := mustParseRequest(t, test.input)
@@ -385,4 +447,39 @@ func mustParseRequest(t *testing.T, text string) *jrpc2.Request {
 		t.Fatalf("Wrong number of requests: got %d, want 1", len(req))
 	}
 	return req[0]
+}
+
+// stringByte is a byte with a custom JSON encoding. It expects a string of
+// decimal digits 1 and 0, e.g., "10011000" == 0x98.
+type stringByte byte
+
+func (s *stringByte) UnmarshalText(text []byte) error {
+	v, err := strconv.ParseUint(string(text), 2, 8)
+	if err != nil {
+		return err
+	}
+	*s = stringByte(v)
+	return nil
+}
+
+// fauxStruct is an integer with a custom JSON encoding. It expects an object:
+//
+//   {"type":"thing","value":<integer>}
+//
+type fauxStruct int
+
+func (s *fauxStruct) UnmarshalJSON(data []byte) error {
+	var tmp struct {
+		T string `json:"type"`
+		V *int   `json:"value"`
+	}
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	} else if tmp.T != "thing" {
+		return fmt.Errorf("unknown type %q", tmp.T)
+	} else if tmp.V == nil {
+		return errors.New("missing value")
+	}
+	*s = fauxStruct(*tmp.V)
+	return nil
 }

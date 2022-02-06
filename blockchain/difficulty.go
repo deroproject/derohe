@@ -191,17 +191,19 @@ type DiffProvider interface {
 
 func Get_Difficulty_At_Tips(source DiffProvider, tips []crypto.Hash) *big.Int {
 	var MinimumDifficulty *big.Int
+	GenesisDifficulty := new(big.Int).SetUint64(1)
 
 	if globals.IsMainnet() {
 		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.MAINNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
+		GenesisDifficulty = new(big.Int).SetUint64(config.Settings.MAINNET_BOOTSTRAP_DIFFICULTY)
 	} else {
 		MinimumDifficulty = new(big.Int).SetUint64(config.Settings.TESTNET_MINIMUM_DIFFICULTY) // this must be controllable parameter
+		GenesisDifficulty = new(big.Int).SetUint64(config.Settings.TESTNET_BOOTSTRAP_DIFFICULTY)
 	}
-	GenesisDifficulty := new(big.Int).SetUint64(1)
 
 	if chain, ok := source.(*Blockchain); ok {
 		if chain.simulator == true {
-			return GenesisDifficulty
+			return new(big.Int).SetUint64(1)
 		}
 	}
 
@@ -225,7 +227,7 @@ func Get_Difficulty_At_Tips(source DiffProvider, tips []crypto.Hash) *big.Int {
 
 	// until we have atleast 2 blocks, we cannot run the algo
 	if height < 3 {
-		return MinimumDifficulty
+		return GenesisDifficulty
 	}
 
 	tip_difficulty := source.Load_Block_Difficulty(tips[0])

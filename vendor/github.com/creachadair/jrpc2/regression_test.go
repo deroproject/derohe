@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2_test
 
 import (
@@ -10,11 +12,15 @@ import (
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/server"
+	"github.com/fortytw2/leaktest"
+	"github.com/google/go-cmp/cmp"
 )
 
 // Verify that a notification handler will not deadlock with the dispatcher on
 // holding the server lock. See: https://github.com/creachadair/jrpc2/issues/27
 func TestLockRaceRegression(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	hdone := make(chan struct{})
 	local := server.NewLocal(handler.Map{
 		// Do some busy-work and then try to get the server lock, in this case
@@ -54,6 +60,8 @@ func TestLockRaceRegression(t *testing.T) {
 // Verify that if a callback handler panics, the client will report an error
 // back to the server. See https://github.com/creachadair/jrpc2/issues/41.
 func TestOnCallbackPanicRegression(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	const panicString = "the devil you say"
 
 	loc := server.NewLocal(handler.Map{
@@ -89,6 +97,8 @@ func TestOnCallbackPanicRegression(t *testing.T) {
 // Verify that a duplicate request ID that arrives while a task is in flight
 // does not cause the existing task to be cancelled.
 func TestDuplicateIDCancellation(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	tctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -132,7 +142,7 @@ func TestDuplicateIDCancellation(t *testing.T) {
 
 	// Send the duplicate, which should report an error.
 	send(duplicateReq)
-	expect(`{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"duplicate request id \"1\""}}`)
+	expect(`{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"duplicate request ID","data":"1"}}`)
 
 	// Unblock the handler, which should now complete. If the duplicate request
 	// caused the handler to cancel, it will have logged an error to fail the test.
@@ -141,4 +151,44 @@ func TestDuplicateIDCancellation(t *testing.T) {
 
 	cch.Close()
 	srv.Wait()
+}
+
+func TestCheckBatchDuplicateID(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	srv, cli := channel.Direct()
+	s := jrpc2.NewServer(handler.Map{
+		"Test": testOK,
+	}, nil).Start(srv)
+	defer func() {
+		cli.Close()
+		if err := s.Wait(); err != nil {
+			t.Errorf("Server wait: unexpected error: %v", err)
+		}
+	}()
+
+	// A batch of requests containing two calls with the same ID.
+	const input = `[
+  {"jsonrpc": "2.0", "id": 1, "method": "Test"},
+  {"jsonrpc": "2.0", "id": 1, "method": "Test"},
+  {"jsonrpc": "2.0", "id": 2, "method": "Test"}
+]
+`
+	const errorReply = `{` +
+		`"jsonrpc":"2.0",` +
+		`"id":1,` +
+		`"error":{"code":-32600,"message":"duplicate request ID","data":"1"}` +
+		`}`
+	const want = `[` + errorReply + `,` + errorReply + `,` + `{"jsonrpc":"2.0","id":2,"result":"OK"}]`
+
+	if err := cli.Send([]byte(input)); err != nil {
+		t.Fatalf("Send %d bytes failed: %v", len(input), err)
+	}
+	rsp, err := cli.Recv()
+	if err != nil {
+		t.Fatalf("Recv failed: %v", err)
+	}
+	if diff := cmp.Diff(want, string(rsp)); diff != "" {
+		t.Errorf("Server response: (-want, +got)\n%s", diff)
+	}
 }

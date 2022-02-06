@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Program jcall issues RPC calls to a JSON-RPC server.
 //
 // Usage:

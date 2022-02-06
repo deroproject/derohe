@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Program adder demonstrates a trivial JSON-RPC server that communicates over
 // the process's stdin and stdout.
 //
@@ -22,7 +24,7 @@ import (
 )
 
 // Add will be exported as a method named "Add".
-func Add(ctx context.Context, vs ...int) int {
+func Add(ctx context.Context, vs []int) int {
 	sum := 0
 	for _, v := range vs {
 		sum += v

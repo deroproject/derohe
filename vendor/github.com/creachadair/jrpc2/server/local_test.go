@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package server_test
 
 import (
@@ -9,6 +11,7 @@ import (
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/server"
+	"github.com/fortytw2/leaktest"
 )
 
 var doDebug = flag.Bool("debug", false, "Enable server and client debugging logs")
@@ -24,6 +27,8 @@ func testOpts(t *testing.T) *server.LocalOptions {
 }
 
 func TestLocal(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(make(handler.Map), testOpts(t))
 	ctx := context.Background()
 	si, err := jrpc2.RPCServerInfo(ctx, loc.Client)
@@ -47,6 +52,8 @@ func TestLocal(t *testing.T) {
 
 // Test that concurrent callers to a local service do not deadlock.
 func TestLocalConcurrent(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{
 		"Test": handler.New(func(context.Context) error { return nil }),
 	}, testOpts(t))

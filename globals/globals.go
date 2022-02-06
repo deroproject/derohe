@@ -187,8 +187,6 @@ func InitializeLog(console, logfile io.Writer) {
 func Initialize() {
 	var err error
 
-	Arguments["--testnet"] = true // force testnet every where
-
 	InitNetwork()
 
 	// choose  socks based proxy if user requested so

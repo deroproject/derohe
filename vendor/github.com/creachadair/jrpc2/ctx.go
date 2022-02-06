@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2
 
 import (
@@ -32,3 +34,12 @@ type inboundRequestKey struct{}
 func ServerFromContext(ctx context.Context) *Server { return ctx.Value(serverKey{}).(*Server) }
 
 type serverKey struct{}
+
+// ClientFromContext returns the client associated with the given context.
+// This will be populated on the context passed to callback handlers.
+//
+// A callback handler must not close the client, as the close will deadlock
+// waiting for the callback to return.
+func ClientFromContext(ctx context.Context) *Client { return ctx.Value(clientKey{}).(*Client) }
+
+type clientKey struct{}

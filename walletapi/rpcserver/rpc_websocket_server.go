@@ -56,6 +56,8 @@ type RPCServer struct {
 	srv        *http.Server
 	mux        *http.ServeMux
 	logger     logr.Logger
+	user       string
+	password   string
 	Exit_Event chan bool // blockchain is shutting down and we must quit ASAP
 	sync.RWMutex
 }
@@ -68,6 +70,13 @@ func RPCServer_Start(wallet *walletapi.Wallet_Disk, title string) (*RPCServer, e
 	r.logger = globals.Logger.WithName(title) // all components must use this logger
 
 	r.Exit_Event = make(chan bool)
+
+	if globals.Arguments["--rpc-login"] != nil { // this was verified at startup
+		userpass := globals.Arguments["--rpc-login"].(string)
+		parts := strings.SplitN(userpass, ":", 2)
+		r.user = parts[0]
+		r.password = parts[1]
+	}
 
 	go r.Run(wallet)
 	atomic.AddUint32(&globals.Subsystem_Active, 1) // increment subsystem
@@ -89,6 +98,34 @@ func (r *RPCServer) RPCServer_Stop() {
 	time.Sleep(1 * time.Second)
 	r.logger.Info("RPC Shutdown")
 	atomic.AddUint32(&globals.Subsystem_Active, ^uint32(0)) // this decrement 1 fom subsystem
+}
+
+// check basic authrizaion
+func hasbasicauthfailed(rpcserver *RPCServer, w http.ResponseWriter, r *http.Request) bool {
+	if rpcserver.user == "" {
+		return false
+	}
+	u, p, ok := r.BasicAuth()
+	if !ok {
+		w.WriteHeader(401)
+		io.WriteString(w, "Authorization Required")
+		return true
+	}
+	if u != rpcserver.user || p != rpcserver.password {
+		w.WriteHeader(401)
+		io.WriteString(w, "Authorization Required")
+		return true
+	}
+
+	if globals.Arguments["--allow-rpc-password-change"] != nil && globals.Arguments["--allow-rpc-password-change"].(bool) == true {
+
+		if r.Header.Get("Pass") != "" {
+			rpcserver.password = r.Header.Get("Pass")
+		}
+	}
+
+	return false
+
 }
 
 // setup handlers
@@ -131,6 +168,10 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 	var bridge = jhttp.NewBridge(wallet_handler, &jhttp.BridgeOptions{Server: options})
 
 	translate_http_to_jsonrpc_and_vice_versa := func(w http.ResponseWriter, r *http.Request) {
+
+		if hasbasicauthfailed(rpcserver, w, r) {
+			return
+		}
 		bridge.ServeHTTP(w, r)
 	}
 
@@ -144,6 +185,9 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 				client_connections.Delete(ws_server)
 			}
 		}()
+		if hasbasicauthfailed(rpcserver, w, r) {
+			return
+		}
 
 		c, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -166,6 +210,10 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 
 	rpcserver.mux.HandleFunc("/install_sc", func(w http.ResponseWriter, req *http.Request) { // translate call internally,  how to do it using a single json request
 		var p rpc.Transfer_Params
+
+		if hasbasicauthfailed(rpcserver, w, req) {
+			return
+		}
 
 		b, err := ioutil.ReadAll(req.Body)
 		defer req.Body.Close()

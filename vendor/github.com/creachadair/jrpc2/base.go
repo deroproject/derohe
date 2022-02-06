@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2
 
 import (
@@ -17,9 +19,12 @@ type Assigner interface {
 	// The implementation can obtain the complete request from ctx using the
 	// jrpc2.InboundRequest function.
 	Assign(ctx context.Context, method string) Handler
+}
 
-	// Names returns a slice of all known method names for the assigner.  The
-	// resulting slice is ordered lexicographically and contains no duplicates.
+// Namer is an optional interface that an Assigner may implement to expose the
+// names of its methods to the ServerInfo method.
+type Namer interface {
+	// Names returns all known method names in lexicographic order.
 	Names() []string
 }
 
@@ -91,11 +96,14 @@ func (r *Request) UnmarshalParams(v interface{}) error {
 		dec := json.NewDecoder(bytes.NewReader(r.params))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(v); err != nil {
-			return Errorf(code.InvalidParams, "invalid parameters: %v", err.Error())
+			return errInvalidParams.WithData(err.Error())
 		}
 		return nil
 	}
-	return json.Unmarshal(r.params, v)
+	if err := json.Unmarshal(r.params, v); err != nil {
+		return errInvalidParams.WithData(err.Error())
+	}
+	return nil
 }
 
 // ParamString returns the encoded request parameters of r as a string.

@@ -1,5 +1,4 @@
-//go:build oldbench
-// +build oldbench
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
 
 package jrpc2
 

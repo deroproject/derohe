@@ -165,6 +165,7 @@ func test_connectivity() (err error) {
 	if info.Testnet != !globals.IsMainnet() {
 		err = fmt.Errorf("Mainnet/TestNet  is different between wallet/daemon.Please run daemon/wallet without --testnet")
 		logger.Error(err, "Mainnet/Testnet mismatch")
+		fmt.Printf("Mainnet/Testnet mismatch\n")
 		return
 	}
 
@@ -187,8 +188,23 @@ func (w *Wallet_Memory) sync_loop() {
 
 		}
 
-		err := w.Sync_Wallet_Memory_With_Daemon() // sync with the daemon
-		logger.V(1).Error(err, "wallet syncing err", err)
+		if IsDaemonOnline() && test_connectivity() != nil {
+			time.Sleep(timeout) // wait 5 seconds
+			continue
+		}
+
+		var zerohash crypto.Hash
+		if len(w.account.EntriesNative) == 0 {
+			err := w.Sync_Wallet_Memory_With_Daemon()
+			logger.V(1).Error(err, "wallet syncing err", err)
+		} else {
+			for k := range w.account.EntriesNative {
+				err := w.Sync_Wallet_Memory_With_Daemon_internal(k)
+				if k == zerohash && err != nil {
+					logger.V(1).Error(err, "wallet syncing err", err)
+				}
+			}
+		}
 
 		time.Sleep(timeout) // wait 5 seconds
 	}
@@ -454,6 +470,12 @@ func (w *Wallet_Memory) GetDecryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 	_, noncetopo, _, encrypted_balance, err := w.GetEncryptedBalanceAtTopoHeight(scid, topoheight, accountaddr)
 	if err != nil {
 		return 0, 0, err
+	}
+
+	if w.account.EntriesNative != nil {
+		if _, ok := w.account.EntriesNative[scid]; !ok { //if we could obtain something, try tracking
+			w.account.EntriesNative[scid] = []rpc.Entry{}
+		}
 	}
 
 	return w.DecodeEncryptedBalance_Memory(encrypted_balance, 0), noncetopo, nil

@@ -80,6 +80,7 @@ Usage:
   --rpc-server      Run rpc server, so wallet is accessible using api
   --rpc-bind=<127.0.0.1:20209>  Wallet binds on this ip address and port
   --rpc-login=<username:password>  RPC server will grant access based on these credentials
+  --allow-rpc-password-change   RPC server will change password if you send "Pass" header with new password
   `
 var menu_mode bool = true // default display menu mode
 //var account_valid bool = false                        // if an account has been opened, do not allow to create new account in this session
@@ -119,7 +120,7 @@ func main() {
 	}
 
 	// init the lookup table one, anyone importing walletapi should init this first, this will take around 1 sec on any recent system
-	walletapi.Initialize_LookupTable(1, 1<<17)
+	walletapi.Initialize_LookupTable(1, 1<<21)
 
 	// We need to initialize readline first, so it changes stderr to ansi processor on windows
 	l, err := readline.NewEx(&readline.Config{

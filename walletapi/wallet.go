@@ -23,6 +23,7 @@ import "strings"
 import "math/big"
 import "crypto/rand"
 
+import "encoding/pem"
 import "encoding/binary"
 
 import "github.com/go-logr/logr"
@@ -122,7 +123,7 @@ func (w *Wallet_Memory) InsertReplace(scid crypto.Hash, e rpc.Entry) {
 
 // generate keys from using random numbers
 func Generate_Keys_From_Random() (user *Account, err error) {
-	user = &Account{Ringsize: 4, FeesMultiplier: 1.5}
+	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
 	seed := crypto.RandomScalarBNRed()
 	user.Keys = Generate_Keys_From_Seed(seed)
 
@@ -142,7 +143,7 @@ func Generate_Keys_From_Seed(Seed *crypto.BNRed) (keys _Keys) {
 
 // generate user account using recovery seeds
 func Generate_Account_From_Recovery_Words(words string) (user *Account, err error) {
-	user = &Account{Ringsize: 4, FeesMultiplier: 1.5}
+	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
 	language, seed, err := mnemonics.Words_To_Key(words)
 	if err != nil {
 		return
@@ -155,7 +156,7 @@ func Generate_Account_From_Recovery_Words(words string) (user *Account, err erro
 }
 
 func Generate_Account_From_Seed(Seed *crypto.BNRed) (user *Account, err error) {
-	user = &Account{Ringsize: 4, FeesMultiplier: 1.5}
+	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
 
 	// TODO check whether the seed is invalid
 	user.Keys = Generate_Keys_From_Seed(Seed)
@@ -303,6 +304,7 @@ func (w *Wallet_Memory) Get_Payments_TXID(txid string) (entry rpc.Entry) {
 }
 
 // delete most of the data and prepare for rescan
+// TODO we must save tokens list and reuse, them, but will be created on-demand when using shows transfers/or rpc apis
 func (w *Wallet_Memory) Clean() {
 	//w.account.Entries = w.account.Entries[:0]
 
@@ -525,4 +527,71 @@ func FormatMoneyPrecision(amount uint64, precision int) string {
 	result := new(big.Float)
 	result.Quo(float_amount, hard_coded_decimals)
 	return result.Text('f', precision) // 5 is display precision after floating point
+}
+
+// this basically does a  Schnorr Signature on random information for registration
+func (w *Wallet_Memory) SignData(input []byte) []byte {
+	var tmppoint bn256.G1
+
+	tmpsecret := crypto.RandomScalar()
+	tmppoint.ScalarMult(crypto.G, tmpsecret)
+
+	serialize := []byte(fmt.Sprintf("%s%s%x", w.account.Keys.Public.G1().String(), tmppoint.String(), input))
+
+	c := crypto.ReducedHash(serialize)
+	s := new(big.Int).Mul(c, w.account.Keys.Secret.BigInt()) // basicaly scalar mul add
+	s = s.Mod(s, bn256.Order)
+	s = s.Add(s, tmpsecret)
+	s = s.Mod(s, bn256.Order)
+
+	p := &pem.Block{Type: "DERO SIGNED MESSAGE"}
+	p.Headers = map[string]string{}
+	p.Headers["Address"] = w.GetAddress().String()
+	p.Headers["C"] = fmt.Sprintf("%x", c)
+	p.Headers["S"] = fmt.Sprintf("%x", s)
+	p.Bytes = input
+
+	return pem.EncodeToMemory(p)
+}
+
+func (w *Wallet_Memory) CheckSignature(input []byte) (signer *rpc.Address, message []byte, err error) {
+	p, _ := pem.Decode(input)
+	if p == nil {
+		err = fmt.Errorf("Unknown format")
+		return
+	}
+
+	astr := p.Headers["Address"]
+	cstr := p.Headers["C"]
+	sstr := p.Headers["S"]
+
+	addr, err := rpc.NewAddress(astr)
+	if err != nil {
+		return
+	}
+
+	c, ok := new(big.Int).SetString(cstr, 16)
+	if !ok {
+		err = fmt.Errorf("Unknown C format")
+		return
+	}
+
+	s, ok := new(big.Int).SetString(sstr, 16)
+	if !ok {
+		err = fmt.Errorf("Unknown S format")
+		return
+	}
+
+	tmppoint := new(bn256.G1).Add(new(bn256.G1).ScalarMult(crypto.G, s), new(bn256.G1).ScalarMult(addr.PublicKey.G1(), new(big.Int).Neg(c)))
+	serialize := []byte(fmt.Sprintf("%s%s%x", addr.PublicKey.G1().String(), tmppoint.String(), p.Bytes))
+
+	c_calculated := crypto.ReducedHash(serialize)
+	if c.String() != c_calculated.String() {
+		err = fmt.Errorf("signature mismatch")
+		return
+	}
+
+	signer = addr
+	message = p.Bytes
+	return
 }

@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Package jctx implements an encoder and decoder for request context values,
 // allowing context metadata to be propagated through JSON-RPC.
 //
@@ -66,7 +68,7 @@ func Encode(ctx context.Context, method string, params json.RawMessage) (json.Ra
 	v := wireVersion
 	c := wireContext{V: &v, Payload: params}
 	if dl, ok := ctx.Deadline(); ok {
-		utcdl := dl.In(time.UTC)
+		utcdl := dl.UTC()
 		c.Deadline = &utcdl
 	}
 
@@ -102,7 +104,7 @@ func Decode(ctx context.Context, method string, req json.RawMessage) (context.Co
 	}
 	if c.Deadline != nil && !c.Deadline.IsZero() {
 		var ignored context.CancelFunc
-		ctx, ignored = context.WithDeadline(ctx, (*c.Deadline).In(time.UTC))
+		ctx, ignored = context.WithDeadline(ctx, (*c.Deadline).UTC())
 		_ = ignored // the caller cannot use this value
 	}
 

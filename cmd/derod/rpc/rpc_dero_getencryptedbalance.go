@@ -35,7 +35,6 @@ func GetEncryptedBalance(ctx context.Context, p rpc.GetEncryptedBalance_Params) 
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
-			fmt.Printf("panic stack trace %s params %+v\n", debug.Stack(), p)
 		}
 	}()
 

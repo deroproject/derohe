@@ -576,7 +576,7 @@ func (i *DVM_Interpreter) interpret_SmartContract() (err error) {
 		}
 
 		if i.State.Trace {
-			fmt.Printf("interpreting line %+v   err:'%s'\n", line, err)
+			fmt.Printf("interpreting line %+v   err:'%v'\n", line, err)
 		}
 		if err != nil {
 			err = fmt.Errorf("err while interpreting line %+v err %s\n", line, err)

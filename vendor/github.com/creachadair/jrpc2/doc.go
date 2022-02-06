@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 /*
 Package jrpc2 implements a server and a client for the JSON-RPC 2.0 protocol
 defined by http://www.jsonrpc.org/specification.
@@ -12,9 +14,20 @@ Handle method with this signature:
    Handle(ctx Context.Context, req *jrpc2.Request) (interface{}, error)
 
 A server finds the handler for a request by looking up its method name in a
-jrpc2.Assigner provided when the server is set up.
+jrpc2.Assigner provided when the server is set up. A Handler can decode the
+request parameters using the UnmarshalParams method on the request:
 
-For example, suppose we want to export this Add function via JSON-RPC:
+   func (H) Handle(ctx context.Context, req *jrpc2.Request) (interface{}, error) {
+      var args ArgType
+      if err := req.UnmarshalParams(&args); err != nil {
+         return nil, err
+      }
+      return usefulStuffWith(args)
+   }
+
+The handler package makes it easier to use functions that do not have this
+exact type signature as handlers, by using reflection to lift functions into
+the Handler interface.  For example, suppose we want to export this Add function:
 
    // Add returns the sum of a slice of integers.
    func Add(ctx context.Context, values []int) int {
@@ -25,9 +38,8 @@ For example, suppose we want to export this Add function via JSON-RPC:
       return sum
    }
 
-The handler package helps adapt existing functions to the Handler interface.
-To convert Add to a jrpc2.Handler, call handler.New, which uses reflection to
-lift its argument into the jrpc2.Handler interface:
+To convert Add to a jrpc2.Handler, call handler.New, which wraps its argument
+into the jrpc2.Handler interface via the handler.Func type:
 
    h := handler.New(Add)  // h is now a jrpc2.Handler that calls Add
 

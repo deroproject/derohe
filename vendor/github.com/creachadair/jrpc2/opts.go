@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2
 
 import (
@@ -22,10 +24,6 @@ type ServerOptions struct {
 	// If not nil, the methods of this value are called to log each request
 	// received and each response or error returned.
 	RPCLog RPCLogger
-
-	// Instructs the server to tolerate requests that do not include the
-	// required "jsonrpc" version marker.
-	AllowV1 bool
 
 	// Instructs the server to allow server callbacks and notifications, a
 	// non-standard extension to the JSON-RPC protocol. If AllowPush is false,
@@ -55,12 +53,6 @@ type ServerOptions struct {
 	// If unset, context and parameters are used as given.
 	DecodeContext func(context.Context, string, json.RawMessage) (context.Context, json.RawMessage, error)
 
-	// If set, this function is called with the context and client request
-	// (after decoding, if DecodeContext is set) that are to be delivered to the
-	// handler. If CheckRequest reports a non-nil error, the request fails with
-	// that error without invoking the handler.
-	CheckRequest func(ctx context.Context, req *Request) error
-
 	// If set, use this value to record server metrics. All servers created
 	// from the same options will share the same metrics collector.  If none is
 	// set, an empty collector will be created for each new server.
@@ -79,7 +71,6 @@ func (s *ServerOptions) logFunc() func(string, ...interface{}) {
 	return s.Logger.Printf
 }
 
-func (s *ServerOptions) allowV1() bool      { return s != nil && s.AllowV1 }
 func (s *ServerOptions) allowPush() bool    { return s != nil && s.AllowPush }
 func (s *ServerOptions) allowBuiltin() bool { return s == nil || !s.DisableBuiltin }
 
@@ -106,22 +97,13 @@ func (o *ServerOptions) newContext() func() context.Context {
 
 type decoder = func(context.Context, string, json.RawMessage) (context.Context, json.RawMessage, error)
 
-func (s *ServerOptions) decodeContext() (decoder, bool) {
+func (s *ServerOptions) decodeContext() decoder {
 	if s == nil || s.DecodeContext == nil {
 		return func(ctx context.Context, method string, params json.RawMessage) (context.Context, json.RawMessage, error) {
 			return ctx, params, nil
-		}, false
+		}
 	}
-	return s.DecodeContext, true
-}
-
-type verifier = func(context.Context, *Request) error
-
-func (s *ServerOptions) checkRequest() verifier {
-	if s == nil || s.CheckRequest == nil {
-		return func(context.Context, *Request) error { return nil }
-	}
-	return s.CheckRequest
+	return s.DecodeContext
 }
 
 func (s *ServerOptions) metrics() *metrics.M {
@@ -144,10 +126,6 @@ type ClientOptions struct {
 	// If not nil, send debug text logs here.
 	Logger Logger
 
-	// Instructs the client to tolerate responses that do not include the
-	// required "jsonrpc" version marker.
-	AllowV1 bool
-
 	// If set, this function is called with the context, method name, and
 	// encoded request parameters before the request is sent to the server.
 	// Its return value replaces the request parameters. This allows the client
@@ -162,12 +140,17 @@ type ClientOptions struct {
 	OnNotify func(*Request)
 
 	// If set, this function is called if a request is received from the server.
-	// If unset, server requests are logged and discarded. At most one
-	// invocation of this callback will be active at a time.
-	// Server callbacks are a non-standard extension of JSON-RPC.
+	// If unset, server requests are logged and discarded. Multiple invocations
+	// of the callback handler may be active concurrently.
+	//
+	// The callback handler can retrieve the client from its context using the
+	// jrpc2.ClientFromContext function. The context terminates when the client
+	// is closed.
 	//
 	// If a callback handler panics, the client will recover the panic and
 	// report a system error back to the server describing the error.
+	//
+	// Server callbacks are a non-standard extension of JSON-RPC.
 	OnCallback func(context.Context, *Request) (interface{}, error)
 
 	// If set, this function is called when the context for a request terminates.
@@ -185,8 +168,6 @@ func (c *ClientOptions) logFunc() func(string, ...interface{}) {
 	}
 	return c.Logger.Printf
 }
-
-func (c *ClientOptions) allowV1() bool { return c != nil && c.AllowV1 }
 
 type encoder = func(context.Context, string, json.RawMessage) (json.RawMessage, error)
 
@@ -214,15 +195,12 @@ func (c *ClientOptions) handleCancel() func(*Client, *Response) {
 	return c.OnCancel
 }
 
-func (c *ClientOptions) handleCallback() func(*jmessage) []byte {
+func (c *ClientOptions) handleCallback() func(context.Context, *jmessage) []byte {
 	if c == nil || c.OnCallback == nil {
 		return nil
 	}
 	cb := c.OnCallback
-	return func(req *jmessage) []byte {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
+	return func(ctx context.Context, req *jmessage) []byte {
 		// Recover panics from the callback handler to ensure the server gets a
 		// response even if the callback fails without a result.
 		//

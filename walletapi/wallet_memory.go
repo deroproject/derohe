@@ -328,6 +328,13 @@ func Generate_Key(k KDF, password string) (key []byte) {
 	}
 }
 
+func (w *Wallet_Memory) GetAccount() *Account {
+	if w == nil {
+		return nil
+	}
+	return w.account
+}
+
 func (w *Wallet_Memory) save_if_disk() {
 	if w == nil || w.wallet_disk == nil {
 		return

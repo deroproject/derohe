@@ -1,13 +1,18 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2_test
 
 import (
 	"context"
+	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/jctx"
 	"github.com/creachadair/jrpc2/server"
+	"github.com/fortytw2/leaktest"
 )
 
 func BenchmarkRoundTrip(b *testing.B) {
@@ -65,6 +70,75 @@ func BenchmarkRoundTrip(b *testing.B) {
 					b.Fatalf("Call void failed: %v", err)
 				}
 			}
+		})
+	}
+}
+
+func BenchmarkLoad(b *testing.B) {
+	defer leaktest.Check(b)()
+
+	// The load testing service has a no-op method to exercise server overhead.
+	loc := server.NewLocal(handler.Map{
+		"void": handler.Func(func(context.Context, *jrpc2.Request) (interface{}, error) {
+			return nil, nil
+		}),
+	}, nil)
+	defer loc.Close()
+
+	// Exercise concurrent calls.
+	ctx := context.Background()
+	b.Run("Call", func(b *testing.B) {
+		var wg sync.WaitGroup
+		for i := 0; i < b.N; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := loc.Client.Call(ctx, "void", nil)
+				if err != nil {
+					b.Errorf("Call failed: %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+	})
+
+	// Exercise concurrent notifications.
+	b.Run("Notify", func(b *testing.B) {
+		var wg sync.WaitGroup
+		for i := 0; i < b.N; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := loc.Client.Notify(ctx, "void", nil)
+				if err != nil {
+					b.Errorf("Notify failed: %v", err)
+				}
+			}()
+		}
+		wg.Wait()
+	})
+
+	// Exercise concurrent batches of various sizes.
+	for _, bs := range []int{1, 2, 4, 8, 12, 16, 20, 50} {
+		batch := make([]jrpc2.Spec, bs)
+		for j := 0; j < len(batch); j++ {
+			batch[j].Method = "void"
+		}
+
+		name := "Batch-" + strconv.Itoa(bs)
+		b.Run(name, func(b *testing.B) {
+			var wg sync.WaitGroup
+			for i := 0; i < b.N; i += bs {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					_, err := loc.Client.Batch(ctx, batch)
+					if err != nil {
+						b.Errorf("Batch failed: %v", err)
+					}
+				}()
+			}
+			wg.Wait()
 		})
 	}
 }

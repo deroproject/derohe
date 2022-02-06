@@ -70,10 +70,15 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 
 	if genesis == true { // process premine ,register genesis block, dev key
 		balance := crypto.ConstructElGamal(acckey.G1(), crypto.ElGamal_BASE_G) // init zero balance
-		balance = balance.Plus(new(big.Int).SetUint64(tx.Value << 1))          // add premine to users balance homomorphically
+		balance = balance.Plus(new(big.Int).SetUint64(tx.Value))               // add premine to users balance homomorphically
 		nb := crypto.NonceBalance{NonceHeight: 0, Balance: balance}
 		balance_tree.Put(tx.MinerAddress[:], nb.Serialize()) // reserialize and store
 
+		if globals.IsMainnet() {
+			return
+		}
+
+		// only testnet/simulator will have dummy accounts to test
 		// we must process premine list and register and give them balance,
 		premine_count := 0
 		scanner := bufio.NewScanner(strings.NewReader(premine.List))
@@ -119,12 +124,15 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 	base_reward := CalcBlockReward(uint64(height))
 	full_reward := base_reward + fees
 
-	//full_reward is divided into equal parts for all miner blocks + miner address
+	integrator_reward := full_reward * 167 / 10000
+
+	//full_reward is divided into equal parts for all miner blocks
+	// integrator only gets 1.67 % of block reward
 	// since perfect division is not possible, ( see money handling)
 	// any left over change is delivered to main miner who integrated the full block
 
-	share := full_reward / uint64(len(bl.MiniBlocks))              //  one block integrator, this is integer division
-	leftover := full_reward - (share * uint64(len(bl.MiniBlocks))) // only integrator will get this
+	share := (full_reward - integrator_reward) / uint64(len(bl.MiniBlocks))            //  one block integrator, this is integer division
+	leftover := full_reward - integrator_reward - (share * uint64(len(bl.MiniBlocks))) // only integrator will get this
 
 	{ // giver integrator his reward
 		balance_serialized, err := balance_tree.Get(tx.MinerAddress[:])
@@ -132,8 +140,8 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 			panic(err)
 		}
 		nb := new(crypto.NonceBalance).Deserialize(balance_serialized)
-		nb.Balance = nb.Balance.Plus(new(big.Int).SetUint64(share + leftover)) // add miners reward to miners balance homomorphically
-		balance_tree.Put(tx.MinerAddress[:], nb.Serialize())                   // reserialize and store
+		nb.Balance = nb.Balance.Plus(new(big.Int).SetUint64(integrator_reward + leftover)) // add miners reward to miners balance homomorphically
+		balance_tree.Put(tx.MinerAddress[:], nb.Serialize())                               // reserialize and store
 	}
 
 	// all the other miniblocks will get their share
@@ -230,7 +238,6 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 					nb.NonceHeight = height
 				}
 				tree.Put(key_compressed, nb.Serialize()) // reserialize and store
-
 			}
 		}
 

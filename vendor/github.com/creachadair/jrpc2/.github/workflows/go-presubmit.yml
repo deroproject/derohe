@@ -18,7 +18,7 @@ jobs:
         os: ['ubuntu-latest']
     steps:
     - name: Install Go ${{ matrix.go-version }}
-      uses: actions/setup-go@v1
+      uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.go-version }}
     - uses: actions/checkout@v2

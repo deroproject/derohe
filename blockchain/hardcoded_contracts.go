@@ -58,12 +58,14 @@ func (chain *Blockchain) install_hardcoded_contracts(cache map[crypto.Hash]*grav
 
 	if _, _, err = dvm.ParseSmartContract(source_nameservice); err != nil {
 		logger.Error(err, "error Parsing hard coded sc")
+		panic(err)
 		return
 	}
 
 	var name crypto.Hash
 	name[31] = 1
 	if err = chain.install_hardcoded_sc(cache, ss, balance_tree, sc_tree, source_nameservice, name); err != nil {
+		panic(err)
 		return
 	}
 

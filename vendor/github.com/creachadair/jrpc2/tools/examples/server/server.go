@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Program server demonstrates how to set up a JSON-RPC 2.0 server using the
 // github.com/creachadair/jrpc2 package.
 //
@@ -97,7 +99,8 @@ func main() {
 	}
 	log.Printf("Listening at %v...", lst.Addr())
 	acc := server.NetAccepter(lst, channel.Line)
-	server.Loop(acc, server.Static(mux), &server.LoopOptions{
+	ctx := context.Background()
+	server.Loop(ctx, acc, server.Static(mux), &server.LoopOptions{
 		ServerOptions: &jrpc2.ServerOptions{
 			Logger:      jrpc2.StdLogger(nil),
 			Concurrency: *maxTasks,

@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 // Package channel defines a basic communications channel.
 //
 // A Channel encodes/transmits and decodes/receives data records over an
@@ -61,10 +63,15 @@ type Channel interface {
 	Close() error
 }
 
-// IsErrClosing reports whether err is the internal error returned by a read
-// from a pipe or socket that is closed. This is false for err == nil.
+// ErrClosed is a sentinel error that can be returned to indicate an operation
+// failed because the channel was closed.
+var ErrClosed = errors.New("channel is closed")
+
+// IsErrClosing reports whether err is a channel-closed error.  This is true
+// for the internal error returned by a read from a pipe or socket that is
+// closed, or an error that wraps ErrClosed. It is false if err == nil.
 func IsErrClosing(err error) bool {
-	return err != nil && errors.Is(err, net.ErrClosed)
+	return err != nil && (errors.Is(err, ErrClosed) || errors.Is(err, net.ErrClosed))
 }
 
 // A Framing converts a reader and a writer into a Channel with a particular
@@ -77,14 +84,12 @@ type direct struct {
 }
 
 func (d direct) Send(msg []byte) (err error) {
-	cp := make([]byte, len(msg))
-	copy(cp, msg)
 	defer func() {
 		if p := recover(); p != nil {
 			err = errors.New("send on closed channel")
 		}
 	}()
-	d.send <- cp
+	d.send <- msg
 	return nil
 }
 
@@ -101,6 +106,10 @@ func (d direct) Close() error { close(d.send); return nil }
 // Direct returns a pair of synchronous connected channels that pass message
 // buffers directly in memory without framing or encoding. Sends to client will
 // be received by server, and vice versa.
+//
+// Note that buffers passed to direct channels are not copied. If the caller
+// needs to use the buffer after sending it on a direct channel, the caller is
+// responsible for making a copy.
 func Direct() (client, server Channel) {
 	c2s := make(chan []byte)
 	s2c := make(chan []byte)

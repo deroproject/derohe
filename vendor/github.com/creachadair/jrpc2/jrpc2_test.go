@@ -1,3 +1,5 @@
+// Copyright (C) 2017 Michael J. Fromberger. All Rights Reserved.
+
 package jrpc2_test
 
 import (
@@ -6,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +19,7 @@ import (
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/jctx"
 	"github.com/creachadair/jrpc2/server"
+	"github.com/fortytw2/leaktest"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -23,8 +27,6 @@ import (
 var (
 	_ code.ErrCoder = (*jrpc2.Error)(nil)
 )
-
-var notAuthorized = code.Register(-32095, "request not authorized")
 
 var testOK = handler.New(func(ctx context.Context) (string, error) {
 	return "OK", nil
@@ -114,6 +116,8 @@ var callTests = []struct {
 }
 
 func TestServerInfo_methodNames(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.ServiceMap{
 		"Test": testService,
 	}, nil)
@@ -130,13 +134,12 @@ func TestServerInfo_methodNames(t *testing.T) {
 }
 
 func TestClient_Call(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.ServiceMap{
 		"Test": testService,
 	}, &server.LocalOptions{
-		Server: &jrpc2.ServerOptions{
-			AllowV1:     true,
-			Concurrency: 16,
-		},
+		Server: &jrpc2.ServerOptions{Concurrency: 16},
 	})
 	defer loc.Close()
 	c := loc.Client
@@ -164,6 +167,8 @@ func TestClient_Call(t *testing.T) {
 }
 
 func TestClient_CallResult(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.ServiceMap{
 		"Test": testService,
 	}, &server.LocalOptions{
@@ -187,13 +192,12 @@ func TestClient_CallResult(t *testing.T) {
 }
 
 func TestClient_Batch(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.ServiceMap{
 		"Test": testService,
 	}, &server.LocalOptions{
-		Server: &jrpc2.ServerOptions{
-			AllowV1:     true,
-			Concurrency: 16,
-		},
+		Server: &jrpc2.ServerOptions{Concurrency: 16},
 	})
 	defer loc.Close()
 	c := loc.Client
@@ -238,6 +242,8 @@ func TestClient_Batch(t *testing.T) {
 
 // Verify that notifications respect order of arrival.
 func TestServer_notificationOrder(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	var last int32
 
 	loc := server.NewLocal(handler.Map{
@@ -269,6 +275,8 @@ func TestServer_notificationOrder(t *testing.T) {
 // Verify that a method that returns only an error (no result payload) is set
 // up and handled correctly.
 func TestHandler_errorOnly(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	const errMessage = "not enough strings"
 	loc := server.NewLocal(handler.Map{
 		"ErrorOnly": handler.New(func(_ context.Context, ss []string) error {
@@ -309,9 +317,11 @@ func TestHandler_errorOnly(t *testing.T) {
 	})
 }
 
-// Verify that a timeout set on the context is respected by the server and
-// propagates back to the client as an error.
-func TestServer_contextTimeout(t *testing.T) {
+// Verify that a timeout set on the client context is respected and reports
+// back to the caller as an error.
+func TestClient_contextTimeout(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{
 		"Stall": handler.New(func(ctx context.Context) (bool, error) {
 			t.Log("Stalling...")
@@ -325,13 +335,12 @@ func TestServer_contextTimeout(t *testing.T) {
 		}),
 	}, nil)
 	defer loc.Close()
-	c := loc.Client
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	got, err := c.Call(ctx, "Stall", nil)
+	got, err := loc.Client.Call(ctx, "Stall", nil)
 	if err == nil {
 		t.Errorf("Stall: got %+v, wanted error", got)
 	} else if err != context.DeadlineExceeded {
@@ -343,6 +352,8 @@ func TestServer_contextTimeout(t *testing.T) {
 
 // Verify that stopping the server terminates in-flight requests.
 func TestServer_stopCancelsHandlers(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	started := make(chan struct{})
 	stopped := make(chan error, 1)
 	loc := server.NewLocal(handler.Map{
@@ -379,6 +390,8 @@ func TestServer_stopCancelsHandlers(t *testing.T) {
 
 // Test that a handler can cancel an in-flight request.
 func TestServer_CancelRequest(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	ready := make(chan struct{})
 	loc := server.NewLocal(handler.Map{
 		"Stall": handler.New(func(ctx context.Context) error {
@@ -430,6 +443,8 @@ func TestServer_CancelRequest(t *testing.T) {
 // Test that an error with data attached to it is correctly propagated back
 // from the server to the client, in a value of concrete type *Error.
 func TestError_withData(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	const errCode = -32000
 	const errData = `{"caroline":452}`
 	const errMessage = "error thingy"
@@ -482,6 +497,8 @@ func TestError_withData(t *testing.T) {
 
 // Test that a client correctly reports bad parameters.
 func TestClient_badCallParams(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{
 		"Test": handler.New(func(_ context.Context, v interface{}) error {
 			return jrpc2.Errorf(129, "this should not be reached")
@@ -499,6 +516,8 @@ func TestClient_badCallParams(t *testing.T) {
 
 // Verify that metrics are correctly propagated to server info.
 func TestServer_serverInfoMetrics(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{
 		"Metricize": handler.New(func(ctx context.Context) (bool, error) {
 			m := jrpc2.ServerFromContext(ctx).Metrics()
@@ -529,6 +548,9 @@ func TestServer_serverInfoMetrics(t *testing.T) {
 	if _, err := c.Call(ctx, "Metricize", nil); err != nil {
 		t.Fatalf("Call(Metricize) failed: %v", err)
 	}
+	if got := s.ServerInfo().Counter["rpc.serversActive"]; got != 1 {
+		t.Errorf("Metric rpc.serversActive: got %d, want 1", got)
+	}
 	loc.Close()
 
 	info := s.ServerInfo()
@@ -542,6 +564,7 @@ func TestServer_serverInfoMetrics(t *testing.T) {
 		{info.Counter, "zero-sum", 0},
 		{info.Counter, "rpc.bytesRead", -1},
 		{info.Counter, "rpc.bytesWritten", -1},
+		{info.Counter, "rpc.serversActive", 0},
 		{info.MaxValue, "max-metric-value", 5},
 		{info.MaxValue, "rpc.bytesRead", -1},
 		{info.MaxValue, "rpc.bytesWritten", -1},
@@ -562,6 +585,8 @@ func TestServer_serverInfoMetrics(t *testing.T) {
 // elicit a correct response from the server. Here we simulate a "different"
 // client by writing requests directly into the channel.
 func TestServer_nonLibraryClient(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	srv, cli := channel.Direct()
 	s := jrpc2.NewServer(handler.Map{
 		"X": testOK,
@@ -594,7 +619,7 @@ func TestServer_nonLibraryClient(t *testing.T) {
 
 		// The method specified doesn't exist.
 		{`{"jsonrpc":"2.0", "id": 3, "method": "NoneSuch"}`,
-			`{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"no such method \"NoneSuch\""}}`},
+			`{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"no such method","data":"NoneSuch"}}`},
 
 		// The parameters are of the wrong form.
 		{`{"jsonrpc":"2.0", "id": 4, "method": "X", "params": "bogus"}`,
@@ -604,9 +629,13 @@ func TestServer_nonLibraryClient(t *testing.T) {
 		{`{"jsonrpc": "2.0", "id": 6, "method": "X", "params": null}`,
 			`{"jsonrpc":"2.0","id":6,"result":"OK"}`},
 
-		// Correct requests, one with a non-null response, one with a null response.
+		// Correct requests.
 		{`{"jsonrpc":"2.0","id": 5, "method": "X"}`, `{"jsonrpc":"2.0","id":5,"result":"OK"}`},
 		{`{"jsonrpc":"2.0","id":21,"method":"Y"}`, `{"jsonrpc":"2.0","id":21,"result":null}`},
+		{`{"jsonrpc":"2.0","id":0,"method":"X"}`, `{"jsonrpc":"2.0","id":0,"result":"OK"}`},
+		{`{"jsonrpc":"2.0","id":-0,"method":"X"}`, `{"jsonrpc":"2.0","id":-0,"result":"OK"}`},
+		{`{"jsonrpc":"2.0","id":-1,"method":"X"}`, `{"jsonrpc":"2.0","id":-1,"result":"OK"}`},
+		{`{"jsonrpc":"2.0","id":-600,"method":"Y"}`, `{"jsonrpc":"2.0","id":-600,"result":null}`},
 
 		// A batch of correct requests.
 		{`[{"jsonrpc":"2.0", "id":"a1", "method":"X"}, {"jsonrpc":"2.0", "id":"a2", "method": "X"}]`,
@@ -625,7 +654,7 @@ func TestServer_nonLibraryClient(t *testing.T) {
 
 		// A batch of invalid requests returns a batch of errors.
 		{`[{"jsonrpc": "2.0", "id": 6, "method":"bogus"}]`,
-			`[{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"no such method \"bogus\""}}]`},
+			`[{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"no such method","data":"bogus"}}]`},
 
 		// Batch requests return batch responses, even for a singleton.
 		{`[{"jsonrpc": "2.0", "id": 7, "method": "X"}]`, `[{"jsonrpc":"2.0","id":7,"result":"OK"}]`},
@@ -677,6 +706,8 @@ func TestServer_nonLibraryClient(t *testing.T) {
 
 // Verify that server-side push notifications work.
 func TestServer_Notify(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	// Set up a server and client with server-side notification support.  Here
 	// we're just capturing the name of the notification method, as a sign we
 	// got the right thing.
@@ -728,6 +759,8 @@ func TestServer_Notify(t *testing.T) {
 
 // Verify that server-side callbacks can time out.
 func TestServer_callbackTimeout(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{
 		"Test": handler.New(func(ctx context.Context) error {
 			tctx, cancel := context.WithTimeout(ctx, 5*time.Millisecond)
@@ -757,6 +790,8 @@ func TestServer_callbackTimeout(t *testing.T) {
 
 // Verify that server-side callbacks work.
 func TestServer_Callback(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{
 		"CallMeMaybe": handler.New(func(ctx context.Context) error {
 			if _, err := jrpc2.ServerFromContext(ctx).Callback(ctx, "succeed", nil); err != nil {
@@ -799,6 +834,8 @@ func TestServer_Callback(t *testing.T) {
 
 // Verify that a server push after the client closes does not trigger a panic.
 func TestServer_pushAfterClose(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(make(handler.Map), &server.LocalOptions{
 		Server: &jrpc2.ServerOptions{AllowPush: true},
 	})
@@ -814,6 +851,8 @@ func TestServer_pushAfterClose(t *testing.T) {
 
 // Verify that an OnCancel hook is called when expected.
 func TestClient_onCancelHook(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	hooked := make(chan struct{}) // closed when hook notification is finished
 
 	loc := server.NewLocal(handler.Map{
@@ -870,8 +909,162 @@ func TestClient_onCancelHook(t *testing.T) {
 	}
 }
 
+// Verify that client callback handlers are cancelled when the client stops.
+func TestClient_closeEndsCallbacks(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	ready := make(chan struct{})
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context) error {
+			// Call back to the client and block indefinitely until it returns.
+			srv := jrpc2.ServerFromContext(ctx)
+			_, err := srv.Callback(ctx, "whatever", nil)
+			return err
+		}),
+	}, &server.LocalOptions{
+		Server: &jrpc2.ServerOptions{AllowPush: true},
+		Client: &jrpc2.ClientOptions{
+			OnCallback: handler.New(func(ctx context.Context) error {
+				// Signal the test that the callback handler is running.  When the
+				// client is closed, it should terminate ctx and allow this to
+				// return. If that doesn't happen, time out and fail.
+				close(ready)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(10 * time.Second):
+					return errors.New("context not cancelled before timeout")
+				}
+			}),
+		},
+	})
+	go func() {
+		rsp, err := loc.Client.Call(context.Background(), "Test", nil)
+		if err == nil {
+			t.Errorf("Client call: got %+v, wanted error", rsp)
+		}
+	}()
+	<-ready
+	loc.Client.Close()
+	loc.Server.Wait()
+}
+
+// Verify that it is possible for multiple callback handlers to execute
+// concurrently.
+func TestClient_concurrentCallbacks(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	ready1 := make(chan struct{})
+	ready2 := make(chan struct{})
+	release := make(chan struct{})
+
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context) []string {
+			srv := jrpc2.ServerFromContext(ctx)
+
+			// Call two callbacks concurrently, wait until they are both running,
+			// then ungate them and wait for them both to reply. Return their
+			// responses back to the test for validation.
+			ss := make([]string, 2)
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				rsp, err := srv.Callback(ctx, "C1", nil)
+				if err != nil {
+					t.Errorf("Callback C1 failed: %v", err)
+				} else {
+					rsp.UnmarshalResult(&ss[0])
+				}
+			}()
+			go func() {
+				defer wg.Done()
+				rsp, err := srv.Callback(ctx, "C2", nil)
+				if err != nil {
+					t.Errorf("Callback C2 failed: %v", err)
+				} else {
+					rsp.UnmarshalResult(&ss[1])
+				}
+			}()
+			<-ready1       // C1 is ready
+			<-ready2       // C2 is ready
+			close(release) // allow all callbacks to proceed
+			wg.Wait()      // wait for all callbacks to be done
+			return ss
+		}),
+	}, &server.LocalOptions{
+		Server: &jrpc2.ServerOptions{AllowPush: true},
+		Client: &jrpc2.ClientOptions{
+			OnCallback: handler.Func(func(ctx context.Context, req *jrpc2.Request) (interface{}, error) {
+				// A trivial callback that reports its method name.
+				// The name is used to select which invocation we are serving.
+				switch req.Method() {
+				case "C1":
+					close(ready1)
+				case "C2":
+					close(ready2)
+				default:
+					return nil, fmt.Errorf("unexpected method %q", req.Method())
+				}
+				<-release
+				return req.Method(), nil
+			}),
+		},
+	})
+	defer loc.Close()
+
+	var got []string
+	if err := loc.Client.CallResult(context.Background(), "Test", nil, &got); err != nil {
+		t.Errorf("Call Test failed: %v", err)
+	}
+	want := []string{"C1", "C2"}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Wrong callback results: (-want, +got)\n%s", diff)
+	}
+}
+
+// Verify that a callback can successfully call "up" into the server.
+func TestClient_callbackUpCall(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	const pingMessage = "kittens!"
+
+	var probe string
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context) error {
+			// Call back to the client, and propagate its response.
+			srv := jrpc2.ServerFromContext(ctx)
+			_, err := srv.Callback(ctx, "whatever", nil)
+			return err
+		}),
+		"Ping": handler.New(func(context.Context) string {
+			// This method is called by the client-side callback.
+			return pingMessage
+		}),
+	}, &server.LocalOptions{
+		Server: &jrpc2.ServerOptions{AllowPush: true},
+		Client: &jrpc2.ClientOptions{
+			OnCallback: handler.New(func(ctx context.Context) error {
+				// Call back up into the server.
+				cli := jrpc2.ClientFromContext(ctx)
+				return cli.CallResult(ctx, "Ping", nil, &probe)
+			}),
+		},
+	})
+
+	if _, err := loc.Client.Call(context.Background(), "Test", nil); err != nil {
+		t.Errorf("Call Test failed: %v", err)
+	}
+	loc.Close()
+	if probe != pingMessage {
+		t.Errorf("Probe response: got %q, want %q", probe, pingMessage)
+	}
+}
+
 // Verify that the context encoding/decoding hooks work.
 func TestContextPlumbing(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	want := time.Now().Add(10 * time.Second)
 	ctx, cancel := context.WithDeadline(context.Background(), want)
 	defer cancel()
@@ -898,88 +1091,11 @@ func TestContextPlumbing(t *testing.T) {
 	}
 }
 
-// Verify that the request-checking hook works.
-func TestServer_checkRequestHook(t *testing.T) {
-	const wantResponse = "Hey girl"
-	const wantToken = "OK"
-
-	loc := server.NewLocal(handler.Map{
-		"Test": handler.New(func(ctx context.Context) (string, error) {
-			return wantResponse, nil
-		}),
-	}, &server.LocalOptions{
-		// Enable auth checking and context decoding for the server.
-		Server: &jrpc2.ServerOptions{
-			DecodeContext: jctx.Decode,
-			CheckRequest: func(ctx context.Context, req *jrpc2.Request) error {
-				var token []byte
-				switch err := jctx.UnmarshalMetadata(ctx, &token); err {
-				case nil:
-					t.Logf("Metadata present: value=%q", string(token))
-				case jctx.ErrNoMetadata:
-					t.Log("Metadata not set")
-				default:
-					return err
-				}
-				if s := string(token); s != wantToken {
-					return jrpc2.Errorf(notAuthorized, "not authorized")
-				}
-				return nil
-			},
-		},
-
-		// Enable context encoding for the client.
-		Client: &jrpc2.ClientOptions{
-			EncodeContext: jctx.Encode,
-		},
-	})
-	defer loc.Close()
-	c := loc.Client
-
-	// Call without a token and verify that we get an error.
-	t.Run("NoToken", func(t *testing.T) {
-		var rsp string
-		err := c.CallResult(context.Background(), "Test", nil, &rsp)
-		if err == nil {
-			t.Errorf("Call(Test): got %q, wanted error", rsp)
-		} else if ec := code.FromError(err); ec != notAuthorized {
-			t.Errorf("Call(Test): got code %v, want %v", ec, notAuthorized)
-		}
-	})
-
-	// Call with a valid token and verify that we get a response.
-	t.Run("GoodToken", func(t *testing.T) {
-		ctx, err := jctx.WithMetadata(context.Background(), []byte(wantToken))
-		if err != nil {
-			t.Fatalf("Call(Test): attaching metadata: %v", err)
-		}
-		var rsp string
-		if err := c.CallResult(ctx, "Test", nil, &rsp); err != nil {
-			t.Errorf("Call(Test): unexpected error: %v", err)
-		}
-		if rsp != wantResponse {
-			t.Errorf("Call(Test): got %q, want %q", rsp, wantResponse)
-		}
-	})
-
-	// Call with an invalid token and verify that we get an error.
-	t.Run("BadToken", func(t *testing.T) {
-		ctx, err := jctx.WithMetadata(context.Background(), []byte("BAD"))
-		if err != nil {
-			t.Fatalf("Call(Test): attaching metadata: %v", err)
-		}
-		var rsp string
-		if err := c.CallResult(ctx, "Test", nil, &rsp); err == nil {
-			t.Errorf("Call(Test): got %q, wanted error", rsp)
-		} else if ec := code.FromError(err); ec != notAuthorized {
-			t.Errorf("Call(Test): got code %v, want %v", ec, notAuthorized)
-		}
-	})
-}
-
 // Verify that calling a wrapped method which takes no parameters, but in which
 // the caller provided parameters, will correctly report an error.
 func TestHandler_noParams(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{"Test": testOK}, nil)
 	defer loc.Close()
 
@@ -993,6 +1109,8 @@ func TestHandler_noParams(t *testing.T) {
 
 // Verify that the rpc.serverInfo handler and client wrapper work together.
 func TestRPCServerInfo(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(handler.Map{"Test": testOK}, nil)
 	defer loc.Close()
 
@@ -1040,6 +1158,8 @@ func TestNetwork(t *testing.T) {
 
 // Verify that the context passed to an assigner has the correct structure.
 func TestHandler_assignContext(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	loc := server.NewLocal(assignFunc(func(ctx context.Context, method string) jrpc2.Handler {
 		req := jrpc2.InboundRequest(ctx)
 		if req == nil {
@@ -1065,9 +1185,10 @@ func TestHandler_assignContext(t *testing.T) {
 type assignFunc func(context.Context, string) jrpc2.Handler
 
 func (a assignFunc) Assign(ctx context.Context, m string) jrpc2.Handler { return a(ctx, m) }
-func (assignFunc) Names() []string                                      { return nil }
 
 func TestServer_WaitStatus(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	check := func(t *testing.T, stat jrpc2.ServerStatus, closed, stopped bool, wantErr error) {
 		t.Helper()
 		if got, want := stat.Success(), wantErr == nil; got != want {
@@ -1113,6 +1234,8 @@ func (b buggyChannel) Recv() ([]byte, error) { return []byte(b.data), b.err }
 func (buggyChannel) Close() error            { return nil }
 
 func TestRequest_strictFields(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	type other struct {
 		C bool `json:"charlie"`
 	}
@@ -1121,56 +1244,97 @@ func TestRequest_strictFields(t *testing.T) {
 		B int    `json:"bravo"`
 		other
 	}
-	type result struct {
-		X string `json:"xray"`
-	}
 	loc := server.NewLocal(handler.Map{
-		"Test": handler.New(func(ctx context.Context, req *jrpc2.Request) (interface{}, error) {
-			var ps, qs params
-
-			if err := req.UnmarshalParams(jrpc2.StrictFields(&ps)); err == nil {
-				t.Errorf("Unmarshal strict: got %+v, want error", ps)
+		"Strict": handler.New(func(ctx context.Context, req *jrpc2.Request) (string, error) {
+			var ps params
+			if err := req.UnmarshalParams(jrpc2.StrictFields(&ps)); err != nil {
+				return "", err
 			}
-
-			if err := req.UnmarshalParams(&qs); err != nil {
-				t.Errorf("Unmarshal non-strict (default): unexpected error: %v", err)
+			return ps.A, nil
+		}),
+		"Normal": handler.New(func(ctx context.Context, req *jrpc2.Request) (string, error) {
+			var ps params
+			if err := req.UnmarshalParams(&ps); err != nil {
+				return "", err
 			}
-
-			return map[string]string{
-				"xray":  "ok",
-				"gamma": "not ok",
-			}, nil
+			return ps.A, nil
 		}),
 	}, nil)
 	defer loc.Close()
-
 	ctx := context.Background()
-	rsp, err := loc.Client.Call(ctx, "Test", handler.Obj{
-		"alpha":   "foo",
-		"bravo":   25,
-		"charlie": true, // exercise embedding
-		"delta":   31.5, // unknown field
-	})
+
+	tests := []struct {
+		method string
+		params interface{}
+		code   code.Code
+		want   string
+	}{
+		{"Strict", handler.Obj{"alpha": "aiuto"}, code.NoError, "aiuto"},
+		{"Strict", handler.Obj{"alpha": "selva me", "charlie": true}, code.NoError, "selva me"},
+		{"Strict", handler.Obj{"alpha": "OK", "nonesuch": true}, code.InvalidParams, ""},
+		{"Normal", handler.Obj{"alpha": "OK", "nonesuch": true}, code.NoError, "OK"},
+	}
+	for _, test := range tests {
+		name := test.method + "/"
+		if test.code == code.NoError {
+			name += "OK"
+		} else {
+			name += test.code.String()
+		}
+		t.Run(name, func(t *testing.T) {
+			var res string
+			err := loc.Client.CallResult(ctx, test.method, test.params, &res)
+			if err == nil && test.code != code.NoError {
+				t.Errorf("CallResult: got %+v, want error code %v", res, test.code)
+			} else if err != nil {
+				if c := code.FromError(err); c != test.code {
+					t.Errorf("CallResult: got error %v, wanted code %v", err, test.code)
+				}
+			} else if res != test.want {
+				t.Errorf("CallResult: got %#q, want %#q", res, test.want)
+			}
+		})
+	}
+}
+
+func TestResponse_strictFields(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	type result struct {
+		A string `json:"alpha"`
+	}
+	loc := server.NewLocal(handler.Map{
+		"Test": handler.New(func(ctx context.Context, req *jrpc2.Request) handler.Obj {
+			return handler.Obj{"alpha": "OK", "bravo": "not OK"}
+		}),
+	}, nil)
+	defer loc.Close()
+	ctx := context.Background()
+
+	res, err := loc.Client.Call(ctx, "Test", nil)
 	if err != nil {
 		t.Fatalf("Call failed: %v", err)
 	}
 
-	t.Run("NonStrictResult", func(t *testing.T) {
-		var res result
-		if err := rsp.UnmarshalResult(&res); err != nil {
-			t.Errorf("UnmarshalResult: %v", err)
+	t.Run("Normal", func(t *testing.T) {
+		var got result
+		if err := res.UnmarshalResult(&got); err != nil {
+			t.Errorf("UnmarshalResult failed: %v", err)
+		} else if got.A != "OK" {
+			t.Errorf("Result: got %#q, want OK", got.A)
 		}
 	})
-
-	t.Run("StrictResult", func(t *testing.T) {
-		var res result
-		if err := rsp.UnmarshalResult(jrpc2.StrictFields(&res)); err == nil {
-			t.Errorf("UnmarshalResult: got %+v, want error", res)
+	t.Run("Strict", func(t *testing.T) {
+		var got result
+		if err := res.UnmarshalResult(jrpc2.StrictFields(&got)); err == nil {
+			t.Errorf("UnmarshalResult: got %#v, wanted error", got)
 		}
 	})
 }
 
 func TestServerFromContext(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	var got *jrpc2.Server
 	loc := server.NewLocal(handler.Map{
 		"Test": handler.New(func(ctx context.Context) error {
@@ -1190,6 +1354,8 @@ func TestServerFromContext(t *testing.T) {
 }
 
 func TestServer_newContext(t *testing.T) {
+	defer leaktest.Check(t)()
+
 	// Prepare a context with a test value attached to it, that the handler can
 	// extract to verify that the base context was plumbed in correctly.
 	type ctxKey string

@@ -42,3 +42,44 @@ func Test_AEAD_Cipher(t *testing.T) {
 		t.Fatalf("AEAD cipher encryption/decryption failed")
 	}
 }
+
+// functional test whether  the wrappers are okay
+func Test_Signed_Message_Cipher(t *testing.T) {
+
+	wsrc, err := Create_Encrypted_Wallet_From_Recovery_Words_Memory("", "sequence atlas unveil summon pebbles tuesday beer rudely snake rockets different fuselage woven tagged bested dented vegan hover rapid fawns obvious muppet randomly seasons randomly")
+	if err != nil {
+		t.Fatalf("Cannot create encrypted wallet, err %s", err)
+	}
+
+	result := wsrc.SignData([]byte("HELLO"))
+
+	signer, message, err := wsrc.CheckSignature(result)
+	if err != nil {
+		t.Fatalf("Cannot check signature, err %s", err)
+	}
+	if string(message) != "HELLO" {
+		t.Fatalf("Message corruption")
+	}
+	if signer.String() != wsrc.GetAddress().String() {
+		t.Fatalf("Address corruption")
+	}
+
+	// make sure other wallets can also verify the signatures
+
+	w2, err := Create_Encrypted_Wallet_From_Recovery_Words_Memory("", "perfil lujo faja puma favor pedir detalle doble carbón neón paella cuarto ánimo cuento conga correr dental moneda león donar entero logro realidad acceso doble")
+	if err != nil {
+		t.Fatalf("Cannot create encrypted wallet, err %s", err)
+	}
+
+	signer, message, err = w2.CheckSignature(result)
+	if err != nil {
+		t.Fatalf("Cannot check signature, err %s", err)
+	}
+	if string(message) != "HELLO" {
+		t.Fatalf("Message corruption")
+	}
+	if signer.String() != wsrc.GetAddress().String() {
+		t.Fatalf("Address corruption")
+	}
+
+}

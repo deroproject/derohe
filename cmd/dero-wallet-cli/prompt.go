@@ -25,6 +25,7 @@ import "time"
 //import "io/ioutil"
 //import "path/filepath"
 import "strings"
+import "unicode"
 import "strconv"
 import "encoding/hex"
 
@@ -38,6 +39,15 @@ import "github.com/deroproject/derohe/walletapi"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 var account walletapi.Account
+
+func isASCII(s string) bool {
+	for _, c := range s {
+		if c > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
 
 // handle all commands while  in prompt mode
 func handle_prompt_command(l *readline.Instance, line string) {
@@ -125,6 +135,54 @@ func handle_prompt_command(l *readline.Instance, line string) {
 
 	case "spendkey": // give user his spend key
 		display_spend_key(l, wallet)
+
+	case "filesign": // sign a file contents
+		if !ValidateCurrentPassword(l, wallet) {
+			logger.Error(err, "Invalid password")
+			PressAnyKey(l, wallet)
+			break
+		}
+
+		filename, err := ReadString(l, "Enter file to sign", "")
+		if err != nil {
+			logger.Error(err, "Cannot read input file name")
+		}
+
+		outputfile := filename + ".sign"
+
+		if filedata, err := os.ReadFile(filename); err != nil {
+			logger.Error(err, "Cannot read input file")
+		} else if err := os.WriteFile(outputfile, wallet.SignData(filedata), 0600); err != nil {
+			logger.Error(err, "Cannot write output file", "file", outputfile)
+		} else {
+			logger.Info("successfully signed file. please check", "file", outputfile)
+		}
+
+	case "fileverify": // verify a file contents
+		filename, err := ReadString(l, "Enter file to verify signature", "")
+		if err != nil {
+			logger.Error(err, "Cannot read input file name")
+		}
+
+		outputfile := strings.TrimSuffix(filename, ".sign")
+
+		if filedata, err := os.ReadFile(filename); err != nil {
+			logger.Error(err, "Cannot read input file")
+		} else if signer, message, err := wallet.CheckSignature(filedata); err != nil {
+			logger.Error(err, "Signature verify failed", "file", filename)
+		} else {
+			logger.Info("Signed by", "address", signer.String())
+
+			if isASCII(string(message)) { // do not spew garbage
+				logger.Info("", "message", string(message))
+			}
+
+			if os.WriteFile(outputfile, message, 0600); err != nil {
+				logger.Error(err, "Cannot write output file", "file", outputfile)
+			}
+			logger.Info("successfully wrote message to file. please check", "file", outputfile)
+
+		}
 
 	case "password": // change wallet password
 		if ConfirmYesNoDefaultNo(l, "Change wallet password (y/N)") &&
@@ -525,6 +583,10 @@ func ReadUint64(l *readline.Instance, cprompt string, default_value uint64) (a u
 		error_message := ""
 		color := color_green
 
+		if len(line) == 0 {
+			line = []rune(fmt.Sprintf("%d", default_value))
+		}
+
 		if len(line) >= 1 {
 			_, err := strconv.ParseUint(string(line), 0, 64)
 			if err != nil {
@@ -547,6 +609,9 @@ func ReadUint64(l *readline.Instance, cprompt string, default_value uint64) (a u
 	line, err := l.ReadPasswordWithConfig(setPasswordCfg)
 	if err != nil {
 		return
+	}
+	if len(line) == 0 {
+		line = []byte(fmt.Sprintf("%d", default_value))
 	}
 	a, err = strconv.ParseUint(string(line), 0, 64)
 	l.SetPrompt(cprompt)
@@ -800,6 +865,8 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("balance"),
 	readline.PcItem("integrated_address"),
 	readline.PcItem("get_tx_key"),
+	readline.PcItem("filesign"),
+	readline.PcItem("fileverify"),
 	readline.PcItem("menu"),
 	readline.PcItem("rescan_bc"),
 	readline.PcItem("payment_id"),
@@ -817,7 +884,6 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("version"),
 	readline.PcItem("transfer"),
 	readline.PcItem("transfer_all"),
-	readline.PcItem("walletviewkey"),
 	readline.PcItem("bye"),
 	readline.PcItem("exit"),
 	readline.PcItem("quit"),
