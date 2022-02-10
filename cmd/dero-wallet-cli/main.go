@@ -63,6 +63,7 @@ Usage:
   Options:
   -h --help     Show this screen.
   --version     Show version.
+  --logfile=<file>      File to write logs into.
   --wallet-file=<file>  Use this file to restore or create new wallet
   --password=<password>  Use this password to unlock the wallet
   --offline     Run the wallet in completely offline mode 
@@ -150,7 +151,14 @@ func main() {
 
 	// parse arguments and setup logging , print basic information
 	exename, _ := os.Executable()
-	f, err := os.Create(exename + ".log")
+
+	logFileName := exename + ".log"
+
+	if globals.Arguments["--logfile"] != nil {
+		logFileName = globals.Arguments["--logfile"].(string) // override with user specified settings
+	}
+
+	f, err := os.Create(logFileName)
 	if err != nil {
 		fmt.Printf("Error while opening log file err: %s filename %s\n", err, exename+".log")
 		return
@@ -246,6 +254,8 @@ func main() {
 		logger.Info("Wallet RPC", "username", parts[0], "password", parts[1])
 	}
 
+	currentDir, _ := os.Getwd()
+	fmt.Println(currentDir)
 	// if wallet is nil,  check whether the file exists, if yes, request password
 	if wallet == nil {
 		if _, err = os.Stat(wallet_file); err == nil {
