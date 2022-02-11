@@ -254,8 +254,6 @@ func main() {
 		logger.Info("Wallet RPC", "username", parts[0], "password", parts[1])
 	}
 
-	currentDir, _ := os.Getwd()
-	fmt.Println(currentDir)
 	// if wallet is nil,  check whether the file exists, if yes, request password
 	if wallet == nil {
 		if _, err = os.Stat(wallet_file); err == nil {
