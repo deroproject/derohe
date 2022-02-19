@@ -1122,7 +1122,7 @@ func (chain *Blockchain) Add_TX_To_Pool(tx *transaction.Transaction) error {
 	if tx.IsRegistration() { // registration tx will not go any forward
 
 		tx_hash := tx.GetHash()
-		if chain.simulator == false && tx_hash[0] != 0 && tx_hash[1] != 0 {
+		if chain.simulator == false && !(tx_hash[0] == 0 && tx_hash[1] == 0 && tx_hash[2] <= 0x3) {
 			return fmt.Errorf("TX doesn't solve Pow")
 		}
 

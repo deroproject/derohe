@@ -139,7 +139,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				reg_tx = wallet.GetRegistrationTX()
 				hash := reg_tx.GetHash()
 
-				if hash[0] == 0 && hash[1] == 0 {
+				if hash[0] == 0 && hash[1] == 0 && hash[2] <= 0x3 {
 					break
 				}
 			}

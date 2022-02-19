@@ -73,6 +73,7 @@ type metrics_generator struct{}
 
 func (metrics_generator) LogRequest(ctx context.Context, req *jrpc2.Request) {}
 func (metrics_generator) LogResponse(ctx context.Context, resp *jrpc2.Response) {
+	defer globals.Recover(2)
 	req := jrpc2.InboundRequest(ctx) // we cannot do anything here
 	if req == nil {
 		return

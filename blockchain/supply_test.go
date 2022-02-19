@@ -1,4 +1,4 @@
-// Copyright 2017-2021 DERO Project. All rights reserved.
+// Copyright 2017-2022 DERO Project. All rights reserved.
 // Use of this source code in any form is governed by RESEARCH license.
 // license can be found in the LICENSE file.
 // GPG: 0F39 E425 8C65 3947 702A  8234 08B2 0360 A03A 9DE8
@@ -14,10 +14,22 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package config
+package blockchain
 
-import "github.com/blang/semver/v4"
+import "testing"
+import "github.com/deroproject/derohe/globals"
 
-// right now it has to be manually changed
-// do we need to include git commitsha??
-var Version = semver.MustParse("3.4.111-43.DEROHE.STARGATE+18012022")
+
+func Test_Supply(t *testing.T) {
+
+	supply_at_0 := CalcBlockReward(0)
+
+	for i := uint64(0); i < 10; i++ {
+		supply := CalcBlockReward(i * RewardReductionInterval)
+		t.Logf("Supply at height %d   %s", i*RewardReductionInterval, globals.FormatMoney(supply))
+		if supply != supply_at_0>>i {
+			t.Errorf("supply not halvening as needed ")
+			return
+		}
+	}
+}
