@@ -119,6 +119,7 @@ func SendJob() {
 		if !v.valid_address && !chain.IsAddressHashValid(false, v.address_sum) {
 			params.LastError = "unregistered miner or you need to wait 15 mins"
 		} else {
+			params.LastError = ""
 			v.valid_address = true
 		}
 		params.Blockhashing_blob = fmt.Sprintf("%x", mbl.Serialize())

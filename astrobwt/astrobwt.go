@@ -2,6 +2,7 @@ package astrobwt
 
 import "fmt"
 import "unsafe"
+import "crypto/rand"
 import "encoding/binary"
 import "golang.org/x/crypto/sha3"
 import "golang.org/x/crypto/salsa20/salsa"
@@ -13,6 +14,15 @@ var x = fmt.Sprintf
 const stage1_length int = 9973 // it is a prime
 
 func POW16(inputdata []byte) (outputhash [32]byte) {
+
+	defer func() {
+		if r := recover(); r != nil { // if something happens due to RAM issues in miner, we should continue, system will crash sooner or later
+			var buf [16]byte
+			rand.Read(buf[:])
+			outputhash = sha3.Sum256(buf[:]) // return a falsified has which will fail the check
+		}
+	}()
+
 	var counter [16]byte
 
 	key := sha3.Sum256(inputdata)
