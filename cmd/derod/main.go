@@ -670,6 +670,7 @@ restart_loop:
 			}
 
 			fmt.Printf("BALANCE_TREE : %s\n", bhash)
+			fmt.Printf("MINING REWARD : %s\n", globals.FormatMoney(blockchain.CalcBlockReward(bl.Height)))
 
 			//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
 
@@ -763,9 +764,8 @@ restart_loop:
 
 			supply := uint64(0)
 
-			if supply > (1000000 * 1000000000000) {
-				supply -= (1000000 * 1000000000000) // remove  premine
-			}
+			supply = (config.PREMINE + blockchain.CalcBlockReward(uint64(chain.Get_Height()))*uint64(chain.Get_Height())) // valid for few years
+
 			fmt.Printf("Network %s Height %d  NW Hashrate %0.03f MH/sec  Peers %d inc, %d out  MEMPOOL size %d REGPOOL %d  Total Supply %s DERO \n", globals.Config.Name, chain.Get_Height(), float64(chain.Get_Network_HashRate())/1000000.0, inc, out, mempool_tx_count, regpool_tx_count, globals.FormatMoney(supply))
 			if chain.LocatePruneTopo() >= 1 {
 				fmt.Printf("Chain is pruned till %d\n", chain.LocatePruneTopo())
@@ -783,6 +783,7 @@ restart_loop:
 				fmt.Printf(" %s(%d)", tip, chain.Load_Height_for_BL_ID(tip))
 			}
 			fmt.Printf("\n")
+			fmt.Printf("Current Block Reward: %s\n", globals.FormatMoney(blockchain.CalcBlockReward(uint64(chain.Get_Height()))))
 
 			// print hardfork status on second line
 			hf_state, _, _, threshold, version, votes, window := chain.Get_HF_info()

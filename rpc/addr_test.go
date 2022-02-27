@@ -14,23 +14,16 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package blockchain
+package rpc
 
 import "testing"
-import "github.com/deroproject/derohe/globals"
+import "github.com/deroproject/derohe/config"
 
-func Test_Supply(t *testing.T) {
+func Test_Address(t *testing.T) {
 
-	supply_at_0 := CalcBlockReward(0)
-
-	total_supply := uint64(0)
-	for i := uint64(0); i < 14; i++ {
-		supply := CalcBlockReward(i * RewardReductionInterval)
-		total_supply += supply * RewardReductionInterval
-		t.Logf("Supply at height %9d   %s Emission after %d years (%s)", i*RewardReductionInterval, globals.FormatMoney(supply), 4+i*4, globals.FormatMoney(total_supply))
-		if supply != supply_at_0>>i {
-			t.Errorf("supply not halvening as needed ")
-			return
-		}
+	addr, err := NewAddress(config.Mainnet.Dev_Address)
+	if err != nil {
+		t.Fatalf("devaddress could not be parsed")
 	}
+	t.Logf("dev address compressed form %x\n", addr.Compressed())
 }

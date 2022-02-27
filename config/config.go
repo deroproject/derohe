@@ -55,6 +55,8 @@ const STARGATE_HE_MAX_TX_SIZE = 300 * 1024 // max size
 const MIN_RINGSIZE = 2   //  >= 2 ,   ringsize will be accepted
 const MAX_RINGSIZE = 128 // <= 128,  ringsize will be accepted
 
+const PREMINE uint64 = 1228125400000 // this is total supply of old chain ( considering both chain will be running together for some time)
+
 type SettingsStruct struct {
 	MAINNET_BOOTSTRAP_DIFFICULTY uint64 `env:"MAINNET_BOOTSTRAP_DIFFICULTY" envDefault:"10000000"` // mainnet bootstrap is 10 MH/s
 	MAINNET_MINIMUM_DIFFICULTY   uint64 `env:"MAINNET_MINIMUM_DIFFICULTY" envDefault:"100000"`     // mainnet minimum is 100 KH/s
@@ -89,27 +91,25 @@ type CHAIN_CONFIG struct {
 }
 
 var Mainnet = CHAIN_CONFIG{Name: "mainnet",
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x40, 0x0}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x9a, 0x44, 0x41, 0x0}),
 	GETWORK_Default_Port:    10100,
-	P2P_Default_Port:        10101,
 	RPC_Default_Port:        10102,
 	Wallet_RPC_Default_Port: 10103,
-	Dev_Address:             "deto1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqdzcd8p",
+	Dev_Address:             "dero1qykyta6ntpd27nl0yq4xtzaf4ls6p5e9pqu0k2x4x3pqq5xavjsdxqgny8270",
 
 	Genesis_Tx: "" +
 		"01" + // version
 		"00" + // Source is DERO network
 		"00" + // Dest is DERO network
 		"00" + // PREMINE_FLAG
-		"80a8b9ceb024" + // PREMINE_VALUE
-		"1f9bcc1208dee302769931ad378a4c0c4b2c21b0cfb3e752607e12d2b6fa642500", // miners public key
+		"c0d7e98fdf23" + // PREMINE_VALUE
+		"2c45f753585aaf4fef202a658ba9afe1a0d3250838fb28d534420050dd64a0d301", // miners public key
 
 }
 
 var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 bytes 0
-	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x86, 0x00, 0x00, 0x00}),
+	Network_ID:              uuid.FromBytesOrNil([]byte{0x59, 0xd7, 0xf7, 0xe9, 0xdd, 0x48, 0xd5, 0xfd, 0x13, 0x0a, 0xf6, 0xe0, 0x87, 0x00, 0x00, 0x00}),
 	GETWORK_Default_Port:    10100,
-	P2P_Default_Port:        40401,
 	RPC_Default_Port:        40402,
 	Wallet_RPC_Default_Port: 40403,
 
@@ -120,9 +120,9 @@ var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 b
 		"00" + // Source is DERO network
 		"00" + // Dest is DERO network
 		"00" + // PREMINE_FLAG
-		"80a8b9ceb024" + // PREMINE_VALUE
+		"c0d7e98fdf23" + // PREMINE_VALUE
 		"1f9bcc1208dee302769931ad378a4c0c4b2c21b0cfb3e752607e12d2b6fa642500", // miners public key
 }
 
 // mainnet has a remote daemon node, which can be used be default, if user provides a  --remote flag
-const REMOTE_DAEMON = "https://rwallet.dero.live"
+const REMOTE_DAEMON = "185.132.176.174" // "https://rwallet.dero.live"

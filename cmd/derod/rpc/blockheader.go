@@ -45,7 +45,7 @@ func GetBlockHeader(chain *blockchain.Blockchain, hash crypto.Hash) (result rpc.
 		result.SyncBlock = chain.IsBlockSyncBlockHeight(hash)
 	}
 	result.SideBlock = chain.Isblock_SideBlock(hash)
-	//result.Reward = chain.Load_Block_Total_Reward(dbtx, hash)
+	result.Reward = blockchain.CalcBlockReward(uint64(result.Height))
 	result.TXCount = int64(len(bl.Tx_hashes))
 
 	for i := range bl.Tips {

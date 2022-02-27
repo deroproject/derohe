@@ -356,7 +356,7 @@ func load_block_from_rpc(info *block_info, block_hash string, recursive bool) (e
 	info.Nonce = bresult.Block_Header.Nonce
 	info.Major_Version = bresult.Block_Header.Major_Version
 	info.Minor_Version = bresult.Block_Header.Minor_Version
-	info.Reward = fmt.Sprintf("%.03f", float32(bresult.Block_Header.Reward)/1000000000000.0)
+	info.Reward = fmt.Sprintf("%.05f", float32(bresult.Block_Header.Reward)/100000.0)
 
 	block_bin, _ = hex.DecodeString(bresult.Blob)
 

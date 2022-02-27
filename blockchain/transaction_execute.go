@@ -40,7 +40,7 @@ import "github.com/deroproject/graviton"
 
 // convert bitcoin model to our, but skip initial 4 years of supply, so our total supply gets to 10.5 million
 const RewardReductionInterval = 210000 * 600 / config.BLOCK_TIME // 210000 comes from bitcoin
-const BaseReward = (50 * 100000 * config.BLOCK_TIME) / 600       // convert bitcoin reward system to our block
+const BaseReward = (41 * 100000 * config.BLOCK_TIME) / 600       // convert bitcoin reward system to our block
 
 // CalcBlockSubsidy returns the subsidy amount a block at the provided height
 // should have. This is mainly used for determining how much the coinbase for
@@ -184,6 +184,13 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 
 		if !globals.IsMainnet() { // give testnet users a dummy amount to play
 			zerobalance = zerobalance.Plus(new(big.Int).SetUint64(800000)) // add fix amount to every wallet to users balance for more testing
+		}
+
+		// give new wallets generated in initial month a balance
+		// so they can claim previous chain balance safely/securely without revealing themselves
+		// 144000= 86400/18 *30
+		if globals.IsMainnet() && height < 144000 {
+			zerobalance = zerobalance.Plus(new(big.Int).SetUint64(200))
 		}
 
 		nb := crypto.NonceBalance{NonceHeight: 0, Balance: zerobalance}

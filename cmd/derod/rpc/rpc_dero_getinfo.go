@@ -23,7 +23,7 @@ import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/rpc"
 
-//import "github.com/deroproject/derohe/blockchain"
+import "github.com/deroproject/derohe/blockchain"
 
 func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 
@@ -71,17 +71,13 @@ func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 
 	//result.Target_Height = uint64(chain.Get_Height())
 
-	//result.Tx_pool_size = uint64(len(chain.Mempool.Mempool_List_TX()))
+	result.Tx_pool_size = uint64(len(chain.Mempool.Mempool_List_TX()))
 	// get dynamic fees per kb, used by wallet for tx creation
 	//result.Dynamic_fee_per_kb = config.FEE_PER_KB
 	//result.Median_Block_Size = config.CRYPTONOTE_MAX_BLOCK_SIZE
 
-	//result.Total_Supply = chain.Load_Already_Generated_Coins_for_Topo_Index( result.TopoHeight)
-	result.Total_Supply = 0
-	if result.Total_Supply > (1000000 * 1000000000000) {
-		result.Total_Supply -= (1000000 * 1000000000000) // remove  premine
-	}
-	result.Total_Supply = result.Total_Supply / 1000000000000
+	result.Total_Supply = (config.PREMINE + blockchain.CalcBlockReward(uint64(result.TopoHeight))*uint64(result.TopoHeight)) // valid for few years
+	result.Total_Supply = result.Total_Supply / 100000                                                                       // only give deros remove fractional part
 
 	if globals.Config.Name != config.Mainnet.Name { // anything other than mainnet is testnet at this point in time
 		result.Testnet = true
