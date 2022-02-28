@@ -902,7 +902,7 @@ func fill_common_info(data map[string]interface{}, extra_data bool) error {
 	//fmt.Printf("get info %+v", info)
 
 	data["Network_Difficulty"] = info.Difficulty
-	data["hash_rate"] = fmt.Sprintf("%.03f", float32(info.Difficulty/1000000)/float32(info.Target))
+	data["hash_rate"] = fmt.Sprintf("%.03f", float32(info.Difficulty/1000000))
 	data["txpool_size"] = info.Tx_pool_size
 	data["testnet"] = info.Testnet
 	data["network"] = info.Network
