@@ -15,7 +15,7 @@ import "fmt"
 import "time"
 import "crypto/sha1"
 
-import "etcd.io/bbolt"
+import "go.etcd.io/bbolt"
 
 import "github.com/go-logr/logr"
 import "gopkg.in/natefinch/lumberjack.v2"
