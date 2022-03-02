@@ -76,7 +76,7 @@ ONE CPU, ONE VOTE.
 http://wiki.dero.io
 
 Usage:
-  dero-miner  --wallet-address=<wallet_address> [--daemon-rpc-address=<127.0.0.1:10102>] [--mining-threads=<threads>] [--testnet] [--debug]
+  dero-miner --wallet-address=<wallet_address> [--daemon-rpc-address=<127.0.0.1:10102>] [--mining-threads=<threads>] [--retry-pause=<10>] [--testnet] [--debug]
   dero-miner --bench [--max-pow-size=1120]
   dero-miner -h | --help
   dero-miner --version
@@ -418,8 +418,8 @@ func getwork(wallet_address string) {
 		connection, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 		if err != nil {
 			logger.Error(err, "Error connecting to server", "server adress", daemon_rpc_address)
-			logger.Info("Will try in " + connection_retry_pause + " secs", "server adress", daemon_rpc_address)
-			time.Sleep(connection_retry_pause * time.Second)
+			logger.Info("Will try in " + strconv.Itoa(connection_retry_pause) + " secs", "server adress", daemon_rpc_address)
+			time.Sleep(time.Duration(connection_retry_pause) * time.Second)
 
 			continue
 		}
