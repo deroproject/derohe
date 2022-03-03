@@ -45,8 +45,6 @@ func (handshake *Handshake_Struct) Fill() {
 
 	//	handshake.Flags = // add any flags necessary
 
-	//scan our peer list and send peers which have been recently communicated
-	handshake.PeerList = get_peer_list()
 	copy(handshake.Network_ID[:], globals.Config.Network_ID[:])
 }
 
@@ -56,6 +54,9 @@ func (connection *Connection) dispatch_test_handshake() {
 	defer handle_connection_panic(connection)
 	var request, response Handshake_Struct
 	request.Fill()
+
+	//scan our peer list and send peers which have been recently communicated
+	request.PeerList = get_peer_list_specific(Address(connection))
 
 	ctx, _ := context.WithTimeout(context.Background(), 4*time.Second)
 	if err := connection.Client.CallWithContext(ctx, "Peer.Handshake", request, &response); err != nil {

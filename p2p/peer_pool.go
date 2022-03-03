@@ -323,3 +323,21 @@ func get_peer_list() (peers []Peer_Info) {
 	}
 	return
 }
+
+func get_peer_list_specific(addr string) (peers []Peer_Info) {
+	plist := get_peer_list()
+	sort.SliceStable(plist, func(i, j int) bool { return plist[i].Addr < plist[j].Addr })
+
+	if len(plist) <= 7 {
+		peers = plist
+	} else {
+		index := sort.Search(len(plist), func(i int) bool { return plist[i].Addr < addr })
+		for i := range plist {
+			peers = append(peers, plist[(i+index)%len(plist)])
+			if len(peers) >= 7 {
+				break
+			}
+		}
+	}
+	return peers
+}

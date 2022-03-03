@@ -20,6 +20,7 @@ import "fmt"
 import "sync"
 import "context"
 import "runtime/debug"
+import "encoding/base64"
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/cryptography/crypto"
@@ -54,7 +55,13 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 
 	//fmt.Printf("incoming transfer params %+v\n", p)
 
-	if p.SC_Code != "" {
+	if len(p.SC_Code) >= 1 { // decode SC from base64 if possible, since json has limitations
+		if sc, err := base64.StdEncoding.DecodeString(p.SC_Code); err == nil {
+			p.SC_Code = string(sc)
+		}
+	}
+
+	if p.SC_Code != "" && p.SC_ID == "" {
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_INSTALL)})
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCCODE, DataType: rpc.DataString, Value: p.SC_Code})
 	}
@@ -62,6 +69,9 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 	if p.SC_ID != "" {
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_CALL)})
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCID, DataType: rpc.DataHash, Value: crypto.HashHexToHash(p.SC_ID)})
+		if p.SC_Code != "" {
+			p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCCODE, DataType: rpc.DataString, Value: p.SC_Code})
+		}
 	}
 
 	var tx *transaction.Transaction

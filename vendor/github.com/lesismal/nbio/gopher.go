@@ -6,6 +6,7 @@ package nbio
 
 import (
 	"container/heap"
+	"context"
 	"net"
 	"runtime"
 	"sync"
@@ -78,7 +79,7 @@ type Config struct {
 	LockPoller bool
 
 	// EpollMod sets the epoll mod, EPOLLLT by default.
-	EpollMod int
+	EpollMod uint32
 }
 
 // Gopher is a manager of poller.
@@ -86,6 +87,8 @@ type Gopher struct {
 	sync.WaitGroup
 	mux  sync.Mutex
 	tmux sync.Mutex
+
+	wgConn sync.WaitGroup
 
 	Name string
 
@@ -97,7 +100,7 @@ type Gopher struct {
 	maxWriteBufferSize       int
 	maxReadTimesPerEventLoop int
 	minConnCacheSize         int
-	epollMod                 int
+	epollMod                 uint32
 	lockListener             bool
 	lockPoller               bool
 
@@ -130,38 +133,66 @@ type Gopher struct {
 	Execute func(f func())
 }
 
-// Stop pollers.
+// Stop closes listeners/pollers/conns/timer.
 func (g *Gopher) Stop() {
-	g.onStop()
-
-	g.trigger.Stop()
-	close(g.chTimer)
-
 	for _, l := range g.listeners {
 		l.stop()
 	}
-	for i := 0; i < g.pollerNum; i++ {
-		g.pollers[i].stop()
-	}
+
 	g.mux.Lock()
 	conns := g.connsStd
 	g.connsStd = map[*Conn]struct{}{}
 	connsUnix := g.connsUnix
 	g.mux.Unlock()
 
+	g.wgConn.Done()
 	for c := range conns {
 		if c != nil {
-			c.Close()
+			cc := c
+			g.atOnce(func() {
+				cc.Close()
+			})
 		}
 	}
 	for _, c := range connsUnix {
 		if c != nil {
-			go c.Close()
+			cc := c
+			g.atOnce(func() {
+				cc.Close()
+			})
 		}
+	}
+
+	g.wgConn.Wait()
+	time.Sleep(time.Second / 5)
+
+	g.onStop()
+
+	g.trigger.Stop()
+	close(g.chTimer)
+
+	for i := 0; i < g.pollerNum; i++ {
+		g.pollers[i].stop()
 	}
 
 	g.Wait()
 	logging.Info("Gopher[%v] stop", g.Name)
+}
+
+// Shutdown stops Gopher gracefully with context.
+func (g *Gopher) Shutdown(ctx context.Context) error {
+	ch := make(chan struct{})
+	go func() {
+		g.Stop()
+		close(ch)
+	}()
+
+	select {
+	case <-ch:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return nil
 }
 
 // AddConn adds conn to a poller.
@@ -179,7 +210,10 @@ func (g *Gopher) OnOpen(h func(c *Conn)) {
 	if h == nil {
 		panic("invalid nil handler")
 	}
-	g.onOpen = h
+	g.onOpen = func(c *Conn) {
+		g.wgConn.Add(1)
+		h(c)
+	}
 }
 
 // OnClose registers callback for disconnected.
@@ -188,9 +222,10 @@ func (g *Gopher) OnClose(h func(c *Conn, err error)) {
 		panic("invalid nil handler")
 	}
 	g.onClose = func(c *Conn, err error) {
-		g.atOnce(func() {
-			h(c, err)
-		})
+		// g.atOnce(func() {
+		defer g.wgConn.Done()
+		h(c, err)
+		// })
 	}
 }
 
@@ -425,6 +460,7 @@ func (g *Gopher) PollerBuffer(c *Conn) []byte {
 }
 
 func (g *Gopher) initHandlers() {
+	g.wgConn.Add(1)
 	g.OnOpen(func(c *Conn) {})
 	g.OnClose(func(c *Conn, err error) {})
 	// g.OnRead(func(c *Conn, b []byte) ([]byte, error) {

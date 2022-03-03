@@ -63,6 +63,10 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	w.transfer_mutex.Lock()
 	defer w.transfer_mutex.Unlock()
 
+	//if len(transfers) == 0 {
+	//	return nil,  fmt.Error("transfers is nil, cannot send.")
+	//}
+
 	if ringsize == 0 {
 		ringsize = uint64(w.account.Ringsize) // use wallet ringsize, if ringsize not provided
 	} else { // we need to use supplied ringsize

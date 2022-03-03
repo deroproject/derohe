@@ -91,6 +91,8 @@ func (s *storetopofs) Write(index int64, blid [32]byte, state_version uint64, he
 
 	_, err = s.topomapping.WriteAt(buf[:], index*TOPORECORD_SIZE)
 
+	s.topomapping.Sync() // looks like this is the cause of corruption
+
 	return err
 }
 

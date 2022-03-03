@@ -1503,6 +1503,7 @@ func (chain *Blockchain) get_ordered_past(tip crypto.Hash, tillheight int64) (or
 // this will flip chain top, depending on which block has more work
 // more worked block is normally identified in < 2 secs
 func (chain *Blockchain) flip_top() {
+	return
 	chain.Lock()
 	defer chain.Unlock()
 

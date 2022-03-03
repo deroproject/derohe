@@ -71,6 +71,8 @@ var ClockOffset time.Duration //Clock Offset related to all the peer2 connected
 var backoff = map[string]int64{} // if server receives a connection, then it will not initiate connection to that ip for another 60 secs
 var backoff_mutex = sync.Mutex{}
 
+var Min_Peers = int64(31) // we need to expose this to be modifieable at runtime without taking daemon offline
+
 // return true if we should back off else we can connect
 func shouldwebackoff(ip string) bool {
 	backoff_mutex.Lock()
@@ -250,7 +252,7 @@ func P2P_engine() {
 
 func tunekcp(conn *kcp.UDPSession) {
 	conn.SetACKNoDelay(true)
-	conn.SetNoDelay(1, 10, 2, 1) // tuning paramters for local stack
+	conn.SetNoDelay(0, 40, 0, 0) // tuning paramters for local stack
 }
 
 // will try to connect with given endpoint
@@ -396,7 +398,6 @@ func maintain_seed_node_connection() {
 // keep building connections to network, we are talking outgoing connections
 func maintain_connection_to_peers() {
 
-	Min_Peers := int64(31) // we need to expose this to be modifieable at runtime without taking daemon offline
 	// check how many connections are active
 	if _, ok := globals.Arguments["--min-peers"]; ok && globals.Arguments["--min-peers"] != nil { // user specified a limit, use it if possible
 		i, err := strconv.ParseInt(globals.Arguments["--min-peers"].(string), 10, 64)
@@ -468,6 +469,13 @@ func P2P_Server_v2() {
 
 		connection := &Connection{Client: c, Conn: conn, ConnTls: tlsconn, Addr: remote_addr, State: HANDSHAKE_PENDING, Incoming: true}
 		connection.logger = logger.WithName("incoming").WithName(remote_addr.String())
+
+		in, out := Peer_Direction_Count()
+
+		if int64(in+out) > Min_Peers { // do not allow incoming ddos
+			connection.exit()
+			return
+		}
 
 		c.State.Set("c", connection) // set pointer to connection
 

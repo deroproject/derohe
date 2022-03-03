@@ -223,6 +223,42 @@ func main() {
 		p2p.Broadcast_MiniBlock(mbl, peerid)
 	}
 
+	{
+		current_blid, err := chain.Load_Block_Topological_order_at_index(17600)
+		if err == nil {
+
+			current_blid := current_blid
+			for {
+				height := chain.Load_Height_for_BL_ID(current_blid)
+
+				if height < 17500 {
+					break
+				}
+
+				r, err := chain.Store.Topo_store.Read(int64(height))
+				if err != nil {
+					panic(err)
+				}
+				if r.BLOCK_ID != current_blid {
+					fmt.Printf("Fixing corruption r %+v  , current_blid %s current_blid_height %d\n", r, current_blid, height)
+
+					fix_commit_version, err := chain.ReadBlockSnapshotVersion(current_blid)
+					if err != nil {
+						panic(err)
+					}
+
+					chain.Store.Topo_store.Write(int64(height), current_blid, fix_commit_version, int64(height))
+
+				}
+
+				fix_bl, err := chain.Load_BL_FROM_ID(current_blid)
+				if err != nil {
+					panic(err)
+				}
+				current_blid = fix_bl.Tips[0]
+			}
+		}
+	}
 	globals.Cron.Start() // start cron jobs
 
 	// This tiny goroutine continuously updates status as required
@@ -623,6 +659,50 @@ restart_loop:
 
 			err, _ = chain.Add_Complete_Block(cbl)
 			fmt.Printf("err adding block %s\n", err)
+
+		case command == "fix":
+			tips := chain.Get_TIPS()
+
+			current_blid := tips[0]
+			for {
+				height := chain.Load_Height_for_BL_ID(current_blid)
+
+				//fmt.Printf("checking height %d\n", height)
+
+				if height < 1 {
+					break
+				}
+
+				r, err := chain.Store.Topo_store.Read(int64(height))
+				if err != nil {
+					panic(err)
+				}
+				if r.BLOCK_ID != current_blid {
+					fmt.Printf("corruption due to XYZ r %+v  , current_blid %s current_blid_height\n", r, current_blid, height)
+
+					fix_commit_version, err := chain.ReadBlockSnapshotVersion(current_blid)
+					if err != nil {
+						panic(err)
+					}
+
+					chain.Store.Topo_store.Write(int64(height), current_blid, fix_commit_version, int64(height))
+
+				}
+
+				fix_bl, err := chain.Load_BL_FROM_ID(current_blid)
+				if err != nil {
+					panic(err)
+				}
+
+				current_blid = fix_bl.Tips[0]
+
+				/*		fix_commit_version, err = chain.ReadBlockSnapshotVersion(current_block_id)
+						if err != nil {
+							panic(err)
+						}
+				*/
+
+			}
 
 		case command == "print_block":
 

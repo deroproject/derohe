@@ -17,7 +17,7 @@ bash $ABSDIR/build_package.sh "./cmd/explorer"
 bash $ABSDIR/build_package.sh "./cmd/dero-wallet-cli"
 bash $ABSDIR/build_package.sh "./cmd/dero-miner"
 #bash $ABSDIR/build_package.sh "./cmd/simulator"
-bash $ABSDIR/build_package.sh "./cmd/rpc_examples/pong_server"
+#bash $ABSDIR/build_package.sh "./cmd/rpc_examples/pong_server"
 
 
 for d in build/*; do cp Start.md "$d"; done
