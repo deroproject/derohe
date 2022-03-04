@@ -59,6 +59,7 @@ var iterations int = 100
 var max_pow_size int = 819200 //astrobwt.MAX_LENGTH
 var wallet_address string
 var daemon_rpc_address string
+var connection_retry_pause int = 10
 
 var counter uint64
 var hash_rate uint64
@@ -75,7 +76,7 @@ ONE CPU, ONE VOTE.
 http://wiki.dero.io
 
 Usage:
-  dero-miner  --wallet-address=<wallet_address> [--daemon-rpc-address=<127.0.0.1:10102>] [--mining-threads=<threads>] [--testnet] [--debug]
+  dero-miner --wallet-address=<wallet_address> [--daemon-rpc-address=<127.0.0.1:10102>] [--mining-threads=<threads>] [--retry-pause=<10>] [--testnet] [--debug]
   dero-miner --bench [--max-pow-size=1120]
   dero-miner -h | --help
   dero-miner --version
@@ -85,8 +86,9 @@ Options:
   --version     Show version.
   --bench  	    Run benchmark mode.
   --daemon-rpc-address=<127.0.0.1:10102>    Miner will connect to daemon RPC on this port.
-  --wallet-address=<wallet_address>    This address is rewarded when a block is mined sucessfully.
-  --mining-threads=<threads>         Number of CPU threads for mining [default: ` + fmt.Sprintf("%d", runtime.GOMAXPROCS(0)) + `]
+  --wallet-address=<wallet_address>         This address is rewarded when a block is mined sucessfully.
+  --mining-threads=<threads>                Number of CPU threads for mining [default: ` + fmt.Sprintf("%d", runtime.GOMAXPROCS(0)) + `]
+  --retry-pause=10                          Seconds to pause between connection retries.
 
 Example Mainnet: ./dero-miner-linux-amd64 --wallet-address dero1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqhmy4zf --daemon-rpc-address=http://explorer.dero.io:10102 
 Example Testnet: ./dero-miner-linux-amd64 --wallet-address deto1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqdzcd8p --daemon-rpc-address=http://127.0.0.1:40402 
@@ -173,6 +175,14 @@ func main() {
 
 		if threads > runtime.GOMAXPROCS(0) {
 			logger.Info("Mining threads is more than available CPUs. This is NOT optimal", "thread_count", threads, "max_possible", runtime.GOMAXPROCS(0))
+		}
+	}
+
+	if globals.Arguments["--retry-pause"] != nil {
+		if s, err := strconv.Atoi(globals.Arguments["--retry-pause"].(string)); err == nil {
+			connection_retry_pause = s
+		} else {
+			logger.Error(err, "Retry pause argument cannot be parsed.")
 		}
 	}
 
@@ -408,8 +418,8 @@ func getwork(wallet_address string) {
 		connection, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 		if err != nil {
 			logger.Error(err, "Error connecting to server", "server adress", daemon_rpc_address)
-			logger.Info("Will try in 10 secs", "server adress", daemon_rpc_address)
-			time.Sleep(10 * time.Second)
+			logger.Info("Will try in " + strconv.Itoa(connection_retry_pause) + " secs", "server adress", daemon_rpc_address)
+			time.Sleep(time.Duration(connection_retry_pause) * time.Second)
 
 			continue
 		}
