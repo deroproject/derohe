@@ -678,7 +678,7 @@ restart_loop:
 					panic(err)
 				}
 				if r.BLOCK_ID != current_blid {
-					fmt.Printf("corruption due to XYZ r %+v  , current_blid %s current_blid_height\n", r, current_blid, height)
+					fmt.Printf("corruption due to XYZ r %+v  , current_blid %s current_blid_height %d\n", r, current_blid, height)
 
 					fix_commit_version, err := chain.ReadBlockSnapshotVersion(current_blid)
 					if err != nil {

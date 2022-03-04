@@ -250,7 +250,6 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 
 	default:
 		panic("unknown transaction, do not know how to process it")
-		return 0
 	}
 }
 
@@ -277,7 +276,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(nil, "Recover while executing SC ", "txid", txhash, "error", r, "stack", fmt.Sprintf("%s", string(debug.Stack())))
+			logger.V(2).Error(nil, "Recover while executing SC ", "txid", txhash, "error", r, "stack", fmt.Sprintf("%s", string(debug.Stack())))
 
 		}
 	}()

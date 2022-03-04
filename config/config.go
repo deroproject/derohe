@@ -85,6 +85,9 @@ type CHAIN_CONFIG struct {
 	RPC_Default_Port        int
 	Wallet_RPC_Default_Port int
 
+	HF1_HEIGHT int64 // first HF applied here
+	HF2_HEIGHT int64 // second HF applie here
+
 	Dev_Address        string // to which address the integrator rewatd will go, if user doesn't specify integrator address'
 	Genesis_Tx         string
 	Genesis_Block_Hash crypto.Hash
@@ -96,6 +99,8 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 	RPC_Default_Port:        10102,
 	Wallet_RPC_Default_Port: 10103,
 	Dev_Address:             "dero1qykyta6ntpd27nl0yq4xtzaf4ls6p5e9pqu0k2x4x3pqq5xavjsdxqgny8270",
+	HF1_HEIGHT:              21480,
+	HF2_HEIGHT:              29000,
 
 	Genesis_Tx: "" +
 		"01" + // version
@@ -114,6 +119,8 @@ var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 b
 	Wallet_RPC_Default_Port: 40403,
 
 	Dev_Address: "deto1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqdzcd8p",
+	HF1_HEIGHT:  0, // on testnet apply at genesis
+	HF2_HEIGHT:  0, // on testnet apply at genesis
 
 	Genesis_Tx: "" +
 		"01" + // version

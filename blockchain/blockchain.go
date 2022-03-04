@@ -58,7 +58,6 @@ import "github.com/deroproject/graviton"
 // this structure must be update while mutex
 type Blockchain struct {
 	Store      storage                     // interface to storage layer
-	Height     int64                       // chain height is always 1 more than block
 	Top_ID     crypto.Hash                 // id of the top block
 	Pruned     int64                       // until where the chain has been pruned
 	MiniBlocks *block.MiniBlocksCollection // used for consensus
@@ -210,6 +209,42 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 		logger.Info("Chain Pruned till", "topoheight", chain.Pruned)
 	}
 
+	// detect case if chain was corrupted earlier,so as it can be deleted and resynced 
+	if chain.Pruned < globals.Config.HF1_HEIGHT && globals.IsMainnet() && chain.Get_Height() >= globals.Config.HF1_HEIGHT+1 {
+		toporecord, err := chain.Store.Topo_store.Read(globals.Config.HF1_HEIGHT + 1)
+		if err != nil {
+			panic(err)
+		}
+		var ss *graviton.Snapshot
+		ss, err = chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+		if err != nil {
+			panic(err)
+		}
+
+		var namehash_scid crypto.Hash
+		namehash_scid[31] = 1
+		sc_data_tree, err := ss.GetTree(string(namehash_scid[:]))
+		if err != nil {
+			panic(err)
+		}
+
+		if code_bytes, err := sc_data_tree.Get(dvm.SC_Code_Key(namehash_scid)); err == nil {
+			var v dvm.Variable
+			if err = v.UnmarshalBinary(code_bytes); err != nil {
+				panic("Unmarshal error")
+			}
+			if !strings.Contains(v.ValueString, "UpdateCode") {
+				logger.Error(nil, "Chain corruption detected")
+				logger.Error(nil, "You need to delete existing mainnet folder and resync chain again")
+				os.Exit(-1)
+				return nil, err
+			}
+
+		} else {
+			panic(err)
+		}
+	}
+
 	metrics.Version = config.Version.String()
 	go metrics.Dump_metrics_data_directly(logger, globals.Arguments["--node-tag"]) // enable metrics if someone needs them
 
@@ -294,7 +329,6 @@ func (chain *Blockchain) Initialise_Chain_From_DB() {
 	// then downgrading to top-10 height
 	// then reworking the chain to get the tip
 	best_height := chain.Load_TOP_HEIGHT()
-	chain.Height = best_height
 
 	chain.Tips = map[crypto.Hash]crypto.Hash{} // reset the map
 	// reload top tip from disk
@@ -302,7 +336,7 @@ func (chain *Blockchain) Initialise_Chain_From_DB() {
 
 	chain.Tips[top] = top // we only can load a single tip from db
 
-	logger.V(1).Info("Reloaded Chain from disk", "Tips", chain.Tips, "Height", chain.Height)
+	logger.V(1).Info("Reloaded Chain from disk", "Tips", chain.Tips, "Height", best_height)
 }
 
 // before shutdown , make sure p2p is confirmed stopped
@@ -807,9 +841,9 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	if height > chain.Get_Height() || height == 0 { // exception for genesis block
 		//atomic.StoreInt64(&chain.Height, height)
 		height_changed = true
-		block_logger.Info("Chain extended", "new height", chain.Height)
+		block_logger.Info("Chain extended", "new height", height)
 	} else {
-		block_logger.Info("Chain extended but height is same", "new height", chain.Height)
+		block_logger.Info("Chain extended but height is same", "new height", height)
 	}
 
 	{
@@ -916,15 +950,24 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 				}
 
 				var meta dvm.SC_META_DATA // the meta contains metadata about SC
-				if err := meta.UnmarshalBinary(meta_bytes); err != nil {
-					panic(err)
-				}
 
-				if meta.DataHash, err = v.Hash(); err != nil { // encode data tree hash
-					panic(err)
+				if bl_current.Height < uint64(globals.Config.HF2_HEIGHT) {
+					if err := meta.UnmarshalBinary(meta_bytes); err != nil {
+						panic(err)
+					}
+					if meta.DataHash, err = v.Hash(); err != nil { // encode data tree hash
+						panic(err)
+					}
+					sc_meta.Put(dvm.SC_Meta_Key(scid), meta.MarshalBinary())
+				} else {
+					if err := meta.UnmarshalBinaryGood(meta_bytes); err != nil {
+						panic(err)
+					}
+					if meta.DataHash, err = v.Hash(); err != nil { // encode data tree hash
+						panic(err)
+					}
+					sc_meta.Put(dvm.SC_Meta_Key(scid), meta.MarshalBinaryGood())
 				}
-
-				sc_meta.Put(dvm.SC_Meta_Key(scid), meta.MarshalBinary())
 				data_trees = append(data_trees, v)
 
 				/*fmt.Printf("will commit tree name %x \n", v.GetName())
@@ -1039,7 +1082,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 	// every 2000 block print a line
 	if chain.Get_Height()%2000 == 0 {
-		block_logger.Info(fmt.Sprintf("Chain Height %d", chain.Height))
+		block_logger.Info(fmt.Sprintf("Chain Height %d", chain.Get_Height()))
 	}
 
 	purge_count := chain.MiniBlocks.PurgeHeight(chain.Get_Stable_Height()) // purge all miniblocks upto this height

@@ -446,6 +446,8 @@ func mineblock(tid int) {
 	var diff big.Int
 	var work [block.MINIBLOCK_SIZE]byte
 
+    time.Sleep(5*time.Second)
+
 	nonce_buf := work[block.MINIBLOCK_SIZE-5:] //since slices are linked, it modifies parent
 	runtime.LockOSThread()
 	threadaffinity()

@@ -22,6 +22,7 @@ import _ "embed"
 
 import "github.com/deroproject/graviton"
 import "github.com/deroproject/derohe/dvm"
+import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 //go:embed hardcoded_sc/nameservice.bas
@@ -34,35 +35,29 @@ var source_nameservice_updateable string
 func (chain *Blockchain) install_hardcoded_contracts(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, balance_tree *graviton.Tree, sc_tree *graviton.Tree, height uint64) (err error) {
 
 	if height == 0 {
-
 		if _, _, err = dvm.ParseSmartContract(source_nameservice); err != nil {
 			logger.Error(err, "error Parsing hard coded sc")
 			panic(err)
-			return
 		}
 
 		var name crypto.Hash
 		name[31] = 1
 		if err = chain.install_hardcoded_sc(cache, ss, balance_tree, sc_tree, source_nameservice, name); err != nil {
 			panic(err)
-			return
 		}
-
-		return
 	}
 
-	if height == 21480 { // update SC at specific height
+	// it is updated at 0 height for testnets
+	if height == uint64(globals.Config.HF1_HEIGHT) { // update SC at specific height
 		if _, _, err = dvm.ParseSmartContract(source_nameservice_updateable); err != nil {
 			logger.Error(err, "error Parsing hard coded sc")
 			panic(err)
-			return
 		}
 
 		var name crypto.Hash
 		name[31] = 1
 		if err = chain.install_hardcoded_sc(cache, ss, balance_tree, sc_tree, source_nameservice_updateable, name); err != nil {
 			panic(err)
-			return
 		}
 	}
 
