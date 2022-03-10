@@ -138,6 +138,10 @@ func (w *Wallet_Disk) Save_Wallet() (err error) {
 		return
 	}
 
+	// attempt to protect atleast one backup copy
+	os.Remove(w.filename + ".bak")
+	os.Rename(w.filename, w.filename+".bak") // renames are atomic, thus more chances of retention
+
 	return ioutil.WriteFile(w.filename, w.Wallet_Memory.db_memory, 0600)
 }
 

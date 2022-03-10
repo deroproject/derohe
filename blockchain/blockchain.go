@@ -209,7 +209,7 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 		logger.Info("Chain Pruned till", "topoheight", chain.Pruned)
 	}
 
-	// detect case if chain was corrupted earlier,so as it can be deleted and resynced 
+	// detect case if chain was corrupted earlier,so as it can be deleted and resynced
 	if chain.Pruned < globals.Config.HF1_HEIGHT && globals.IsMainnet() && chain.Get_Height() >= globals.Config.HF1_HEIGHT+1 {
 		toporecord, err := chain.Store.Topo_store.Read(globals.Config.HF1_HEIGHT + 1)
 		if err != nil {

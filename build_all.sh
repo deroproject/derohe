@@ -16,7 +16,7 @@ bash $ABSDIR/build_package.sh "./cmd/derod"
 bash $ABSDIR/build_package.sh "./cmd/explorer"
 bash $ABSDIR/build_package.sh "./cmd/dero-wallet-cli"
 bash $ABSDIR/build_package.sh "./cmd/dero-miner"
-#bash $ABSDIR/build_package.sh "./cmd/simulator"
+bash $ABSDIR/build_package.sh "./cmd/simulator"
 #bash $ABSDIR/build_package.sh "./cmd/rpc_examples/pong_server"
 
 
@@ -36,8 +36,8 @@ go run github.com/randall77/makefat ./dero_darwin_universal/derod-darwin  ./dero
 go run github.com/randall77/makefat ./dero_darwin_universal/explorer-darwin  ./dero_darwin_amd64/explorer-darwin-amd64 ./dero_darwin_arm64/explorer-darwin-arm64
 go run github.com/randall77/makefat ./dero_darwin_universal/dero-wallet-cli-darwin  ./dero_darwin_amd64/dero-wallet-cli-darwin-amd64 ./dero_darwin_arm64/dero-wallet-cli-darwin-arm64
 go run github.com/randall77/makefat ./dero_darwin_universal/dero-miner-darwin  ./dero_darwin_amd64/dero-miner-darwin-amd64 ./dero_darwin_arm64/dero-miner-darwin-arm64
-#go run github.com/randall77/makefat ./dero_darwin_universal/simulator-darwin  ./dero_darwin_amd64/simulator-darwin-amd64 ./dero_darwin_arm64/simulator-darwin-arm64
-go run github.com/randall77/makefat ./dero_darwin_universal/pong_server-darwin  ./dero_darwin_amd64/pong_server-darwin-amd64 ./dero_darwin_arm64/pong_server-darwin-arm64
+go run github.com/randall77/makefat ./dero_darwin_universal/simulator-darwin  ./dero_darwin_amd64/simulator-darwin-amd64 ./dero_darwin_arm64/simulator-darwin-arm64
+#go run github.com/randall77/makefat ./dero_darwin_universal/pong_server-darwin  ./dero_darwin_amd64/pong_server-darwin-amd64 ./dero_darwin_arm64/pong_server-darwin-arm64
 
 rm -rf dero_darwin_amd64
 rm -rf dero_darwin_arm64

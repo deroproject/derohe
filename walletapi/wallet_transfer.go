@@ -203,6 +203,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		// try to resolve name to address here
 		if _, err = rpc.NewAddress(transfers[t].Destination); err != nil {
 			if transfers[t].Destination, err = w.NameToAddress(transfers[t].Destination); err != nil {
+				err = fmt.Errorf("could not decode name or address err '%s' name '%s'\n", err, transfers[t].Destination)
 				return
 			}
 		}
@@ -225,6 +226,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	// we currently bypass this since random members are chosen which have not been used in last 5 block
 	_, noncetopo, block_hash, self_e, err := w.GetEncryptedBalanceAtTopoHeight(zeroscid, -1, w.GetAddress().String())
 	if err != nil {
+		err = fmt.Errorf("could not obtain encrypted balance for self err %s\n", err)
 		return
 	}
 
@@ -242,6 +244,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 
 	er, err := w.GetSelfEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight)
 	if err != nil {
+		err = fmt.Errorf("could not obtain encrypted balance for self err %s\n", err)
 		return
 	}
 	height := uint64(er.Height)
