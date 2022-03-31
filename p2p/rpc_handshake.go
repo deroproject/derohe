@@ -151,10 +151,13 @@ func (c *Connection) Handshake(request Handshake_Struct, response *Handshake_Str
 	c.update(&request.Common) // update common information
 	if c.State == ACTIVE {
 		for i := range request.PeerList {
-			if i < 13 {
+			if i < 31 {
 				Peer_Add(&Peer{Address: request.PeerList[i].Addr, LastConnected: uint64(time.Now().UTC().Unix())})
 			}
 		}
+	}
+	if !c.Incoming {
+		Peer_SetSuccess(c.Addr.String())
 	}
 
 	return nil

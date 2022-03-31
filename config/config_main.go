@@ -1,3 +1,6 @@
+//go:build !js && !wasm
+// +build !js,!wasm
+
 // Copyright 2017-2021 DERO Project. All rights reserved.
 // Use of this source code in any form is governed by RESEARCH license.
 // license can be found in the LICENSE file.
@@ -16,8 +19,6 @@
 
 package config
 
-import "github.com/blang/semver/v4"
+import "github.com/caarlos0/env/v6"
 
-// right now it has to be manually changed
-// do we need to include git commitsha??
-var Version = semver.MustParse("3.4.141-62.DEROHE.STARGATE+26022022")
+var _ = env.Parse(&Settings)

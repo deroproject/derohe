@@ -70,6 +70,7 @@ type Connection struct {
 	Peer_ID               uint64 // Remote peer id
 	Port                  uint32 // port advertised by other end as its server,if it's 0 server cannot accept connections
 	State                 uint32 // state of the connection
+	Syncing               int32  // denotes whether we are syncing and thus stop pinging
 
 	Client  *rpc2.Client
 	Conn    net.Conn // actual object to talk
@@ -205,6 +206,9 @@ func ping_loop() {
 	connection_map.Range(func(k, value interface{}) bool {
 		c := value.(*Connection)
 		if atomic.LoadUint32(&c.State) != HANDSHAKE_PENDING && GetPeerID() != c.Peer_ID /*&& atomic.LoadInt32(&c.ping_in_progress) == 0*/ {
+			if atomic.LoadInt32(&c.Syncing) >= 1 {
+				return true
+			}
 			go func() {
 				defer globals.Recover(3)
 				atomic.AddInt32(&c.ping_in_progress, 1)
@@ -214,8 +218,8 @@ func ping_loop() {
 				fill_common(&request.Common) // fill common info
 
 				c.ping_count++
-				if c.ping_count%100 == 1 {
-					request.Common.PeerList = get_peer_list()
+				if c.ping_count%10 == 1 {
+					request.Common.PeerList = get_peer_list_specific(Address(c))
 				}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

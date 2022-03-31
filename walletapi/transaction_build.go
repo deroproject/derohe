@@ -275,7 +275,8 @@ rebuild_tx:
 		if tx.Payloads[t].Proof.Verify(tx.Payloads[t].SCID, scid_map_t[tx.Payloads[t].SCID], &tx.Payloads[t].Statement, tx.GetHash(), tx.Payloads[t].BurnValue) {
 			//fmt.Printf("TX verified with proof successfuly %s  burn_value %d\n", tx.GetHash(), tx.Payloads[t].BurnValue)
 		} else {
-			fmt.Printf("TX verificat1ion failed, did u try sending more than you have !!!!!!!!!!\n")
+			fmt.Printf("TX verification failed, did u try sending more than you have !!!!!!!!!!\n")
+			return nil
 		}
 		scid_map_t[tx.Payloads[t].SCID] = scid_map_t[tx.Payloads[t].SCID] + 1
 	}

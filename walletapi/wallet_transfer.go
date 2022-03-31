@@ -288,6 +288,26 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		if addr, err = rpc.NewAddress(transfers[t].Destination); err != nil {
 			return
 		}
+
+		if addr.IsIntegratedAddress() && addr.Arguments.Validate_Arguments() != nil {
+			err = fmt.Errorf("Integrated Address  arguments could not be validated.")
+			return
+		}
+
+		if addr.IsIntegratedAddress() && len(transfers[t].Payload_RPC) == 0 {
+			for _, arg := range addr.Arguments {
+				if arg.Name == rpc.RPC_DESTINATION_PORT && addr.Arguments.Has(rpc.RPC_DESTINATION_PORT, rpc.DataUint64) {
+					transfers[t].Payload_RPC = append(transfers[t].Payload_RPC, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: addr.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
+					continue
+				} else {
+					fmt.Printf("integrtated address, but don't know how to process\n")
+					err = fmt.Errorf("integrated address used, but don't know how to process %+v", addr.Arguments)
+				}
+			}
+
+			return
+		}
+
 		var dest_e *crypto.ElGamal
 		bits_needed[1], _, _, dest_e, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, topoheight, addr.BaseAddress().String())
 		if err != nil {

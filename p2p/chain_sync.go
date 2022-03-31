@@ -111,6 +111,8 @@ func ConvertCBlock_To_CompleteBlock(cblock Complete_Block) (cbl block.Complete_B
 func (connection *Connection) sync_chain() {
 
 	defer handle_connection_panic(connection)
+	atomic.AddInt32(&connection.Syncing, 1)
+	defer atomic.AddInt32(&connection.Syncing, -1)
 
 	var request Chain_Request_Struct
 	var response Chain_Response_Struct

@@ -17,7 +17,8 @@
 package config
 
 import "github.com/satori/go.uuid"
-import "github.com/caarlos0/env/v6"
+
+//import "github.com/caarlos0/env/v6"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 // all global configuration variables are picked from here
@@ -67,7 +68,7 @@ type SettingsStruct struct {
 
 var Settings SettingsStruct
 
-var _ = env.Parse(&Settings)
+//var _ = env.Parse(&Settings)
 
 // this single parameter controls lots of various parameters
 // within the consensus, it should never go below 7

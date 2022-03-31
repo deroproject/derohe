@@ -24,7 +24,7 @@ package walletapi
  */
 //import "io"
 //import "os"
-//import "fmt"
+import "fmt"
 import "net"
 import "time"
 
@@ -36,6 +36,7 @@ import "github.com/deroproject/derohe/glue/rwc"
 import "github.com/creachadair/jrpc2"
 import "github.com/creachadair/jrpc2/channel"
 import "nhooyr.io/websocket"
+import "strings"
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
 
@@ -70,13 +71,21 @@ func Connect(endpoint string) (err error) {
 		Transport: netTransport,
 	}
 
-	rpc_client.WS, _, err = websocket.Dial(context.Background(), "ws://"+Daemon_Endpoint+"/ws", nil)
+	if strings.HasPrefix(Daemon_Endpoint, "https") {
+		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint), "https://")
+		fmt.Printf("will use endpoint %s\n", "wss://"+ld+"/ws")
+		rpc_client.WS, _, err = websocket.Dial(context.Background(), "wss://"+ld+"/ws", nil)
+	} else {
+		fmt.Printf("will use endpoint %s\n", "ws://"+Daemon_Endpoint+"/ws")
+		rpc_client.WS, _, err = websocket.Dial(context.Background(), "ws://"+Daemon_Endpoint+"/ws", nil)
+	}
 
 	// notify user of any state change
 	// if daemon connection breaks or comes live again
 	if err == nil {
 		if !Connected {
 			logger.V(1).Info("Connection to RPC server successful", "address", "ws://"+Daemon_Endpoint+"/ws")
+			fmt.Printf("successfully connected\n")
 			Connected = true
 		}
 	} else {
@@ -84,6 +93,7 @@ func Connect(endpoint string) (err error) {
 			logger.V(1).Error(err, "Connection to RPC server Failed", "endpoint", "ws://"+Daemon_Endpoint+"/ws")
 		}
 		Connected = false
+		fmt.Printf("connection to endpoint failed.err %s\n", err)
 		return
 	}
 

@@ -19,7 +19,7 @@ package p2p
 import "fmt"
 import "net"
 
-//import "net/url"
+import "os"
 import "time"
 import "sort"
 import "sync"
@@ -104,6 +104,11 @@ func P2P_Init(params map[string]interface{}) error {
 		if globals.Arguments["--node-tag"] != nil {
 			node_tag = globals.Arguments["--node-tag"].(string)
 		}
+	}
+	if os.Getenv("TURBO") == "0" {
+		logger.Info("P2P is in normal mode")
+	} else {
+		logger.Info("P2P is in turbo mode")
 	}
 
 	// permanently unban any seed nodes
@@ -252,7 +257,11 @@ func P2P_engine() {
 
 func tunekcp(conn *kcp.UDPSession) {
 	conn.SetACKNoDelay(true)
-	conn.SetNoDelay(0, 40, 0, 0) // tuning paramters for local stack
+	if os.Getenv("TURBO") == "0" {
+		conn.SetNoDelay(1, 10, 2, 1) // tuning paramters for local stack for fast retransmission stack
+	} else {
+		conn.SetNoDelay(0, 40, 0, 0) // tuning paramters for local
+	}
 }
 
 // will try to connect with given endpoint
