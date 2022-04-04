@@ -72,6 +72,7 @@ var backoff = map[string]int64{} // if server receives a connection, then it wil
 var backoff_mutex = sync.Mutex{}
 
 var Min_Peers = int64(31) // we need to expose this to be modifieable at runtime without taking daemon offline
+var Max_Peers = int64(101)
 
 // return true if we should back off else we can connect
 func shouldwebackoff(ip string) bool {
@@ -109,6 +110,14 @@ func P2P_Init(params map[string]interface{}) error {
 		logger.Info("P2P is in normal mode")
 	} else {
 		logger.Info("P2P is in turbo mode")
+	}
+
+	if os.Getenv("BW_FACTOR") != "" {
+		bw_factor, _ := strconv.Atoi(os.Getenv("BW_FACTOR"))
+		if bw_factor <= 0 {
+			bw_factor = 1
+		}
+		logger.Info("", "BW_FACTOR", bw_factor)
 	}
 
 	// permanently unban any seed nodes
@@ -419,7 +428,21 @@ func maintain_connection_to_peers() {
 				Min_Peers = i
 			}
 		}
-		logger.Info("Min outgoing peers", "min-peers", Min_Peers)
+		logger.Info("Min peers", "min-peers", Min_Peers)
+	}
+
+	if _, ok := globals.Arguments["--max-peers"]; ok && globals.Arguments["--max-peers"] != nil { // user specified a limit, use it if possible
+		i, err := strconv.ParseInt(globals.Arguments["--max-peers"].(string), 10, 64)
+		if err != nil {
+			logger.Error(err, "Error Parsing --max-peers")
+		} else {
+			if i < Min_Peers {
+				logger.Error(fmt.Errorf("--max-peers should be positive and more than --min-peers"), "")
+			} else {
+				Max_Peers = i
+			}
+		}
+		logger.Info("Max peers", "max-peers", Max_Peers)
 	}
 
 	delay := time.NewTicker(200 * time.Millisecond)
@@ -481,7 +504,7 @@ func P2P_Server_v2() {
 
 		in, out := Peer_Direction_Count()
 
-		if int64(in+out) > Min_Peers { // do not allow incoming ddos
+		if int64(in+out) > Max_Peers { // do not allow incoming ddos
 			connection.exit()
 			return
 		}

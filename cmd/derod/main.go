@@ -59,7 +59,7 @@ var command_line string = `derod
 DERO : A secure, private blockchain with smart-contracts
 
 Usage:
-  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--timeisinsync] [--fastsync] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... 	 [--min-peers=<11>] [--rpc-bind=<127.0.0.1:9999>] [--getwork-bind=<0.0.0.0:18089>] [--node-tag=<unique name>] [--prune-history=<50>] [--integrator-address=<address>] [--clog-level=1] [--flog-level=1]
+  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--timeisinsync] [--fastsync] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... [--min-peers=<11>] [--max-peers=<100>] [--rpc-bind=<127.0.0.1:9999>] [--getwork-bind=<0.0.0.0:18089>] [--node-tag=<unique name>] [--prune-history=<50>] [--integrator-address=<address>] [--clog-level=1] [--flog-level=1]
   derod -h | --help
   derod --version
 
@@ -82,6 +82,8 @@ Options:
   --sync-node       Sync node automatically with the seeds nodes. This option is for rare use.
   --node-tag=<unique name>	Unique name of node, visible to everyone
   --integrator-address	if this node mines a block,Integrator rewards will be given to address.default is dev's address.
+  --min-peers=<31>	  Node will try to maintain atleast this many connections to peers
+  --max-peers=<101>	  Node will maintain maximim this many connections to peers and will stop accepting connections
   --prune-history=<50>	prunes blockchain history until the specific topo_height
 
   `
@@ -886,7 +888,7 @@ restart_loop:
 
 		case strings.ToLower(line) == "peer_list": // print peer list
 			p2p.PeerList_Print()
-		case strings.ToLower(line) == "sync_info": // print active connections
+		case strings.ToLower(line) == "syncinfo", strings.ToLower(line) == "sync_info": // print active connections
 			p2p.Connection_Print()
 		case strings.ToLower(line) == "bye":
 			fallthrough
@@ -1108,7 +1110,7 @@ func usage(w io.Writer) {
 	io.WriteString(w, "\t\033[1mprint_tx\033[0m\tPrint transaction, print_tx <transaction_hash>\n")
 	io.WriteString(w, "\t\033[1mstatus\033[0m\t\tShow general information\n")
 	io.WriteString(w, "\t\033[1mpeer_list\033[0m\tPrint peer list\n")
-	io.WriteString(w, "\t\033[1msync_info\033[0m\tPrint information about connected peers and their state\n")
+	io.WriteString(w, "\t\033[1msyncinfo\033[0m\tPrint information about connected peers and their state\n")
 	io.WriteString(w, "\t\033[1mbye\033[0m\t\tQuit the daemon\n")
 	io.WriteString(w, "\t\033[1mban\033[0m\t\tBan specific ip from making any connections\n")
 	io.WriteString(w, "\t\033[1munban\033[0m\t\tRevoke restrictions on previously banned ips\n")
@@ -1146,7 +1148,7 @@ var completer = readline.NewPrefixCompleter(
 	//	readline.PcItem("print_tx"),
 	readline.PcItem("setintegratoraddress"),
 	readline.PcItem("status"),
-	readline.PcItem("sync_info"),
+	readline.PcItem("syncinfo"),
 	readline.PcItem("version"),
 	readline.PcItem("bye"),
 	readline.PcItem("exit"),

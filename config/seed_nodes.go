@@ -25,6 +25,7 @@ var Mainnet_seed_nodes = []string{
 	"45.82.66.54:8080",
 	"185.107.69.12:11011",
 	"89.38.97.110:11011",
+	"45.82.66.55:11011",
 }
 
 // some seed node for testnet

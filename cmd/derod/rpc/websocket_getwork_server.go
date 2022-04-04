@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 
 	"time"
 
@@ -65,13 +66,18 @@ type user_session struct {
 var client_list_mutex sync.Mutex
 var client_list = map[*websocket.Conn]*user_session{}
 
+var miners_count int
+
 func CountMiners() int {
 	client_list_mutex.Lock()
 	defer client_list_mutex.Unlock()
-	return len(client_list)
+	miners_count = len(client_list)
+	return miners_count
 }
 
 func SendJob() {
+
+	defer globals.Recover(1)
 
 	var params rpc.GetBlockTemplate_Result
 
@@ -282,7 +288,32 @@ func Getwork_server() {
 		memPool.Put(b)
 	})
 
-	globals.Cron.AddFunc("@every 2s", SendJob) // if daemon restart automaticaly send job
+	//globals.Cron.AddFunc("@every 2s", SendJob) // if daemon restart automaticaly send job
+	go func() { // try to be as optimized as possible to lower hash wastage
+		sleeptime, _ := time.ParseDuration(os.Getenv("JOB_SEND_TIME_DELAY")) // this will hopefully be never required to change
+		if sleeptime.Milliseconds() < 40 {
+			sleeptime = 500 * time.Millisecond
+		}
+		logger_getwork.Info("Job will be dispatched every", "time", sleeptime)
+		old_mini_count := 0
+		old_time := time.Now()
+		old_height := int64(0)
+		for {
+			if miners_count > 0 {
+				current_mini_count := chain.MiniBlocks.Count()
+				current_height := chain.Get_Height()
+				if old_mini_count != current_mini_count || old_height != current_height || time.Now().Sub(old_time) > sleeptime {
+					old_mini_count = current_mini_count
+					old_height = current_height
+					SendJob()
+					old_time = time.Now()
+				}
+			} else {
+
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
 
 	if err = svr.Start(); err != nil {
 		logger_getwork.Error(err, "nbio.Start failed.")
