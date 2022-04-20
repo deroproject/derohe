@@ -61,16 +61,17 @@
   
 
 ## Features
-- [x] linux: epoll
+- [x] linux: epoll, both ET/LT(default) supported
 - [x] macos(bsd): kqueue
 - [x] windows: golang std net
 - [x] nbio.Conn implements a non-blocking net.Conn(except windows)
 - [x] writev supported
-- [x] least dependency
+- [x] concurrent write/close supported(both nbio.Conn and nbio/nbhttp/websocket.Conn)
 - [x] TLS supported
 - [x] HTTP/HTTPS 1.x
-- [x] Websocket, [Passes the Autobahn Test Suite](https://lesismal.github.io/nbio/websocket)
-- [ ] HTTP 2.0
+- [x] Websocket, [Passes the Autobahn Test Suite](https://lesismal.github.io/nbio/websocket), `OnOpen/OnMessage/OnClose` order guaranteed
+- [ ] HTTP 2.0(no plans, 2.0 is not good enough)
+
 
 ## Installation
 

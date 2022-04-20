@@ -189,7 +189,6 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 		} else { // rebroadcast miniblock
 			valid_found = true
 			if valid_found {
-				Peer_SetSuccess(c.Addr.String())
 				broadcast_MiniBlock(mbl, c.Peer_ID, request.Sent) // do not send back to the original peer
 			}
 		}

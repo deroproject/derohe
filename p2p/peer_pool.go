@@ -206,6 +206,7 @@ func Peer_SetSuccess(address string) {
 	p.ConnectAfter = 0
 	p.Whitelist = true
 	p.LastConnected = uint64(time.Now().UTC().Unix()) // set time when last connected
+
 	// logger.Infof("Setting peer as white listed")
 }
 
@@ -316,10 +317,34 @@ func get_peer_list() (peers []Peer_Info) {
 	peer_mutex.Lock()
 	defer peer_mutex.Unlock()
 
+	for _, v := range peer_map { // trim the white list
+		if v.Whitelist && !IsAddressConnected(ParseIPNoError(v.Address)) {
+			delete(peer_map, ParseIPNoError(v.Address))
+		}
+	}
+
 	for _, v := range peer_map {
 		if v.Whitelist {
 			peers = append(peers, Peer_Info{Addr: v.Address})
 		}
 	}
 	return
+}
+
+func get_peer_list_specific(addr string) (peers []Peer_Info) {
+	plist := get_peer_list()
+	sort.SliceStable(plist, func(i, j int) bool { return plist[i].Addr < plist[j].Addr })
+
+	if len(plist) <= 31 {
+		peers = plist
+	} else {
+		index := sort.Search(len(plist), func(i int) bool { return plist[i].Addr < addr })
+		for i := range plist {
+			peers = append(peers, plist[(i+index)%len(plist)])
+			if len(peers) >= 31 {
+				break
+			}
+		}
+	}
+	return peers
 }

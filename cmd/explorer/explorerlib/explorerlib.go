@@ -356,7 +356,7 @@ func load_block_from_rpc(info *block_info, block_hash string, recursive bool) (e
 	info.Nonce = bresult.Block_Header.Nonce
 	info.Major_Version = bresult.Block_Header.Major_Version
 	info.Minor_Version = bresult.Block_Header.Minor_Version
-	info.Reward = fmt.Sprintf("%.03f", float32(bresult.Block_Header.Reward)/1000000000000.0)
+	info.Reward = fmt.Sprintf("%.05f", float32(bresult.Block_Header.Reward)/100000.0)
 
 	block_bin, _ = hex.DecodeString(bresult.Blob)
 
@@ -902,7 +902,7 @@ func fill_common_info(data map[string]interface{}, extra_data bool) error {
 	//fmt.Printf("get info %+v", info)
 
 	data["Network_Difficulty"] = info.Difficulty
-	data["hash_rate"] = fmt.Sprintf("%.03f", float32(info.Difficulty/1000000)/float32(info.Target))
+	data["hash_rate"] = fmt.Sprintf("%.03f", float32(info.Difficulty/1000000))
 	data["txpool_size"] = info.Tx_pool_size
 	data["testnet"] = info.Testnet
 	data["network"] = info.Network

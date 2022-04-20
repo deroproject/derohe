@@ -43,7 +43,7 @@ func TestSuffixArrayOptimized(t *testing.T) {
 
 func TestPows(t *testing.T) {
 
-	for loop_var := 0; loop_var < 100000; loop_var++ {
+	for loop_var := 0; loop_var < 1; loop_var++ {
 
 		seed := time.Now().UnixNano()
 		//seed = 1635948770488138379
@@ -60,6 +60,7 @@ func TestPows(t *testing.T) {
 		if result16 != result32 {
 			t.Fatalf("pow test failed, seed %d %x %x ", seed, result16, result32)
 		}
+
 	}
 }
 

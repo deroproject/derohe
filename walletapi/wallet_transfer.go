@@ -63,6 +63,10 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	w.transfer_mutex.Lock()
 	defer w.transfer_mutex.Unlock()
 
+	//if len(transfers) == 0 {
+	//	return nil,  fmt.Error("transfers is nil, cannot send.")
+	//}
+
 	if ringsize == 0 {
 		ringsize = uint64(w.account.Ringsize) // use wallet ringsize, if ringsize not provided
 	} else { // we need to use supplied ringsize
@@ -199,6 +203,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		// try to resolve name to address here
 		if _, err = rpc.NewAddress(transfers[t].Destination); err != nil {
 			if transfers[t].Destination, err = w.NameToAddress(transfers[t].Destination); err != nil {
+				err = fmt.Errorf("could not decode name or address err '%s' name '%s'\n", err, transfers[t].Destination)
 				return
 			}
 		}
@@ -221,6 +226,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	// we currently bypass this since random members are chosen which have not been used in last 5 block
 	_, noncetopo, block_hash, self_e, err := w.GetEncryptedBalanceAtTopoHeight(zeroscid, -1, w.GetAddress().String())
 	if err != nil {
+		err = fmt.Errorf("could not obtain encrypted balance for self err %s\n", err)
 		return
 	}
 
@@ -238,6 +244,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 
 	er, err := w.GetSelfEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight)
 	if err != nil {
+		err = fmt.Errorf("could not obtain encrypted balance for self err %s\n", err)
 		return
 	}
 	height := uint64(er.Height)
@@ -281,6 +288,26 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		if addr, err = rpc.NewAddress(transfers[t].Destination); err != nil {
 			return
 		}
+
+		if addr.IsIntegratedAddress() && addr.Arguments.Validate_Arguments() != nil {
+			err = fmt.Errorf("Integrated Address  arguments could not be validated.")
+			return
+		}
+
+		if addr.IsIntegratedAddress() && len(transfers[t].Payload_RPC) == 0 {
+			for _, arg := range addr.Arguments {
+				if arg.Name == rpc.RPC_DESTINATION_PORT && addr.Arguments.Has(rpc.RPC_DESTINATION_PORT, rpc.DataUint64) {
+					transfers[t].Payload_RPC = append(transfers[t].Payload_RPC, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: addr.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
+					continue
+				} else {
+					fmt.Printf("integrtated address, but don't know how to process\n")
+					err = fmt.Errorf("integrated address used, but don't know how to process %+v", addr.Arguments)
+				}
+			}
+
+			return
+		}
+
 		var dest_e *crypto.ElGamal
 		bits_needed[1], _, _, dest_e, err = w.GetEncryptedBalanceAtTopoHeight(transfers[t].SCID, topoheight, addr.BaseAddress().String())
 		if err != nil {

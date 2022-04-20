@@ -40,7 +40,7 @@ import "github.com/deroproject/graviton"
 
 // convert bitcoin model to our, but skip initial 4 years of supply, so our total supply gets to 10.5 million
 const RewardReductionInterval = 210000 * 600 / config.BLOCK_TIME // 210000 comes from bitcoin
-const BaseReward = (50 * 100000 * config.BLOCK_TIME) / 600       // convert bitcoin reward system to our block
+const BaseReward = (41 * 100000 * config.BLOCK_TIME) / 600       // convert bitcoin reward system to our block
 
 // CalcBlockSubsidy returns the subsidy amount a block at the provided height
 // should have. This is mainly used for determining how much the coinbase for
@@ -124,15 +124,12 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 	base_reward := CalcBlockReward(uint64(height))
 	full_reward := base_reward + fees
 
-	integrator_reward := full_reward * 167 / 10000
-
-	//full_reward is divided into equal parts for all miner blocks
-	// integrator only gets 1.67 % of block reward
+	//full_reward is divided into equal parts for all miner blocks + miner address
 	// since perfect division is not possible, ( see money handling)
 	// any left over change is delivered to main miner who integrated the full block
 
-	share := (full_reward - integrator_reward) / uint64(len(bl.MiniBlocks))            //  one block integrator, this is integer division
-	leftover := full_reward - integrator_reward - (share * uint64(len(bl.MiniBlocks))) // only integrator will get this
+	share := full_reward / uint64(len(bl.MiniBlocks))              //  one block integrator, this is integer division
+	leftover := full_reward - (share * uint64(len(bl.MiniBlocks))) // only integrator will get this
 
 	{ // giver integrator his reward
 		balance_serialized, err := balance_tree.Get(tx.MinerAddress[:])
@@ -140,8 +137,8 @@ func (chain *Blockchain) process_miner_transaction(bl *block.Block, genesis bool
 			panic(err)
 		}
 		nb := new(crypto.NonceBalance).Deserialize(balance_serialized)
-		nb.Balance = nb.Balance.Plus(new(big.Int).SetUint64(integrator_reward + leftover)) // add miners reward to miners balance homomorphically
-		balance_tree.Put(tx.MinerAddress[:], nb.Serialize())                               // reserialize and store
+		nb.Balance = nb.Balance.Plus(new(big.Int).SetUint64(share + leftover)) // add miners reward to miners balance homomorphically
+		balance_tree.Put(tx.MinerAddress[:], nb.Serialize())                   // reserialize and store
 	}
 
 	// all the other miniblocks will get their share
@@ -187,6 +184,13 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 
 		if !globals.IsMainnet() { // give testnet users a dummy amount to play
 			zerobalance = zerobalance.Plus(new(big.Int).SetUint64(800000)) // add fix amount to every wallet to users balance for more testing
+		}
+
+		// give new wallets generated in initial month a balance
+		// so they can claim previous chain balance safely/securely without revealing themselves
+		// 144000= 86400/18 *30
+		if globals.IsMainnet() && height < 144000 {
+			zerobalance = zerobalance.Plus(new(big.Int).SetUint64(200))
 		}
 
 		nb := crypto.NonceBalance{NonceHeight: 0, Balance: zerobalance}
@@ -238,6 +242,7 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 					nb.NonceHeight = height
 				}
 				tree.Put(key_compressed, nb.Serialize()) // reserialize and store
+
 			}
 		}
 
@@ -245,7 +250,6 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 
 	default:
 		panic("unknown transaction, do not know how to process it")
-		return 0
 	}
 }
 
@@ -272,7 +276,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 
 	defer func() {
 		if r := recover(); r != nil {
-			logger.V(1).Error(nil, "Recover while executing SC ", "txid", txhash, "error", r, "stack", fmt.Sprintf("%s", string(debug.Stack())))
+			logger.V(2).Error(nil, "Recover while executing SC ", "txid", txhash, "error", r, "stack", fmt.Sprintf("%s", string(debug.Stack())))
 
 		}
 	}()

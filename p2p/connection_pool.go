@@ -20,6 +20,7 @@ package p2p
  * this will also ensure that a single IP is connected only once
  *
  */
+import "os"
 import "fmt"
 import "net"
 import "math"
@@ -27,6 +28,7 @@ import "sync"
 import "sort"
 import "time"
 import "strings"
+import "strconv"
 import "context"
 import "sync/atomic"
 import "runtime/debug"
@@ -70,6 +72,7 @@ type Connection struct {
 	Peer_ID               uint64 // Remote peer id
 	Port                  uint32 // port advertised by other end as its server,if it's 0 server cannot accept connections
 	State                 uint32 // state of the connection
+	Syncing               int32  // denotes whether we are syncing and thus stop pinging
 
 	Client  *rpc2.Client
 	Conn    net.Conn // actual object to talk
@@ -205,6 +208,9 @@ func ping_loop() {
 	connection_map.Range(func(k, value interface{}) bool {
 		c := value.(*Connection)
 		if atomic.LoadUint32(&c.State) != HANDSHAKE_PENDING && GetPeerID() != c.Peer_ID /*&& atomic.LoadInt32(&c.ping_in_progress) == 0*/ {
+			if atomic.LoadInt32(&c.Syncing) >= 1 {
+				return true
+			}
 			go func() {
 				defer globals.Recover(3)
 				atomic.AddInt32(&c.ping_in_progress, 1)
@@ -214,8 +220,8 @@ func ping_loop() {
 				fill_common(&request.Common) // fill common info
 
 				c.ping_count++
-				if c.ping_count%100 == 1 {
-					request.Common.PeerList = get_peer_list()
+				if c.ping_count%10 == 1 {
+					request.Common.PeerList = get_peer_list_specific(Address(c))
 				}
 
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -401,8 +407,12 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 		return connections[i].Latency < connections[j].Latency
 	})
 
+	bw_factor, _ := strconv.Atoi(os.Getenv("BW_FACTOR"))
+	if bw_factor < 1 {
+		bw_factor = 1
+	}
+
 	for { // we must send all blocks atleast once, once we are done, break ut
-		old_count := count
 		for _, v := range connections {
 			select {
 			case <-Exit_Event:
@@ -411,16 +421,16 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 			}
 			if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID && v.Peer_ID != GetPeerID() { // skip pre-handshake connections
 
-				// if the other end is > 50 blocks behind, do not broadcast block to hime
+				// if the other end is > 2 blocks behind, do not broadcast block to hime
 				// this is an optimisation, since if the other end is syncing
 				// every peer will keep on broadcasting and thus making it more lagging
 				// due to overheads
 				peer_height := atomic.LoadInt64(&v.Height)
-				if (our_height - peer_height) > 25 {
+				if (our_height - peer_height) > 2 {
 					continue
 				}
 
-				if count > chunk_count {
+				if count > len(unique_map) && count > bw_factor*chunk_count { // every connected peer shuld get ateleast one chunk
 					goto done
 				}
 
@@ -446,11 +456,6 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 				count++
 			}
 		}
-		if old_count == count { // exit the loop
-			break
-		}
-		old_count = count
-
 	}
 
 done:

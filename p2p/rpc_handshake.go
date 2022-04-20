@@ -45,8 +45,6 @@ func (handshake *Handshake_Struct) Fill() {
 
 	//	handshake.Flags = // add any flags necessary
 
-	//scan our peer list and send peers which have been recently communicated
-	handshake.PeerList = get_peer_list()
 	copy(handshake.Network_ID[:], globals.Config.Network_ID[:])
 }
 
@@ -57,7 +55,11 @@ func (connection *Connection) dispatch_test_handshake() {
 	var request, response Handshake_Struct
 	request.Fill()
 
-	ctx, _ := context.WithTimeout(context.Background(), 4*time.Second)
+	//scan our peer list and send peers which have been recently communicated
+	request.PeerList = get_peer_list_specific(Address(connection))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 	if err := connection.Client.CallWithContext(ctx, "Peer.Handshake", request, &response); err != nil {
 		connection.logger.V(4).Error(err, "cannot handshake")
 		connection.exit()
@@ -149,10 +151,13 @@ func (c *Connection) Handshake(request Handshake_Struct, response *Handshake_Str
 	c.update(&request.Common) // update common information
 	if c.State == ACTIVE {
 		for i := range request.PeerList {
-			if i < 13 {
+			if i < 31 {
 				Peer_Add(&Peer{Address: request.PeerList[i].Addr, LastConnected: uint64(time.Now().UTC().Unix())})
 			}
 		}
+	}
+	if !c.Incoming {
+		Peer_SetSuccess(c.Addr.String())
 	}
 
 	return nil

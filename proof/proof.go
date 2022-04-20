@@ -18,6 +18,7 @@ package proof
 
 import "fmt"
 import "math/big"
+import "strings"
 import "encoding/hex"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
@@ -31,7 +32,7 @@ import "github.com/deroproject/derohe/transaction"
 func Prove(proof string, input_tx string, ring_string [][]string, mainnet bool) (receivers []string, amounts []uint64, payload_raw [][]byte, payload_decoded []string, err error) {
 	var tx transaction.Transaction
 
-	addr, err := rpc.NewAddress(proof)
+	addr, err := rpc.NewAddress(strings.TrimSpace(proof))
 	if err != nil {
 		return
 	}

@@ -21,7 +21,7 @@ import "os"
 import "time"
 import "fmt"
 import "errors"
-
+import "runtime"
 import "strings"
 
 import "path/filepath"
@@ -134,15 +134,30 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			fmt.Fprintf(l.Stderr(), "This will take a couple of minutes.Please wait....\n")
 
 			var reg_tx *transaction.Transaction
-			for {
 
-				reg_tx = wallet.GetRegistrationTX()
-				hash := reg_tx.GetHash()
+			successful_regs := make(chan *transaction.Transaction)
 
-				if hash[0] == 0 && hash[1] == 0 {
-					break
-				}
+			counter := 0
+
+			for i := 0; i < runtime.GOMAXPROCS(0); i++ {
+				go func() {
+
+					for counter == 0 {
+
+						lreg_tx := wallet.GetRegistrationTX()
+						hash := lreg_tx.GetHash()
+
+						if hash[0] == 0 && hash[1] == 0 && hash[2] == 0 {
+							successful_regs <- lreg_tx
+							counter++
+							break
+						}
+					}
+				}()
 			}
+
+			reg_tx = <-successful_regs
+
 			fmt.Fprintf(l.Stderr(), "Registration TXID %s\n", reg_tx.GetHash())
 			err := wallet.SendTransaction(reg_tx)
 			if err != nil {

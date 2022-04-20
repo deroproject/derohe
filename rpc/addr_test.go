@@ -1,4 +1,4 @@
-// Copyright 2017-2021 DERO Project. All rights reserved.
+// Copyright 2017-2022 DERO Project. All rights reserved.
 // Use of this source code in any form is governed by RESEARCH license.
 // license can be found in the LICENSE file.
 // GPG: 0F39 E425 8C65 3947 702A  8234 08B2 0360 A03A 9DE8
@@ -14,21 +14,16 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-package config
+package rpc
 
-// all global configuration variables are picked from here
+import "testing"
+import "github.com/deroproject/derohe/config"
 
-// some seed nodes for mainnet (these seed node are not compliant with earlier protocols)
-// only version 2
-var Mainnet_seed_nodes = []string{
-	"185.132.176.174:11011",
-	"45.82.66.54:8080",
-	"185.107.69.12:11011",
-	"89.38.97.110:11011",
-	"45.82.66.55:11011",
-}
+func Test_Address(t *testing.T) {
 
-// some seed node for testnet
-var Testnet_seed_nodes = []string{
-	"212.8.242.60:40401",
+	addr, err := NewAddress(config.Mainnet.Dev_Address)
+	if err != nil {
+		t.Fatalf("devaddress could not be parsed")
+	}
+	t.Logf("dev address compressed form %x\n", addr.Compressed())
 }

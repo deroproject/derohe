@@ -121,7 +121,13 @@ func main() {
 	}
 
 	// init the lookup table one, anyone importing walletapi should init this first, this will take around 1 sec on any recent system
-	walletapi.Initialize_LookupTable(1, 1<<21)
+	if os.Getenv("USE_BIG_TABLE") != "" {
+		fmt.Printf("Please wait, generating precompute table....")
+		walletapi.Initialize_LookupTable(1, 1<<24) // use 8 times more more ram, around 256 MB RAM
+		fmt.Printf("done\n")
+	} else {
+		walletapi.Initialize_LookupTable(1, 1<<21)
+	}
 
 	// We need to initialize readline first, so it changes stderr to ansi processor on windows
 	l, err := readline.NewEx(&readline.Config{

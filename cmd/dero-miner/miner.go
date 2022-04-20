@@ -46,7 +46,7 @@ import "github.com/deroproject/derohe/rpc"
 import "github.com/chzyer/readline"
 import "github.com/docopt/docopt-go"
 
-import "github.com/deroproject/derohe/pow"
+import "github.com/deroproject/derohe/astrobwt/astrobwt_fast"
 
 import "github.com/gorilla/websocket"
 
@@ -75,8 +75,8 @@ ONE CPU, ONE VOTE.
 http://wiki.dero.io
 
 Usage:
-  dero-miner  --wallet-address=<wallet_address> [--daemon-rpc-address=<127.0.0.1:10102>] [--mining-threads=<threads>] [--testnet] [--debug]
-  dero-miner --bench [--max-pow-size=1120]
+  dero-miner  --wallet-address=<wallet_address> [--daemon-rpc-address=<minernode1.dero.live:10100>] [--mining-threads=<threads>] [--testnet] [--debug]
+  dero-miner --bench 
   dero-miner -h | --help
   dero-miner --version
 
@@ -84,12 +84,12 @@ Options:
   -h --help     Show this screen.
   --version     Show version.
   --bench  	    Run benchmark mode.
-  --daemon-rpc-address=<127.0.0.1:10102>    Miner will connect to daemon RPC on this port.
+  --daemon-rpc-address=<127.0.0.1:10102>    Miner will connect to daemon RPC on this port (default minernode1.dero.live:10100).
   --wallet-address=<wallet_address>    This address is rewarded when a block is mined sucessfully.
   --mining-threads=<threads>         Number of CPU threads for mining [default: ` + fmt.Sprintf("%d", runtime.GOMAXPROCS(0)) + `]
 
-Example Mainnet: ./dero-miner-linux-amd64 --wallet-address dero1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqhmy4zf --daemon-rpc-address=http://explorer.dero.io:10102 
-Example Testnet: ./dero-miner-linux-amd64 --wallet-address deto1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqdzcd8p --daemon-rpc-address=http://127.0.0.1:40402 
+Example Mainnet: ./dero-miner-linux-amd64 --wallet-address dero1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqhmy4zf --daemon-rpc-address=minernode1.dero.live:10100
+Example Testnet: ./dero-miner-linux-amd64 --wallet-address deto1qy0ehnqjpr0wxqnknyc66du2fsxyktppkr8m8e6jvplp954klfjz2qqdzcd8p --daemon-rpc-address=127.0.0.1:40402 
 If daemon running on local machine no requirement of '--daemon-rpc-address' argument. 
 `
 var Exit_In_Progress = make(chan bool)
@@ -154,7 +154,7 @@ func main() {
 	}
 
 	if !globals.Arguments["--testnet"].(bool) {
-		daemon_rpc_address = "127.0.0.1:10100"
+		daemon_rpc_address = "minernode1.dero.live:10100"
 	} else {
 		daemon_rpc_address = "127.0.0.1:10100"
 	}
@@ -379,10 +379,11 @@ func random_execution(wg *sync.WaitGroup, iterations int) {
 	runtime.LockOSThread()
 	//threadaffinity()
 
+	scratch := astrobwt_fast.Pool.Get().(*astrobwt_fast.ScratchData)
 	rand.Read(workbuf[:])
 
 	for i := 0; i < iterations; i++ {
-		_ = pow.Pow(workbuf[:])
+		_ = astrobwt_fast.POW_optimized(workbuf[:], scratch)
 	}
 	wg.Done()
 	runtime.UnlockOSThread()
@@ -446,6 +447,10 @@ func mineblock(tid int) {
 	var diff big.Int
 	var work [block.MINIBLOCK_SIZE]byte
 
+	scratch := astrobwt_fast.Pool.Get().(*astrobwt_fast.ScratchData)
+
+	time.Sleep(5 * time.Second)
+
 	nonce_buf := work[block.MINIBLOCK_SIZE-5:] //since slices are linked, it modifies parent
 	runtime.LockOSThread()
 	threadaffinity()
@@ -481,7 +486,7 @@ func mineblock(tid int) {
 			i++
 			binary.BigEndian.PutUint32(nonce_buf, i)
 
-			powhash := pow.Pow(work[:])
+			powhash := astrobwt_fast.POW_optimized(work[:], scratch)
 			atomic.AddUint64(&counter, 1)
 
 			if CheckPowHashBig(powhash, &diff) == true {

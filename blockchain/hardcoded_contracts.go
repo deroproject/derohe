@@ -1,4 +1,4 @@
-// Copyright 2017-2021 DERO Project. All rights reserved.
+// Copyright 2017-2022 DERO Project. All rights reserved.
 // Use of this source code in any form is governed by RESEARCH license.
 // license can be found in the LICENSE file.
 // GPG: 0F39 E425 8C65 3947 702A  8234 08B2 0360 A03A 9DE8
@@ -18,58 +18,48 @@ package blockchain
 
 // this file installs hard coded contracts
 
-//import "fmt"
 import _ "embed"
-
-/*
-import "strings"
-import "strconv"
-import "encoding/hex"
-import "encoding/binary"
-import "math/big"
-import "golang.org/x/xerrors"
-
-
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/premine"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/rpc"
-
-
-
-*/
 
 import "github.com/deroproject/graviton"
 import "github.com/deroproject/derohe/dvm"
+import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/cryptography/crypto"
 
 //go:embed hardcoded_sc/nameservice.bas
 var source_nameservice string
 
+//go:embed hardcoded_sc/nameservice_updateable.bas
+var source_nameservice_updateable string
+
 // process the miner tx, giving fees, miner rewatd etc
 func (chain *Blockchain) install_hardcoded_contracts(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, balance_tree *graviton.Tree, sc_tree *graviton.Tree, height uint64) (err error) {
 
-	if height != 0 {
-		return
+	if height == 0 {
+		if _, _, err = dvm.ParseSmartContract(source_nameservice); err != nil {
+			logger.Error(err, "error Parsing hard coded sc")
+			panic(err)
+		}
+
+		var name crypto.Hash
+		name[31] = 1
+		if err = chain.install_hardcoded_sc(cache, ss, balance_tree, sc_tree, source_nameservice, name); err != nil {
+			panic(err)
+		}
 	}
 
-	if _, _, err = dvm.ParseSmartContract(source_nameservice); err != nil {
-		logger.Error(err, "error Parsing hard coded sc")
-		panic(err)
-		return
-	}
+	// it is updated at 0 height for testnets
+	if height == uint64(globals.Config.HF1_HEIGHT) { // update SC at specific height
+		if _, _, err = dvm.ParseSmartContract(source_nameservice_updateable); err != nil {
+			logger.Error(err, "error Parsing hard coded sc")
+			panic(err)
+		}
 
-	var name crypto.Hash
-	name[31] = 1
-	if err = chain.install_hardcoded_sc(cache, ss, balance_tree, sc_tree, source_nameservice, name); err != nil {
-		panic(err)
-		return
+		var name crypto.Hash
+		name[31] = 1
+		if err = chain.install_hardcoded_sc(cache, ss, balance_tree, sc_tree, source_nameservice_updateable, name); err != nil {
+			panic(err)
+		}
 	}
-
-	//fmt.Printf("source code embedded %s\n",source_nameservice)
 
 	return
 }

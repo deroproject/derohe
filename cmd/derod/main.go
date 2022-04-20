@@ -59,7 +59,7 @@ var command_line string = `derod
 DERO : A secure, private blockchain with smart-contracts
 
 Usage:
-  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--timeisinsync] [--fastsync] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... 	 [--min-peers=<11>] [--rpc-bind=<127.0.0.1:9999>] [--getwork-bind=<0.0.0.0:18089>] [--node-tag=<unique name>] [--prune-history=<50>] [--integrator-address=<address>] [--clog-level=1] [--flog-level=1]
+  derod [--help] [--version] [--testnet] [--debug]  [--sync-node] [--timeisinsync] [--fastsync] [--socks-proxy=<socks_ip:port>] [--data-dir=<directory>] [--p2p-bind=<0.0.0.0:18089>] [--add-exclusive-node=<ip:port>]... [--add-priority-node=<ip:port>]... [--min-peers=<11>] [--max-peers=<100>] [--rpc-bind=<127.0.0.1:9999>] [--getwork-bind=<0.0.0.0:18089>] [--node-tag=<unique name>] [--prune-history=<50>] [--integrator-address=<address>] [--clog-level=1] [--flog-level=1]
   derod -h | --help
   derod --version
 
@@ -82,6 +82,8 @@ Options:
   --sync-node       Sync node automatically with the seeds nodes. This option is for rare use.
   --node-tag=<unique name>	Unique name of node, visible to everyone
   --integrator-address	if this node mines a block,Integrator rewards will be given to address.default is dev's address.
+  --min-peers=<31>	  Node will try to maintain atleast this many connections to peers
+  --max-peers=<101>	  Node will maintain maximim this many connections to peers and will stop accepting connections
   --prune-history=<50>	prunes blockchain history until the specific topo_height
 
   `
@@ -223,6 +225,42 @@ func main() {
 		p2p.Broadcast_MiniBlock(mbl, peerid)
 	}
 
+	{
+		current_blid, err := chain.Load_Block_Topological_order_at_index(17600)
+		if err == nil {
+
+			current_blid := current_blid
+			for {
+				height := chain.Load_Height_for_BL_ID(current_blid)
+
+				if height < 17500 {
+					break
+				}
+
+				r, err := chain.Store.Topo_store.Read(int64(height))
+				if err != nil {
+					panic(err)
+				}
+				if r.BLOCK_ID != current_blid {
+					fmt.Printf("Fixing corruption r %+v  , current_blid %s current_blid_height %d\n", r, current_blid, height)
+
+					fix_commit_version, err := chain.ReadBlockSnapshotVersion(current_blid)
+					if err != nil {
+						panic(err)
+					}
+
+					chain.Store.Topo_store.Write(int64(height), current_blid, fix_commit_version, int64(height))
+
+				}
+
+				fix_bl, err := chain.Load_BL_FROM_ID(current_blid)
+				if err != nil {
+					panic(err)
+				}
+				current_blid = fix_bl.Tips[0]
+			}
+		}
+	}
 	globals.Cron.Start() // start cron jobs
 
 	// This tiny goroutine continuously updates status as required
@@ -624,6 +662,50 @@ restart_loop:
 			err, _ = chain.Add_Complete_Block(cbl)
 			fmt.Printf("err adding block %s\n", err)
 
+		case command == "fix":
+			tips := chain.Get_TIPS()
+
+			current_blid := tips[0]
+			for {
+				height := chain.Load_Height_for_BL_ID(current_blid)
+
+				//fmt.Printf("checking height %d\n", height)
+
+				if height < 1 {
+					break
+				}
+
+				r, err := chain.Store.Topo_store.Read(int64(height))
+				if err != nil {
+					panic(err)
+				}
+				if r.BLOCK_ID != current_blid {
+					fmt.Printf("corruption due to XYZ r %+v  , current_blid %s current_blid_height %d\n", r, current_blid, height)
+
+					fix_commit_version, err := chain.ReadBlockSnapshotVersion(current_blid)
+					if err != nil {
+						panic(err)
+					}
+
+					chain.Store.Topo_store.Write(int64(height), current_blid, fix_commit_version, int64(height))
+
+				}
+
+				fix_bl, err := chain.Load_BL_FROM_ID(current_blid)
+				if err != nil {
+					panic(err)
+				}
+
+				current_blid = fix_bl.Tips[0]
+
+				/*		fix_commit_version, err = chain.ReadBlockSnapshotVersion(current_block_id)
+						if err != nil {
+							panic(err)
+						}
+				*/
+
+			}
+
 		case command == "print_block":
 
 			fmt.Printf("printing block\n")
@@ -670,6 +752,7 @@ restart_loop:
 			}
 
 			fmt.Printf("BALANCE_TREE : %s\n", bhash)
+			fmt.Printf("MINING REWARD : %s\n", globals.FormatMoney(blockchain.CalcBlockReward(bl.Height)))
 
 			//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
 
@@ -763,9 +846,8 @@ restart_loop:
 
 			supply := uint64(0)
 
-			if supply > (1000000 * 1000000000000) {
-				supply -= (1000000 * 1000000000000) // remove  premine
-			}
+			supply = (config.PREMINE + blockchain.CalcBlockReward(uint64(chain.Get_Height()))*uint64(chain.Get_Height())) // valid for few years
+
 			fmt.Printf("Network %s Height %d  NW Hashrate %0.03f MH/sec  Peers %d inc, %d out  MEMPOOL size %d REGPOOL %d  Total Supply %s DERO \n", globals.Config.Name, chain.Get_Height(), float64(chain.Get_Network_HashRate())/1000000.0, inc, out, mempool_tx_count, regpool_tx_count, globals.FormatMoney(supply))
 			if chain.LocatePruneTopo() >= 1 {
 				fmt.Printf("Chain is pruned till %d\n", chain.LocatePruneTopo())
@@ -783,6 +865,7 @@ restart_loop:
 				fmt.Printf(" %s(%d)", tip, chain.Load_Height_for_BL_ID(tip))
 			}
 			fmt.Printf("\n")
+			fmt.Printf("Current Block Reward: %s\n", globals.FormatMoney(blockchain.CalcBlockReward(uint64(chain.Get_Height()))))
 
 			// print hardfork status on second line
 			hf_state, _, _, threshold, version, votes, window := chain.Get_HF_info()
@@ -805,7 +888,7 @@ restart_loop:
 
 		case strings.ToLower(line) == "peer_list": // print peer list
 			p2p.PeerList_Print()
-		case strings.ToLower(line) == "sync_info": // print active connections
+		case strings.ToLower(line) == "syncinfo", strings.ToLower(line) == "sync_info": // print active connections
 			p2p.Connection_Print()
 		case strings.ToLower(line) == "bye":
 			fallthrough
@@ -1027,7 +1110,7 @@ func usage(w io.Writer) {
 	io.WriteString(w, "\t\033[1mprint_tx\033[0m\tPrint transaction, print_tx <transaction_hash>\n")
 	io.WriteString(w, "\t\033[1mstatus\033[0m\t\tShow general information\n")
 	io.WriteString(w, "\t\033[1mpeer_list\033[0m\tPrint peer list\n")
-	io.WriteString(w, "\t\033[1msync_info\033[0m\tPrint information about connected peers and their state\n")
+	io.WriteString(w, "\t\033[1msyncinfo\033[0m\tPrint information about connected peers and their state\n")
 	io.WriteString(w, "\t\033[1mbye\033[0m\t\tQuit the daemon\n")
 	io.WriteString(w, "\t\033[1mban\033[0m\t\tBan specific ip from making any connections\n")
 	io.WriteString(w, "\t\033[1munban\033[0m\t\tRevoke restrictions on previously banned ips\n")
@@ -1065,7 +1148,7 @@ var completer = readline.NewPrefixCompleter(
 	//	readline.PcItem("print_tx"),
 	readline.PcItem("setintegratoraddress"),
 	readline.PcItem("status"),
-	readline.PcItem("sync_info"),
+	readline.PcItem("syncinfo"),
 	readline.PcItem("version"),
 	readline.PcItem("bye"),
 	readline.PcItem("exit"),

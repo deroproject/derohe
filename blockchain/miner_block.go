@@ -511,8 +511,6 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		return
 	}
 
-	result = true // block's pow is valid
-
 	// if we reach here, everything looks ok, we can complete the block we have, lets add the final piece
 	bl.MiniBlocks = append(bl.MiniBlocks, mbl)
 
@@ -570,6 +568,8 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		cache_block_mutex.Unlock()
 
 		logger.V(1).Info("Block successfully accepted, Notifying Network", "blid", bl.GetHash(), "height", bl.Height)
+
+		result = true // block's pow is valid
 
 		if !chain.simulator { // if not in simulator mode, relay block to the chain
 			chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network

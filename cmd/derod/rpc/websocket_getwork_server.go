@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
 
 	"time"
 
@@ -65,21 +66,23 @@ type user_session struct {
 var client_list_mutex sync.Mutex
 var client_list = map[*websocket.Conn]*user_session{}
 
+var miners_count int
+
 func CountMiners() int {
 	client_list_mutex.Lock()
 	defer client_list_mutex.Unlock()
-	return len(client_list)
+	miners_count = len(client_list)
+	return miners_count
 }
 
 func SendJob() {
 
+	defer globals.Recover(1)
+
 	var params rpc.GetBlockTemplate_Result
 
-	var buf bytes.Buffer
-	encoder := json.NewEncoder(&buf)
-
 	// get a block template, and then we will fill the address here as optimization
-	bl, mbl, _, _, err := chain.Create_new_block_template_mining(chain.IntegratorAddress())
+	bl, mbl_main, _, _, err := chain.Create_new_block_template_mining(chain.IntegratorAddress())
 	if err != nil {
 		return
 	}
@@ -94,7 +97,7 @@ func SendJob() {
 
 	params.Height = bl.Height
 	params.Prev_Hash = prev_hash
-	if mbl.HighDiff {
+	if mbl_main.HighDiff {
 		diff.Mul(diff, new(big.Int).SetUint64(config.MINIBLOCK_HIGHDIFF))
 	}
 	params.Difficultyuint64 = diff.Uint64()
@@ -102,32 +105,44 @@ func SendJob() {
 	client_list_mutex.Lock()
 	defer client_list_mutex.Unlock()
 
-	for k, v := range client_list {
-		if !mbl.Final { //write miners address only if possible
-			copy(mbl.KeyHash[:], v.address_sum[:])
-		}
+	for rk, rv := range client_list {
 
-		for i := range mbl.Nonce { // give each user different work
-			mbl.Nonce[i] = globals.Global_Random.Uint32() // fill with randomness
-		}
+		go func(k *websocket.Conn, v *user_session) {
+			defer globals.Recover(2)
+			var buf bytes.Buffer
+			encoder := json.NewEncoder(&buf)
 
-		if v.lasterr != "" {
-			params.LastError = v.lasterr
-			v.lasterr = ""
-		}
+			mbl := mbl_main
 
-		if !v.valid_address && !chain.IsAddressHashValid(false, v.address_sum) {
-			params.LastError = "unregistered miner or you need to wait 15 mins"
-		} else {
-			v.valid_address = true
-		}
-		params.Blockhashing_blob = fmt.Sprintf("%x", mbl.Serialize())
-		params.Blocks = v.blocks
-		params.MiniBlocks = v.miniblocks
+			if !mbl.Final { //write miners address only if possible
+				copy(mbl.KeyHash[:], v.address_sum[:])
+			}
 
-		encoder.Encode(params)
-		k.WriteMessage(websocket.TextMessage, buf.Bytes())
-		buf.Reset()
+			for i := range mbl.Nonce { // give each user different work
+				mbl.Nonce[i] = globals.Global_Random.Uint32() // fill with randomness
+			}
+
+			if v.lasterr != "" {
+				params.LastError = v.lasterr
+				v.lasterr = ""
+			}
+
+			if !v.valid_address && !chain.IsAddressHashValid(false, v.address_sum) {
+				params.LastError = "unregistered miner or you need to wait 15 mins"
+			} else {
+				params.LastError = ""
+				v.valid_address = true
+			}
+			params.Blockhashing_blob = fmt.Sprintf("%x", mbl.Serialize())
+			params.Blocks = v.blocks
+			params.MiniBlocks = v.miniblocks
+
+			encoder.Encode(params)
+			k.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+			k.WriteMessage(websocket.TextMessage, buf.Bytes())
+			buf.Reset()
+
+		}(rk, rv)
 
 	}
 
@@ -138,7 +153,7 @@ func newUpgrader() *websocket.Upgrader {
 
 	u.OnMessage(func(c *websocket.Conn, messageType websocket.MessageType, data []byte) {
 		// echo
-		c.WriteMessage(messageType, data)
+		//c.WriteMessage(messageType, data)
 
 		if messageType != websocket.TextMessage {
 			return
@@ -147,7 +162,7 @@ func newUpgrader() *websocket.Upgrader {
 		sess := c.Session().(*user_session)
 
 		client_list_mutex.Lock()
-		client_list_mutex.Unlock()
+		defer client_list_mutex.Unlock()
 
 		var p rpc.SubmitBlock_Params
 
@@ -179,8 +194,9 @@ func newUpgrader() *websocket.Upgrader {
 	})
 	u.OnClose(func(c *websocket.Conn, err error) {
 		client_list_mutex.Lock()
+		defer client_list_mutex.Unlock()
 		delete(client_list, c)
-		client_list_mutex.Unlock()
+
 	})
 
 	return u
@@ -212,8 +228,9 @@ func onWebsocket(w http.ResponseWriter, r *http.Request) {
 	wsConn.SetSession(&session)
 
 	client_list_mutex.Lock()
+	defer client_list_mutex.Unlock()
 	client_list[wsConn] = &session
-	client_list_mutex.Unlock()
+
 }
 
 func Getwork_server() {
@@ -271,7 +288,32 @@ func Getwork_server() {
 		memPool.Put(b)
 	})
 
-	globals.Cron.AddFunc("@every 2s", SendJob) // if daemon restart automaticaly send job
+	//globals.Cron.AddFunc("@every 2s", SendJob) // if daemon restart automaticaly send job
+	go func() { // try to be as optimized as possible to lower hash wastage
+		sleeptime, _ := time.ParseDuration(os.Getenv("JOB_SEND_TIME_DELAY")) // this will hopefully be never required to change
+		if sleeptime.Milliseconds() < 40 {
+			sleeptime = 500 * time.Millisecond
+		}
+		logger_getwork.Info("Job will be dispatched every", "time", sleeptime)
+		old_mini_count := 0
+		old_time := time.Now()
+		old_height := int64(0)
+		for {
+			if miners_count > 0 {
+				current_mini_count := chain.MiniBlocks.Count()
+				current_height := chain.Get_Height()
+				if old_mini_count != current_mini_count || old_height != current_height || time.Now().Sub(old_time) > sleeptime {
+					old_mini_count = current_mini_count
+					old_height = current_height
+					SendJob()
+					old_time = time.Now()
+				}
+			} else {
+
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
 
 	if err = svr.Start(); err != nil {
 		logger_getwork.Error(err, "nbio.Start failed.")

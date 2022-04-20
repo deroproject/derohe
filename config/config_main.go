@@ -1,3 +1,6 @@
+//go:build !js && !wasm
+// +build !js,!wasm
+
 // Copyright 2017-2021 DERO Project. All rights reserved.
 // Use of this source code in any form is governed by RESEARCH license.
 // license can be found in the LICENSE file.
@@ -16,19 +19,6 @@
 
 package config
 
-// all global configuration variables are picked from here
+import "github.com/caarlos0/env/v6"
 
-// some seed nodes for mainnet (these seed node are not compliant with earlier protocols)
-// only version 2
-var Mainnet_seed_nodes = []string{
-	"185.132.176.174:11011",
-	"45.82.66.54:8080",
-	"185.107.69.12:11011",
-	"89.38.97.110:11011",
-	"45.82.66.55:11011",
-}
-
-// some seed node for testnet
-var Testnet_seed_nodes = []string{
-	"212.8.242.60:40401",
-}
+var _ = env.Parse(&Settings)

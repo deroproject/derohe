@@ -56,6 +56,23 @@ func (meta *SC_META_DATA) UnmarshalBinary(buf []byte) (err error) {
 	return nil
 }
 
+// serialize the structure
+func (meta SC_META_DATA) MarshalBinaryGood() (buf []byte) {
+	buf = make([]byte, 0, 33)
+	buf = append(buf, meta.Type)
+	buf = append(buf, meta.DataHash[:]...)
+	return
+}
+
+func (meta *SC_META_DATA) UnmarshalBinaryGood(buf []byte) (err error) {
+	if len(buf) != 1+32 {
+		return fmt.Errorf("input buffer should be of 33 bytes in length")
+	}
+	meta.Type = buf[0]
+	copy(meta.DataHash[:], buf[1:])
+	return nil
+}
+
 func SC_Meta_Key(scid crypto.Hash) []byte {
 	return scid[:]
 }
@@ -277,15 +294,6 @@ func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid 
 
 // reads SC, balance
 func ReadSC(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid crypto.Hash) (balance uint64, sc SmartContract, found bool) {
-	meta_bytes, err := w_sc_tree.Get(SC_Meta_Key(scid))
-	if err != nil {
-		return
-	}
-
-	var meta SC_META_DATA // the meta contains the link to the SC bytes
-	if err := meta.UnmarshalBinary(meta_bytes); err != nil {
-		return
-	}
 	var zerohash crypto.Hash
 	balance, _ = LoadSCAssetValue(data_tree, scid, zerohash)
 

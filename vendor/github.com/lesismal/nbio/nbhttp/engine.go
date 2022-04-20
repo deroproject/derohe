@@ -329,12 +329,16 @@ func (e *Engine) stopListeners() {
 
 // Start .
 func (e *Engine) Start() error {
-	err := e.startListeners()
+	err := e.Gopher.Start()
 	if err != nil {
 		return err
 	}
-
-	return e.Gopher.Start()
+	err = e.startListeners()
+	if err != nil {
+		e.Gopher.Stop()
+		return err
+	}
+	return err
 }
 
 // Stop .
@@ -387,9 +391,9 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	}
 
 Exit:
-	e.Stop()
+	err := e.Shutdown(ctx)
 	logging.Info("Gopher[%v] shutdown", e.Gopher.Name)
-	return nil
+	return err
 }
 
 // InitTLSBuffers .
