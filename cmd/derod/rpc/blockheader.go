@@ -17,7 +17,12 @@
 package rpc
 
 //import "fmt"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"fmt"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"strconv"
+)
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/blockchain"
 
@@ -47,6 +52,46 @@ func GetBlockHeader(chain *blockchain.Blockchain, hash crypto.Hash) (result rpc.
 	result.SideBlock = chain.Isblock_SideBlock(hash)
 	result.Reward = blockchain.CalcBlockReward(uint64(result.Height))
 	result.TXCount = int64(len(bl.Tx_hashes))
+
+	for idx, mbl := range bl.MiniBlocks {
+		//fmt.Println("processing miniblock:" + strconv.Itoa(idx))
+		//var ss *graviton.Snapshot
+		max_topo := chain.Load_TOPO_HEIGHT()
+		if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+			max_topo -= 25
+		}
+
+		toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+		ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+		balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+		if err2 != nil {
+			panic(err2)
+		}
+		_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+		if err2 != nil { // the full block does not have the hashkey based coinbase
+			fmt.Println("miniblock has no hashkey: " + strconv.Itoa(idx))
+			continue
+		}
+
+		//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+		mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+
+		//		mbl_coinbase, _ := chain.KeyHashConverToAddress(key_compressed, record_version)
+		addr := mbl_coinbase.String()
+		result.MiniCoinbases = append(result.MiniCoinbases, addr)
+		//fmt.Println("Coinbase addr: " + addr)
+		//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+		//mbl_coinbase, _ := chain.KeyHashConverToAddress(mbl.KeyHash, record_version)
+		//fmt.Printf("Coinbase addr: " + mbl_coinbase)
+	}
+
+	var acckey crypto.Point
+	if err := acckey.DecodeCompressed(bl.Miner_TX.MinerAddress[:]); err != nil {
+		panic(err)
+	}
+
+	astring := rpc.NewAddressFromKeys(&acckey)
+	result.Coinbase = astring.String()
 
 	for i := range bl.Tips {
 		result.Tips = append(result.Tips, bl.Tips[i].String())

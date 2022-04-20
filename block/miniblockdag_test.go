@@ -30,7 +30,7 @@ func Test_blockmini_purge(t *testing.T) {
 		}
 	}
 
-	c.PurgeHeight(5) // purge all miniblock  <= height 5
+	c.PurgeHeight(nil, 5) // purge all miniblock  <= height 5
 
 	if c.Count() != 4 {
 		t.Fatalf("miniblocks not purged")

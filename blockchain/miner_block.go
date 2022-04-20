@@ -510,7 +510,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		}
 		return
 	}
-
+	//comes here only if we mine our own block?
 	// if we reach here, everything looks ok, we can complete the block we have, lets add the final piece
 	bl.MiniBlocks = append(bl.MiniBlocks, mbl)
 

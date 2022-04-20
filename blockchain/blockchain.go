@@ -21,7 +21,11 @@ package blockchain
 // We must not call any packages that can call panic
 // NO Panics or FATALs please
 
-import "os"
+import (
+	"io/ioutil"
+	"log"
+	"os"
+)
 import "fmt"
 import "sync"
 import "time"
@@ -1085,8 +1089,14 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		block_logger.Info(fmt.Sprintf("Chain Height %d", chain.Get_Height()))
 	}
 
-	purge_count := chain.MiniBlocks.PurgeHeight(chain.Get_Stable_Height()) // purge all miniblocks upto this height
-	logger.V(2).Info("Purged miniblock", "count", purge_count)
+	hash, err := chain.Load_Block_Topological_order_at_index(int64(chain.Get_Stable_Height()))
+	oldBlock, err := chain.Load_BL_FROM_ID(hash)
+
+	purged_key_count, purged_mini_count, lost_mini_count, lost_minis := chain.MiniBlocks.PurgeHeight(oldBlock.MiniBlocks, chain.Get_Stable_Height()) // purge all miniblocks upto this height
+	logger.V(2).Info("Purged miniblock", "count", purged_key_count)
+	chain.Write_Purge_Count(chain.Get_Height(), chain.Get_Stable_Height(), purged_key_count, purged_mini_count, chain.MiniBlocks.Count(), lost_mini_count)
+	chain.Write_Lost_Mini(chain.Get_Height(), lost_minis)
+	//	chain.Write_Mini_Blocks(chain.Get_Height(), chain.MiniBlocks)
 
 	result = true
 
@@ -1095,6 +1105,145 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	//chain.Recount_Votes() // does not return anything
 
 	return // run any handlers necesary to atomically
+}
+
+func (chain *Blockchain) Write_Lost_Mini(block_idx int64, lost_minis []block.MiniBlock) {
+
+	//path, _ := os.Getwd()
+	//fmt.Println("current working dir:" + path)
+	filename := "lost_minis.csv"
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	if err != nil {
+		if _, err := f.Write([]byte("chain_height,coinbase_address,version,chain_height,final,highdiff,timestamp,flags,past0,past1,nonce0,nonce1,nonce2\n")); err != nil {
+			log.Fatal(err)
+		}
+	}
+	for _, mbl := range lost_minis {
+		line := chain.MiniBlockString(mbl, block_idx)
+		if _, err := f.Write([]byte(line)); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func (chain *Blockchain) Write_Mini_Blocks(block_idx int64, minis *block.MiniBlocksCollection) {
+	minis.RLock()
+	defer minis.RUnlock()
+
+	//path, _ := os.Getwd()
+	//fmt.Println("current working dir:" + path)
+	filename := "mini_pool.csv"
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	if err != nil {
+		if _, err := f.Write([]byte("chain_height,coinbase_address,version,chain_height,final,highdiff,timestamp,flags,past0,past1,nonce0,nonce1,nonce2\n")); err != nil {
+			log.Fatal(err)
+		}
+	}
+	for _, miniKey := range minis.Collection {
+		for _, mbl := range miniKey {
+			line := chain.MiniBlockString(mbl, block_idx)
+			if _, err := f.Write([]byte(line)); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+}
+
+func (chain *Blockchain) MiniBlockCoinbase(mbl block.MiniBlock, chain_height int64) string {
+	max_topo := chain.Load_TOPO_HEIGHT()
+	if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+		max_topo -= 25
+	}
+	toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+	ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+	if err2 != nil {
+		panic(err2)
+	}
+	_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+	if err2 != nil { // the full block does not have the hashkey based coinbase
+		fmt.Println("miniblock has no hashkey in writing miniblock pool. something wrong?")
+	}
+
+	var coinbase string
+
+	if key_compressed != nil {
+		mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+		coinbase = mbl_coinbase.String()
+		//this code is used to write miniblocks that are not yet in any block,
+		//so cannot parse the miner tx of final block at this time
+		//-> should never be a case here that the key_compressed is not found i guess?
+		//} else {
+		//	var acckey crypto.Point
+		//	if err := acckey.DecodeCompressed(bl.Miner_TX.MinerAddress[:]); err != nil {
+		//		panic(err)
+		//	}
+		//
+		//	astring := rpc.NewAddressFromKeys(&acckey)
+		//	coinbase = astring.String()
+	}
+	return coinbase
+}
+
+func (chain *Blockchain) MiniBlockString(mbl block.MiniBlock, chain_height int64) string {
+	coinbase := chain.MiniBlockCoinbase(mbl, chain_height)
+	//fmt.Println("Coinbase addr: " + coinbase)
+
+	line := fmt.Sprintf("%d,%s,%d,%d,%t,%t,%d,%d,%08x,%08x,%08x,%08x,%08x\n",
+		chain_height, coinbase, mbl.Version, mbl.Height, mbl.Final, mbl.HighDiff, mbl.Timestamp, mbl.Flags,
+		mbl.Past[0], mbl.Past[1], mbl.Nonce[0], mbl.Nonce[1], mbl.Nonce[2])
+	return line
+}
+
+func (chain *Blockchain) Write_Purge_Count(block_idx int64, stable_idx int64, purged_key_count int, purged_mini_count int, minipool_count int, lost_mini_count int) {
+	//path, _ := os.Getwd()
+	//fmt.Println("current working dir:" + path)
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	filename := "purge_count.csv"
+	_, err := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	if err != nil {
+		if _, err := f.Write([]byte("stable_height,chain_height,purge_count,purged_mini_count,lost_minis,minipool_count\n")); err != nil {
+			log.Fatal(err)
+		}
+	}
+	//	fmt.Println(string(content)) // This is some content
+
+	line := fmt.Sprintf("%d,%d,%d,%d,%d,%d\n", stable_idx, block_idx, purged_key_count, purged_mini_count, lost_mini_count, minipool_count)
+	if _, err := f.Write([]byte(line)); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // get top unstable height
@@ -1405,7 +1554,7 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 		chain.Store.Topo_store.Clean(top_block_topo_index - i)
 	}
 
-	chain.MiniBlocks.PurgeHeight(0xffffffffffffff) // purge all miniblocks upto this height
+	chain.MiniBlocks.PurgeHeight(nil, 0xffffffffffffff) // purge all miniblocks upto this height
 
 	return true
 }

@@ -16,7 +16,9 @@
 
 package block
 
-import "fmt"
+import (
+	"fmt"
+)
 import "sort"
 import "sync"
 
@@ -31,7 +33,7 @@ func CreateMiniBlockCollection() *MiniBlocksCollection {
 }
 
 // purge all heights less than this height
-func (c *MiniBlocksCollection) PurgeHeight(height int64) (purge_count int) {
+func (c *MiniBlocksCollection) PurgeHeight(minis []MiniBlock, height int64) (purge_count int, purged_mini_count int, lost_mini_count int, lost_minis []MiniBlock) {
 	if height < 0 {
 		return
 	}
@@ -41,10 +43,39 @@ func (c *MiniBlocksCollection) PurgeHeight(height int64) (purge_count int) {
 	for k, _ := range c.Collection {
 		if k.Height <= uint64(height) {
 			purge_count++
+
+			if minis != nil {
+				toPurge := c.Collection[k]
+				matches := 0
+				for _, mbl := range toPurge {
+					match := false
+					for _, mbl2 := range minis {
+						if mbl.Height == mbl2.Height && mbl.Timestamp == mbl2.Timestamp &&
+							mbl.Final == mbl2.Final {
+							match = true
+							for i := 0; i < 16; i++ {
+								if mbl.KeyHash[i] != mbl2.KeyHash[i] {
+									match = false
+									break
+								}
+							}
+							if match {
+								matches++
+								break
+							}
+						}
+					}
+					if !match {
+						lost_minis = append(lost_minis, mbl)
+					}
+				}
+				lost_mini_count += len(toPurge) - matches
+			}
+			purged_mini_count += len(c.Collection[k])
 			delete(c.Collection, k)
 		}
 	}
-	return purge_count
+	return purge_count, purged_mini_count, lost_mini_count, lost_minis
 }
 
 func (c *MiniBlocksCollection) Count() int {
@@ -120,6 +151,12 @@ func (c *MiniBlocksCollection) GetAllKeys(height int64) (keys []MiniBlockKey) {
 			keys = append(keys, k)
 		}
 	}
+
+	//if len(keys) > 0 {
+	//	if len(c.Collection[keys[0]]) > 1 {
+	//		fmt.Printf("found some")
+	//	}
+	//}
 
 	sort.SliceStable(keys, func(i, j int) bool { // sort descending on the basis of work done
 		return len(c.Collection[keys[i]]) > len(c.Collection[keys[j]])

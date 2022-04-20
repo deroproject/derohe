@@ -16,7 +16,10 @@
 
 package rpc
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+)
 import "context"
 import "encoding/hex"
 import "encoding/json"
@@ -37,6 +40,7 @@ func GetBlock(ctx context.Context, p rpc.GetBlock_Params) (result rpc.GetBlock_R
 	var hash crypto.Hash
 
 	if crypto.HashHexToHash(p.Hash) == hash { // user requested using height
+		fmt.Println("requested block at height: " + strconv.FormatInt(int64(p.Height), 10))
 		if int64(p.Height) > chain.Load_TOPO_HEIGHT() {
 			err = fmt.Errorf("user requested block at toopheight more than chain topoheight")
 			return
@@ -57,6 +61,36 @@ func GetBlock(ctx context.Context, p rpc.GetBlock_Params) (result rpc.GetBlock_R
 	}
 
 	bl, err := chain.Load_BL_FROM_ID(hash)
+	//for idx, mbl := range bl.MiniBlocks {
+	//	fmt.Println("processing miniblock:" + strconv.Itoa(idx))
+	//	//var ss *graviton.Snapshot
+	//	max_topo := chain.Load_TOPO_HEIGHT()
+	//	if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+	//		max_topo -= 25
+	//	}
+	//
+	//	toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+	//	ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	//	balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+	//	if err2 != nil {
+	//		panic(err2)
+	//	}
+	//	_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+	//	if err2 != nil { // the full block does not have the hashkey based coinbase
+	//		fmt.Println("miniblock has no hashkey: " + strconv.Itoa(idx))
+	//		continue
+	//	}
+	//
+	//	//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+	//	mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+	//
+	//	//		mbl_coinbase, _ := chain.KeyHashConverToAddress(key_compressed, record_version)
+	//	addr := mbl_coinbase.String()
+	//	fmt.Println("Coinbase addr: " + addr)
+	//	//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+	//	//mbl_coinbase, _ := chain.KeyHashConverToAddress(mbl.KeyHash, record_version)
+	//	//fmt.Printf("Coinbase addr: " + mbl_coinbase)
+	//}
 	if err != nil { // if err return err
 		return
 	}

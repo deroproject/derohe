@@ -24,7 +24,9 @@ package explorerlib
 // TODO: error handling is non-existant ( as this was built up in hrs ). Add proper error handling
 //
 
-import "time"
+import (
+	"time"
+)
 import "fmt"
 
 import "embed"
@@ -617,6 +619,18 @@ func block_handler(w http.ResponseWriter, r *http.Request) {
 	var blinfo block_info
 	err := load_block_from_rpc(&blinfo, param, true)
 	_ = err
+	//
+	//var ss *graviton.Snapshot
+	//record_version, err := chain.ReadBlockSnapshotVersion(blinfo.Block.Tips[0])
+	//for _, mb := range blinfo.Block.MiniBlocks {
+	//	var p bn256.G1
+	//	if err = p.DecodeCompressed(mb.KeyHash[:16]); err != nil {
+	//		panic(fmt.Errorf("key %d could not be decompressed", mb.KeyHash[:16]))
+	//	}
+	//	s := rpc.NewAddressFromKeys((*crypto.Point)(&p))
+	//	addr := s.String()
+	//	fmt.Fprint(w, "Coinbase addr: "+addr)
+	//}
 
 	// execute template now
 	data := map[string]interface{}{}

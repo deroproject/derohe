@@ -16,7 +16,11 @@
 
 package blockchain
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/rpc"
+)
 import "math/big"
 import "path/filepath"
 
@@ -116,6 +120,23 @@ func (chain *Blockchain) Load_BL_FROM_ID(hash [32]byte) (*block.Block, error) {
 	/*else if xerrors.Is(err,graviton.ErrNotFound){
 	}*/
 
+}
+
+// converts miniblock keyhash to address
+func (chain *Blockchain) KeyHashConverToAddress(hash crypto.Hash, record_version uint64) (string, error) {
+
+	//	var ss *graviton.Snapshot
+	//	record_version, err := chain.ReadBlockSnapshotVersion(blinfo.Block.Tips[0])
+	var err error
+	var p bn256.G1
+	if err = p.DecodeCompressed(hash[:16]); err != nil {
+		//	if err = p.DecodeCompressed(hash[:16]); err != nil {
+		panic(fmt.Errorf("key %d could not be decompressed", hash[:16]))
+	}
+	s := rpc.NewAddressFromKeys((*crypto.Point)(&p))
+	addr := s.String()
+	fmt.Printf("Coinbase addr: " + addr)
+	return addr, err
 }
 
 // confirm whether the block exist in the data
