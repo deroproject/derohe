@@ -16,7 +16,9 @@
 
 package rpc
 
-import "fmt"
+import (
+	"fmt"
+)
 
 //import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/cryptography/crypto"
@@ -38,6 +40,8 @@ type Address struct {
 	PublicKey *crypto.Point //33 byte compressed point
 	Arguments Arguments     // all data related to integrated address
 }
+
+var mainnet bool = true
 
 // Encode encodes hrp(human-readable part) , version(int) and data(bytes array), returns  Address / or error
 func (a Address) MarshalText() ([]byte, error) {
@@ -195,7 +199,7 @@ func NewAddress(addr string) (result *Address, err error) {
 // create a new address from decompressed point
 func NewAddressFromKeys(key *crypto.Point) (result *Address) {
 	result = &Address{
-		Mainnet:   true,
+		Mainnet:   mainnet,
 		PublicKey: new(crypto.Point).Set(key),
 	}
 	return
@@ -208,7 +212,7 @@ func NewAddressFromCompressedKeys(ckey []byte) (result *Address, err error) {
 		return
 	}
 	result = &Address{
-		Mainnet:   true,
+		Mainnet:   mainnet,
 		PublicKey: new(crypto.Point),
 	}
 	err = result.PublicKey.DecodeCompressed(ckey[0:33])

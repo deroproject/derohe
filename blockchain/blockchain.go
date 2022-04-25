@@ -102,6 +102,9 @@ type Blockchain struct {
 	Sync bool // whether the sync is active, used while bootstrapping
 
 	sync.RWMutex
+
+	Prev_block_time int64
+	Log_lock        sync.Mutex
 }
 
 var logger logr.Logger = logr.Discard() // default discard all logs

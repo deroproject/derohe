@@ -16,7 +16,14 @@
 
 package blockchain
 
-import "fmt"
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+	"strconv"
+	"time"
+)
 import "bytes"
 import "sort"
 import "sync"
@@ -332,7 +339,9 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	}
 
 	if mbls := chain.MiniBlocks.GetAllMiniBlocks(key); len(mbls) > 0 {
+		//TODO: here get miner addresses
 		if uint64(len(mbls)) > config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF {
+			//this picks the 9 miniblocks?
 			mbls = mbls[:config.BLOCK_TIME-config.MINIBLOCK_HIGHDIFF]
 		}
 		bl.MiniBlocks = mbls
@@ -495,7 +504,6 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		}
 
 		if err1, ok := chain.InsertMiniBlock(mbl); ok {
-			//fmt.Printf("miniblock %s inserted successfully, total %d\n",mblid,len(chain.MiniBlocks.Collection) )
 			result = true
 
 			// notify peers, we have a miniblock and return to miner
@@ -506,7 +514,6 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		} else {
 			logger.V(1).Error(err1, "miniblock insertion failed", "mbl", fmt.Sprintf("%+v", mbl))
 			err = err1
-
 		}
 		return
 	}
@@ -521,10 +528,114 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		return
 	}
 
+	now := time.Now().UTC()
+	now_human := now.Format(time.UnixDate)
+	now_unix := now.UnixMilli()
+	if chain.Prev_block_time == 0 {
+		chain.Prev_block_time = now_unix
+	}
+	block_time_diff := now_unix - chain.Prev_block_time
+	chain.Prev_block_time = now_unix
+
+	var acckey crypto.Point
+	if err := acckey.DecodeCompressed(bl.Miner_TX.MinerAddress[:]); err != nil {
+		panic(err)
+	}
+
+	astring := rpc.NewAddressFromKeys(&acckey)
+	coinbase := astring.String()
+
+	minis := len(bl.MiniBlocks)
+
+	line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+		mbl.Height, mbl.Final, coinbase, now_unix, now_human, minis, block_time_diff)
+
+	chain.Log_lock.Lock()
+	defer chain.Log_lock.Unlock()
+
+	filename := "received_blocks.csv"
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err3 := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f_full, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err3 := f_full.Close(); err3 != nil {
+			log.Fatal(err3)
+		}
+	}()
+	if err3 != nil {
+		if _, err := f_full.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := f_full.Write([]byte(line)); err != nil {
+		log.Fatal(err)
+	}
+
+	//_-----------
+
+	mini_blocks := bl.MiniBlocks
+	minis = len(mini_blocks)
+
+	filename_full := "full_blocks.csv"
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err4 := ioutil.ReadFile(filename_full)
+	// If the file doesn't exist, create it, or append to the file
+	f, err5 := os.OpenFile(filename_full, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err5 != nil {
+		log.Fatal(err5)
+	}
+	defer func() {
+		if err3 := f.Close(); err3 != nil {
+			log.Fatal(err3)
+		}
+	}()
+	if err4 != nil {
+		if _, err := f.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+			log.Fatal(err)
+		}
+	}
+	max_topo := chain.Load_TOPO_HEIGHT()
+	if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+		max_topo -= 25
+	}
+	toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+	ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+	if err2 != nil {
+		panic(err2)
+	}
+
+	for idx, mbl := range mini_blocks {
+		_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+		if err2 != nil { // the full block does not have the hashkey based coinbase
+			fmt.Println("miner final: miniblock has no hashkey: " + strconv.Itoa(idx))
+			continue
+		}
+		//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+		mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+		//		mbl_coinbase, _ := chain.KeyHashConverToAddress(key_compressed, record_version)
+		mbl_addr := mbl_coinbase.String()
+		line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+			mbl.Height, mbl.Final, mbl_addr, now_unix, now_human, minis, block_time_diff)
+		fmt.Printf("miner final: miniblock in block: %s\n", line)
+		if _, err := f.Write([]byte(line)); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	//--------------
+
 	// since we have passed dynamic rules, build a full block and try adding to chain
 	// lets build up the complete block
 
 	// collect tx list + their fees
+
+	fmt.Printf("ranging tx hashes\n")
 
 	for i := range bl.Tx_hashes {
 		var tx *transaction.Transaction
@@ -548,12 +659,16 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		}
 	}
 
+	fmt.Printf("rate limit check\n")
+
 	cbl.Bl = &bl // the block is now complete, lets try to add it to chain
 
 	if !chain.simulator && !accept_limiter.Allow() { // if rate limiter allows, then add block to chain
 		logger.V(1).Info("Block rejected by chain", "blid", bl.GetHash())
 		return
 	}
+
+	fmt.Printf("adding complete block\n")
 
 	blid = bl.GetHash()
 
@@ -562,6 +677,8 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 
 	if result_block {
 		duplicate_height_check[bl.Height] = true
+
+		fmt.Printf("success in accept\n")
 
 		cache_block_mutex.Lock()
 		cache_block.Timestamp = 0 // expire cache block
@@ -572,6 +689,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		result = true // block's pow is valid
 
 		if !chain.simulator { // if not in simulator mode, relay block to the chain
+			fmt.Printf("relaying block\n")
 			chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network
 		}
 	} else {

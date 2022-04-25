@@ -16,7 +16,15 @@
 
 package p2p
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/rpc"
+	"io/ioutil"
+	"log"
+	"os"
+	"strconv"
+)
 import "sync/atomic"
 import "encoding/binary"
 import "time"
@@ -244,6 +252,112 @@ func (c *Connection) processChunkedBlock(request Objects, data_shard_count, pari
 	if err, ok := chain.Add_Complete_Block(&cbl); ok { // if block addition was successfil
 		// notify all peers
 		Broadcast_Block(&cbl, c.Peer_ID) // do not send back to the original peer
+
+		now := time.Now().UTC()
+		now_human := now.Format(time.UnixDate)
+		now_unix := now.UnixMilli()
+		if chain.Prev_block_time == 0 {
+			chain.Prev_block_time = now_unix
+		}
+		block_time_diff := now_unix - chain.Prev_block_time
+		chain.Prev_block_time = now_unix
+
+		var acckey crypto.Point
+		if err := acckey.DecodeCompressed(bl.Miner_TX.MinerAddress[:]); err != nil {
+			panic(err)
+		}
+
+		astring := rpc.NewAddressFromKeys(&acckey)
+		coinbase := astring.String()
+
+		keys := chain.MiniBlocks.GetAllKeys(chain.Get_Height())
+		minis := 0
+		if len(keys) > 0 {
+			mini_blocks := chain.MiniBlocks.GetAllMiniBlocks(keys[0])
+			minis = len(mini_blocks)
+
+			filename := "full_blocks.csv"
+			//try to open file before writing into it. if it does not exist, later write header as first line
+			_, err3 := ioutil.ReadFile(filename)
+			// If the file doesn't exist, create it, or append to the file
+			f_full, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err2 != nil {
+				log.Fatal(err2)
+			}
+			defer func() {
+				fmt.Printf("trying to close file\n")
+				if err3 := f_full.Close(); err3 != nil {
+					log.Fatal(err3)
+				}
+			}()
+			if err3 != nil {
+				if _, err := f_full.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+					log.Fatal(err)
+				}
+			}
+			max_topo := chain.Load_TOPO_HEIGHT()
+			if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+				max_topo -= 25
+			}
+			toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+			ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+			balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+			if err2 != nil {
+				panic(err2)
+			}
+
+			for idx, mbl := range mini_blocks {
+				fmt.Printf("processing block %s\n", idx)
+
+				_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+				if err2 != nil { // the full block does not have the hashkey based coinbase
+					fmt.Println("miner final: miniblock has no hashkey: " + strconv.Itoa(idx))
+					continue
+				}
+				//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+				mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+				//		mbl_coinbase, _ := chain.KeyHashConverToAddress(key_compressed, record_version)
+				mbl_addr := mbl_coinbase.String()
+				line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+					mbl.Height, mbl.Final, mbl_addr, now_unix, now_human, minis, block_time_diff)
+				fmt.Printf("miniblock in final block: %s\n", line)
+				if _, err := f_full.Write([]byte(line)); err != nil {
+					fmt.Printf("error writing to file\n")
+					log.Fatal(err)
+				}
+			}
+		}
+		fmt.Printf("full block %s inserted successfully for miner %s, total %d\n", "", coinbase, minis)
+
+		line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+			chain.Get_Height(), true, coinbase, now_unix, now_human, minis, block_time_diff)
+
+		chain.Log_lock.Lock()
+		defer chain.Log_lock.Unlock()
+
+		filename := "received_blocks.csv"
+		//try to open file before writing into it. if it does not exist, later write header as first line
+		_, err3 := ioutil.ReadFile(filename)
+		// If the file doesn't exist, create it, or append to the file
+		f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err2 != nil {
+			log.Fatal(err2)
+		}
+		defer func() {
+			if err3 := f.Close(); err3 != nil {
+				log.Fatal(err3)
+			}
+		}()
+		if err3 != nil {
+			if _, err := f.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		if _, err := f.Write([]byte(line)); err != nil {
+			log.Fatal(err)
+		}
+
 	} else { // ban the peer for sometime
 		if err == errormsg.ErrInvalidPoW {
 			c.logger.Error(err, "This peer should be banned and terminated")

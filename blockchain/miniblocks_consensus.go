@@ -16,7 +16,14 @@
 
 package blockchain
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/deroproject/derohe/rpc"
+	"io/ioutil"
+	"log"
+	"os"
+	"time"
+)
 
 //import "time"
 
@@ -128,6 +135,72 @@ func (chain *Blockchain) InsertMiniBlock(mbl block.MiniBlock) (err error, result
 	}
 
 	if err, result = chain.MiniBlocks.InsertMiniBlock(mbl); result == true {
+		chain.Log_lock.Lock()
+		defer chain.Log_lock.Unlock()
+
+		now := time.Now().UTC()
+		now_human := now.Format(time.UnixDate)
+		now_unix := now.UnixMilli()
+		if chain.Prev_block_time == 0 {
+			chain.Prev_block_time = now_unix
+		}
+		block_time_diff := now_unix - chain.Prev_block_time
+		chain.Prev_block_time = now_unix
+
+		filename := "received_blocks.csv"
+		//try to open file before writing into it. if it does not exist, later write header as first line
+		_, err3 := ioutil.ReadFile(filename)
+		// If the file doesn't exist, create it, or append to the file
+		f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err2 != nil {
+			log.Fatal(err2)
+		}
+		defer func() {
+			if err3 := f.Close(); err3 != nil {
+				log.Fatal(err3)
+			}
+		}()
+		if err3 != nil {
+			if _, err := f.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		var coinbase string
+
+		max_topo := chain.Load_TOPO_HEIGHT()
+		if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+			max_topo -= 25
+		}
+
+		toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+		ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+		balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+		if err2 != nil {
+			panic(err2)
+		}
+		_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+
+		//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+		mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+
+		//		mbl_coinbase, _ := chain.KeyHashConverToAddress(key_compressed, record_version)
+		addr := mbl_coinbase.String()
+		coinbase = addr
+
+		keys := chain.MiniBlocks.GetAllKeys(int64(mbl.Height))
+		minis := 0
+		if len(keys) > 0 {
+			minis = len(chain.MiniBlocks.GetAllMiniBlocks(keys[0]))
+		}
+		fmt.Printf("miniblock %s inserted successfully for miner %s, total %d\n", "", addr, minis)
+
+		line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+			mbl.Height, mbl.Final, coinbase, now_unix, now_human, minis, block_time_diff)
+		if _, err := f.Write([]byte(line)); err != nil {
+			log.Fatal(err)
+		}
+
 		chain.RPC_NotifyNewMiniBlock.L.Lock()
 		chain.RPC_NotifyNewMiniBlock.Broadcast()
 		chain.RPC_NotifyNewMiniBlock.L.Unlock()
