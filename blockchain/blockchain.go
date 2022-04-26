@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 )
 import "fmt"
 import "sync"
@@ -561,12 +562,14 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	// verify everything related to miniblocks in one go
 	if !chain.simulator {
 		if err = Verify_MiniBlocks(*cbl.Bl); err != nil { // verifies the miniblocks all refer to current block
+			fmt.Printf("miniblock verification error %s\n", err)
 			return err, false
 		}
 
 		if bl.Height != 0 { // a genesis block doesn't have miniblock
 			// verify hash of miniblock for corruption
 			if err = chain.Verify_MiniBlocks_HashCheck(cbl); err != nil {
+				fmt.Printf("miniblock hash verification error %s\n", err)
 				return err, false
 			}
 		}
@@ -583,6 +586,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		// verify Pow of miniblocks
 		for i, mbl := range bl.MiniBlocks {
 			if !chain.VerifyMiniblockPoW(bl, mbl) {
+				fmt.Printf("pow verify error\n")
 				block_logger.Error(fmt.Errorf("MiniBlock has invalid PoW"), "rejecting", "i", i)
 				return errormsg.ErrInvalidPoW, false
 			}
@@ -591,11 +595,13 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 	{ // miner TX checks are here
 		if bl.Height == 0 && !bl.Miner_TX.IsPremine() { // genesis block contain premine tx a
+			fmt.Printf("genesis tx error\n")
 			block_logger.Error(fmt.Errorf("Miner tx failed verification for genesis"), "rejecting")
 			return errormsg.ErrInvalidBlock, false
 		}
 
 		if bl.Height != 0 && !bl.Miner_TX.IsCoinbase() { // all blocks except genesis block contain coinbase TX
+			fmt.Printf("coinbase verification error %s\n", err)
 			block_logger.Error(fmt.Errorf("Miner tx failed  it is not coinbase"), "rejecting")
 			return errormsg.ErrInvalidBlock, false
 		}
@@ -603,6 +609,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		// always check whether the coin base tx is okay
 		if bl.Height != 0 {
 			if err = chain.Verify_Transaction_Coinbase(cbl, &bl.Miner_TX); err != nil { // if miner address is not registered give error
+				fmt.Printf("miniblock coinbase verification error %s\n", err)
 				//block_logger.Warnf("Error verifying coinbase tx, err :'%s'", err)
 				return err, false
 			}
@@ -1099,6 +1106,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	logger.V(2).Info("Purged miniblock", "count", purged_key_count)
 	chain.Write_Purge_Count(chain.Get_Height(), chain.Get_Stable_Height(), purged_key_count, purged_mini_count, chain.MiniBlocks.Count(), lost_mini_count)
 	chain.Write_Lost_Mini(chain.Get_Height(), lost_minis)
+	chain.Write_Block_Minis(bl)
 	//	chain.Write_Mini_Blocks(chain.Get_Height(), chain.MiniBlocks)
 
 	result = true
@@ -1108,6 +1116,113 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	//chain.Recount_Votes() // does not return anything
 
 	return // run any handlers necesary to atomically
+}
+
+func (chain *Blockchain) Write_Block_Minis(bl *block.Block) {
+	now := time.Now().UTC()
+	now_human := now.Format(time.UnixDate)
+	now_unix := now.UnixMilli()
+	if chain.Prev_block_time == 0 {
+		chain.Prev_block_time = now_unix
+	}
+	block_time_diff := now_unix - chain.Prev_block_time
+	chain.Prev_block_time = now_unix
+
+	var acckey crypto.Point
+	if err := acckey.DecodeCompressed(bl.Miner_TX.MinerAddress[:]); err != nil {
+		panic(err)
+	}
+
+	astring := rpc.NewAddressFromKeys(&acckey)
+	coinbase := astring.String()
+
+	keys := chain.MiniBlocks.GetAllKeys(chain.Get_Height())
+	minis := 0
+	if len(keys) > 0 {
+		mini_blocks := chain.MiniBlocks.GetAllMiniBlocks(keys[0])
+		minis = len(mini_blocks)
+
+		filename := "full_blocks.csv"
+		//try to open file before writing into it. if it does not exist, later write header as first line
+		_, err3 := ioutil.ReadFile(filename)
+		// If the file doesn't exist, create it, or append to the file
+		f_full, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err2 != nil {
+			log.Fatal(err2)
+		}
+		defer func() {
+			fmt.Printf("trying to close file\n")
+			if err3 := f_full.Close(); err3 != nil {
+				log.Fatal(err3)
+			}
+		}()
+		if err3 != nil {
+			if _, err := f_full.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+				log.Fatal(err)
+			}
+		}
+		max_topo := chain.Load_TOPO_HEIGHT()
+		if max_topo > 25 { // we can lag a bit here, basically atleast around 10 mins lag
+			max_topo -= 25
+		}
+		toporecord, _ := chain.Store.Topo_store.Read(max_topo)
+		ss, _ := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+		balance_tree, err2 := ss.GetTree(config.BALANCE_TREE)
+		if err2 != nil {
+			panic(err2)
+		}
+
+		for idx, mbl := range mini_blocks {
+			fmt.Printf("processing block %d\n", idx)
+
+			_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
+			if err2 != nil { // the full block does not have the hashkey based coinbase
+				fmt.Println("miner final: miniblock has no hashkey: " + strconv.Itoa(idx))
+				continue
+			}
+			//record_version, _ := chain.ReadBlockSnapshotVersion(bl.Tips[0])
+			mbl_coinbase, _ := rpc.NewAddressFromCompressedKeys(key_compressed)
+			//		mbl_coinbase, _ := chain.KeyHashConverToAddress(key_compressed, record_version)
+			mbl_addr := mbl_coinbase.String()
+			line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+				mbl.Height, mbl.Final, mbl_addr, now_unix, now_human, minis, block_time_diff)
+			fmt.Printf("miniblock in final block: %s\n", line)
+			if _, err := f_full.Write([]byte(line)); err != nil {
+				fmt.Printf("error writing to file\n")
+				log.Fatal(err)
+			}
+		}
+	}
+	fmt.Printf("full block %s inserted successfully for miner %s, total %d\n", "", coinbase, minis)
+
+	line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
+		chain.Get_Height(), true, coinbase, now_unix, now_human, minis, block_time_diff)
+
+	chain.Log_lock.Lock()
+	defer chain.Log_lock.Unlock()
+
+	filename := "received_blocks.csv"
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err3 := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err3 := f.Close(); err3 != nil {
+			log.Fatal(err3)
+		}
+	}()
+	if err3 != nil {
+		if _, err := f.Write([]byte("chain_height,final,miner_address,unix_time,human_time,minis,diff_millis\n")); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	if _, err := f.Write([]byte(line)); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (chain *Blockchain) Write_Lost_Mini(block_idx int64, lost_minis []block.MiniBlock) {
