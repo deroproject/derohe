@@ -1136,12 +1136,14 @@ func (chain *Blockchain) Write_Block_Minis(bl *block.Block) {
 	coinbase := astring.String()
 
 	chain.Write_Minis_To_File("final_block_minis.csv", chain.Get_Height(), bl.MiniBlocks)
+	fmt.Printf("wrote final block minis: %d\n", len(bl.MiniBlocks))
 
 	keys := chain.MiniBlocks.GetAllKeys(chain.Get_Height())
 	minis := 0
 	if len(keys) > 0 {
 		mini_blocks := chain.MiniBlocks.GetAllMiniBlocks(keys[0])
 		chain.Write_Minis_To_File("final_pool_minis.csv", chain.Get_Height(), mini_blocks)
+		fmt.Printf("wrote final minipool minis: %d\n", len(mini_blocks))
 	}
 	fmt.Printf("full block %s inserted successfully for miner %s, total %d\n", "", coinbase, minis)
 
@@ -1228,7 +1230,7 @@ func (chain *Blockchain) MiniBlockCoinbase(mbl block.MiniBlock, chain_height int
 	}
 	_, key_compressed, _, err2 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[:16])
 	if err2 != nil { // the full block does not have the hashkey based coinbase
-		fmt.Println("miniblock has no hashkey. something wrong?")
+		fmt.Println("miniblock has no hashkey. final block?")
 	}
 
 	var coinbase string

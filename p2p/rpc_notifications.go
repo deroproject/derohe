@@ -180,7 +180,7 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 		}
 
 		bl.MiniBlocks = append(bl.MiniBlocks, mbl)
-		fmt.Printf("miniblock inserted successfully for miner, total %d\n", len(bl.MiniBlocks))
+		//fmt.Printf("miniblock inserted successfully for miner, total %d\n", len(bl.MiniBlocks))
 
 		// lets get the difficulty at tips
 		if !chain.VerifyMiniblockPoW(&bl, mbl) {
