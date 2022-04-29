@@ -16,26 +16,25 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "errors"
-import "runtime"
-import "strings"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
-import "path/filepath"
-import "encoding/json"
-
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "github.com/deroproject/derohe/address"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
 
 // handle menu if a wallet is currently opened
 func display_easymenu_post_open_command(l *readline.Instance) {
@@ -65,6 +64,7 @@ func display_easymenu_post_open_command(l *readline.Instance) {
 		io.WriteString(w, "\t\033[1m13\033[0m\tShow transaction history\n")
 		io.WriteString(w, "\t\033[1m14\033[0m\tRescan transaction history\n")
 		io.WriteString(w, "\t\033[1m15\033[0m\tExport all transaction history in json format\n")
+		io.WriteString(w, "\t\033[1m20\033[0m\tName registration\n")
 	}
 
 	io.WriteString(w, "\n\t\033[1m9\033[0m\tExit menu and start prompt\n")
@@ -492,6 +492,51 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				logger.Error(err, "Error exporting data")
 			} else {
 				logger.Info("successfully exported history", "file", filename)
+			}
+		}
+
+	case "20": // name registration
+
+		if u, err := ReadString(l, "Name", ""); err == nil {
+			if len(u) < 6 || len(u) > 64 {
+				logger.Info("Invalid length. Name must be at least 6 and at most 64 characters long")
+				return
+			} else {
+				// check if name is aleady registered first
+				if _, err = wallet.NameToAddress(u); err != nil {
+					var zerohash crypto.Hash
+					var scid crypto.Hash
+					var transfer_args rpc.Transfer_Params
+
+					scid[31] = 1
+					// we need an address for a 0 amount transfer
+					random_member := wallet.Random_ring_members(zerohash)
+
+					// Building the transfer and SC call
+					transfer_args.SC_RPC = append(transfer_args.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_CALL)})
+					transfer_args.SC_RPC = append(transfer_args.SC_RPC, rpc.Argument{Name: rpc.SCID, DataType: rpc.DataHash, Value: scid})
+					transfer_args.SC_RPC = append(transfer_args.SC_RPC, rpc.Argument{Name: "entrypoint", DataType: rpc.DataString, Value: "Register"})
+					transfer_args.SC_RPC = append(transfer_args.SC_RPC, rpc.Argument{Name: "name", DataType: rpc.DataString, Value: u})
+					transfer_args.Transfers = append(transfer_args.Transfers, rpc.Transfer{Amount: 0, Destination: random_member[0]})
+					// ringsize 2 is neccessary, else the SC doesn't know who we are
+					transfer_args.Ringsize = 2
+
+					tx, err := wallet.TransferPayload0(transfer_args.Transfers, transfer_args.Ringsize, false, transfer_args.SC_RPC, 0, false)
+					if err != nil {
+						logger.Error(err, "Error building transaction")
+						return
+					}
+
+					if err = wallet.SendTransaction(tx); err != nil {
+						logger.Error(err, "Error sending transaction")
+						return
+					}
+
+					logger.Info("Name successfully associated")
+				} else {
+					logger.Info("Name is already registered or other error occured")
+					return
+				}
 			}
 		}
 
