@@ -20,7 +20,12 @@ package p2p
  * this will also ensure that a single IP is connected only once
  *
  */
-import "os"
+import (
+	"encoding/hex"
+	"io/ioutil"
+	"log"
+	"os"
+)
 import "fmt"
 import "net"
 import "math"
@@ -412,6 +417,28 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 		bw_factor = 1
 	}
 
+	if PeerID == GetPeerID() || PeerID == 0 {
+		logger.Info(" WOOHOO - We mined a block ")
+		//globals.Blocks_Mined++
+	} else {
+		logger.Info(fmt.Sprintf("Forwarding block (%d) from PeerID (%d)", hex.EncodeToString(blid[:]), PeerID))
+		globals.Blocks_Forwarded[PeerID] = append(globals.Blocks_Forwarded[PeerID], hex.EncodeToString(blid[:]))
+		chain_height := chain.Get_Height()
+		if chain_height > globals.Block_Forward_Height {
+			for peer_id, block_ids := range globals.Blocks_Forwarded {
+				block_counts := map[string]int{}
+				for _, block_id := range block_ids {
+					block_counts[block_id] = block_counts[block_id] + 1
+				}
+				_ = peer_id
+				peer_count := len(unique_map)
+				Write_Broadcasts_To_File("block_broadcast.csv", chain_height, peer_id, block_counts, peer_count)
+			}
+			globals.Blocks_Forwarded = make(map[uint64][]string)
+			globals.Block_Forward_Height = chain_height
+		}
+	}
+
 	for { // we must send all blocks atleast once, once we are done, break ut
 		for _, v := range connections {
 			select {
@@ -464,6 +491,74 @@ done:
 
 }
 
+func Write_Broadcasts_To_File(filename string, chain_height int64, peer_id uint64, block_counts map[string]int, peer_count int) {
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	if err != nil {
+		header := "height,peer_id,peer_count,block_count,dup_count,unique_count\n"
+		if _, err := f.Write([]byte(header)); err != nil {
+			log.Fatal(err)
+		}
+	}
+	total_count := 0
+	dups := 0
+	for _, block_count := range block_counts {
+		total_count += block_count
+		if block_count > 1 {
+			dups++
+		}
+	}
+	unique_count := total_count - dups
+	line := fmt.Sprintf("%d,%d,%d,%d,%d\n",
+		chain_height, peer_id, peer_count, total_count, dups, unique_count)
+	if _, err := f.Write([]byte(line)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func Write_Latencies(connections []*Connection) {
+	if globals.Latency_Height >= chain.Get_Height() {
+		return
+	}
+	globals.Latency_Height = chain.Get_Height()
+	filename := "top_latencies.csv"
+	//try to open file before writing into it. if it does not exist, later write header as first line
+	_, err := ioutil.ReadFile(filename)
+	// If the file doesn't exist, create it, or append to the file
+	f, err2 := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	if err != nil {
+		header := "height,peer_id,ip,latency\n"
+		if _, err := f.Write([]byte(header)); err != nil {
+			log.Fatal(err)
+		}
+	}
+	for _, conn := range connections {
+		line := fmt.Sprintf("%d,%d,%s,%d\n",
+			chain.Get_Height(), conn.Peer_ID, conn.Addr.String(), conn.Latency)
+		if _, err := f.Write([]byte(line)); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
 // broad cast a block to all connected peers in cut up in chunks with erasure coding
 // we can only broadcast a block which is in our db
 // this function is triggerred from 2 points, one when we receive a unknown block which can be successfully added to chain
@@ -478,7 +573,9 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 
 	hhash := chunk.HHash
 
+	var connections []*Connection
 	for _, v := range unique_map {
+		connections = append(connections, v)
 		select {
 		case <-Exit_Event:
 			return
@@ -519,6 +616,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 
 		}
 	}
+	Write_Latencies(connections)
 }
 
 // broad cast a block to all connected peers
@@ -528,6 +626,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 func Broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64) { // if peerid is provided it is skipped
 	broadcast_MiniBlock(mbl, PeerID, globals.Time().UTC().UnixMicro())
 }
+
 func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) { // if peerid is provided it is skipped
 
 	defer globals.Recover(3)
@@ -541,6 +640,27 @@ func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) {
 	// build the request once and dispatch it to all possible peers
 	count := 0
 	unique_map := UniqueConnections()
+
+	if PeerID == GetPeerID() || PeerID == 0 {
+		logger.Info(" WOOHOO - We mined a miniblock ")
+		//globals.Blocks_Mined++
+	} else {
+		logger.Info(fmt.Sprintf("Forwarding miniblock (%s) from PeerID (%d)", hex.EncodeToString(mbl.KeyHash[:16]), PeerID))
+		globals.Minis_Forwarded[PeerID] = append(globals.Minis_Forwarded[PeerID], hex.EncodeToString(mbl.KeyHash[:16]))
+		if our_height > globals.Minis_Forward_Height {
+			for peer_id, block_ids := range globals.Minis_Forwarded {
+				mblock_counts := map[string]int{}
+				for _, block_id := range block_ids {
+					mblock_counts[block_id] = mblock_counts[block_id] + 1
+				}
+				_ = peer_id
+				peer_count := len(unique_map)
+				Write_Broadcasts_To_File("miniblock_broadcast.csv", our_height, peer_id, mblock_counts, peer_count)
+			}
+			globals.Minis_Forwarded = make(map[uint64][]string)
+			globals.Minis_Forward_Height = our_height
+		}
+	}
 
 	//connection.logger.V(4).Info("Sending mini block to peer ")
 

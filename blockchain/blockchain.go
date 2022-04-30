@@ -1142,10 +1142,12 @@ func (chain *Blockchain) Write_Block_Minis(bl *block.Block) {
 	minis := 0
 	if len(keys) > 0 {
 		mini_blocks := chain.MiniBlocks.GetAllMiniBlocks(keys[0])
+		//this should always be 9 (or the default mini count) but lets write anyway
+		minis = len(mini_blocks)
 		chain.Write_Minis_To_File("final_pool_minis.csv", chain.Get_Height(), mini_blocks)
 		fmt.Printf("wrote final minipool minis: %d\n", len(mini_blocks))
 	}
-	fmt.Printf("full block %s inserted successfully for miner %s, total %d\n", "", coinbase, minis)
+	fmt.Printf("full block inserted successfully for miner %s\n", coinbase)
 
 	line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
 		chain.Get_Height(), true, coinbase, now_unix, now_human, minis, block_time_diff)

@@ -193,7 +193,7 @@ func (chain *Blockchain) InsertMiniBlock(mbl block.MiniBlock) (err error, result
 		if len(keys) > 0 {
 			minis = len(chain.MiniBlocks.GetAllMiniBlocks(keys[0]))
 		}
-		fmt.Printf("miniblock %s inserted successfully for miner %s, total %d\n", "", addr, minis)
+		fmt.Printf("miniblock inserted successfully for miner %s, total %d\n", addr, minis)
 
 		line := fmt.Sprintf("%d,%t,%s,%d,%s,%d,%d\n",
 			mbl.Height, mbl.Final, coinbase, now_unix, now_human, minis, block_time_diff)

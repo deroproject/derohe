@@ -57,6 +57,15 @@ var ClockOffsetP2P time.Duration // clockoffset in reference to p2p averging
 var TimeIsInSync bool            // whether time is in sync, if yes we do not use any clock offset but still we keep calculating them
 var TimeIsInSyncNTP bool
 
+//key = peer id, value = array of block ids
+var Blocks_Forwarded map[uint64][]string
+
+//key = peer id, value = array of miniblock ids
+var Minis_Forwarded map[uint64][]string
+var Block_Forward_Height int64
+var Minis_Forward_Height int64
+var Latency_Height int64
+
 // get current time with clock offset applied
 func Time() time.Time {
 	if TimeIsInSync {
@@ -189,6 +198,8 @@ func Initialize() {
 
 	InitNetwork()
 
+	Blocks_Forwarded = map[uint64][]string{}
+	Minis_Forwarded = map[uint64][]string{}
 	// choose  socks based proxy if user requested so
 	if Arguments["--socks-proxy"] != nil {
 		Logger.V(1).Info("Setting up proxy using ", "address", Arguments["--socks-proxy"].(string))
