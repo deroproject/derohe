@@ -438,6 +438,7 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 			globals.Block_Forward_Height = chain_height
 		}
 	}
+	Write_Latencies("latencies-final-blocks.csv", connections)
 
 	for { // we must send all blocks atleast once, once we are done, break ut
 		for _, v := range connections {
@@ -486,7 +487,6 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 	}
 
 done:
-
 	//rlog.Infof("Broadcasted block %s to %d peers", cbl.Bl.GetHash(), count)
 
 }
@@ -526,12 +526,12 @@ func Write_Broadcasts_To_File(filename string, chain_height int64, peer_id uint6
 	}
 }
 
-func Write_Latencies(connections []*Connection) {
+func Write_Latencies(filename string, connections []*Connection) {
 	if globals.Latency_Height >= chain.Get_Height() {
 		return
 	}
 	globals.Latency_Height = chain.Get_Height()
-	filename := "top_latencies.csv"
+	//filename := "top_latencies.csv"
 	//try to open file before writing into it. if it does not exist, later write header as first line
 	_, err := ioutil.ReadFile(filename)
 	// If the file doesn't exist, create it, or append to the file
@@ -550,9 +550,15 @@ func Write_Latencies(connections []*Connection) {
 			log.Fatal(err)
 		}
 	}
+	processed := map[string]int{}
 	for _, conn := range connections {
+		addr := conn.Addr.String()
+		if processed[addr] != 0 {
+			continue
+		}
+		processed[addr] += 1
 		line := fmt.Sprintf("%d,%d,%s,%d\n",
-			chain.Get_Height(), conn.Peer_ID, conn.Addr.String(), conn.Latency)
+			chain.Get_Height(), conn.Peer_ID, addr, conn.Latency)
 		if _, err := f.Write([]byte(line)); err != nil {
 			log.Fatal(err)
 		}
@@ -616,7 +622,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 
 		}
 	}
-	Write_Latencies(connections)
+	Write_Latencies("latencies-chunks.csv", connections)
 }
 
 // broad cast a block to all connected peers
@@ -664,6 +670,11 @@ func broadcast_MiniBlock(mbl block.MiniBlock, PeerID uint64, first_seen int64) {
 
 	//connection.logger.V(4).Info("Sending mini block to peer ")
 
+	var connections []*Connection
+	for _, v := range unique_map {
+		connections = append(connections, v)
+	}
+	Write_Latencies("latencies-minis.csv", connections)
 	for _, v := range unique_map {
 		select {
 		case <-Exit_Event:
