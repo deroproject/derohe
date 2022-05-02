@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
+	"sort"
 	"time"
 
 	"github.com/lesismal/llib/std/crypto/tls"
@@ -26,7 +26,7 @@ import "math/big"
 import "crypto/ecdsa"
 import "crypto/elliptic"
 
-//import "crypto/tls"
+import "sync/atomic"
 import "crypto/rand"
 import "crypto/x509"
 import "encoding/pem"
@@ -57,6 +57,7 @@ var (
 type user_session struct {
 	blocks        uint64
 	miniblocks    uint64
+	rejected      uint64
 	lasterr       string
 	address       rpc.Address
 	valid_address bool
@@ -68,18 +69,78 @@ var client_list = map[*websocket.Conn]*user_session{}
 
 var miners_count int
 
+// this will track miniblock rate,
+var mini_found_time []int64 // this array contains a epoch timestamp in int64
+var rate_lock sync.Mutex
+
+//this function will return wrong result if too wide time glitches happen to system clock
+func Counter(seconds int64) (r int) { // we need atleast 1 mini to find a rate
+	rate_lock.Lock()
+	defer rate_lock.Unlock()
+	length := len(mini_found_time)
+	if length > 0 {
+		start_point := time.Now().Unix() - seconds
+		i := sort.Search(length, func(i int) bool { return mini_found_time[i] >= start_point })
+		if i < len(mini_found_time) {
+			r = length - i
+		}
+	}
+	return // return 0
+}
+
+func cleanup() {
+	rate_lock.Lock()
+	defer rate_lock.Unlock()
+	length := len(mini_found_time)
+	if length > 0 {
+		start_point := time.Now().Unix() - 30*24*3600 // only keep data of last 30 days
+		i := sort.Search(length, func(i int) bool { return mini_found_time[i] >= start_point })
+		if i > 1000 && i < length {
+			mini_found_time = append(mini_found_time[:0], mini_found_time[i:]...) // renew the array
+		}
+	}
+}
+
+// this will calcuate amount of hashrate based on the number of minis
+// note this calculation is very crude
+// note it will always be lagging, since NW conditions are quite dynamic
+// this is  used to roughly estimate your hash rate on this integrator of all miners
+// note this is a moving avg
+func HashrateEstimatePercent(timeframe int64) float64 {
+	return float64(Counter(timeframe)*100) / (float64(timeframe*10) / float64(config.BLOCK_TIME))
+}
+
+// note this will be be 0, if you have less than 1/48000 hash power
+func HashrateEstimatePercent_1hr() float64 {
+	return HashrateEstimatePercent(3600)
+}
+
+// note result will be 0, if you have  less than 1/2000 hash power
+func HashrateEstimatePercent_1day() float64 {
+	return HashrateEstimatePercent(24 * 3600)
+}
+
+// note this will be 0, if you have less than 1/(48000*7)
+func HashrateEstimatePercent_7day() float64 {
+	return HashrateEstimatePercent(7 * 24 * 3600)
+}
+
 func CountMiners() int {
+	defer cleanup()
 	client_list_mutex.Lock()
 	defer client_list_mutex.Unlock()
 	miners_count = len(client_list)
 	return miners_count
 }
 
+var CountMinisAccepted int64 // total accepted which passed Powtest, chain may still ignore them
+var CountMinisRejected int64 // total rejected // note we are only counting rejected as those which didnot pass Pow test
+var CountBlocks int64        //  total blocks found as integrator, note that block can still be a orphan
+// total = CountAccepted + CountRejected + CountBlocks(they may be orphan or may not get rewarded)
+
 func SendJob() {
 
 	defer globals.Recover(1)
-
-	var params rpc.GetBlockTemplate_Result
 
 	// get a block template, and then we will fill the address here as optimization
 	bl, mbl_main, _, _, err := chain.Create_new_block_template_mining(chain.IntegratorAddress())
@@ -92,16 +153,11 @@ func SendJob() {
 		prev_hash = prev_hash + bl.Tips[i].String()
 	}
 
-	params.JobID = fmt.Sprintf("%d.%d.%s", bl.Timestamp, 0, "notified")
 	diff := chain.Get_Difficulty_At_Tips(bl.Tips)
 
-	params.Height = bl.Height
-	params.Prev_Hash = prev_hash
 	if mbl_main.HighDiff {
 		diff.Mul(diff, new(big.Int).SetUint64(config.MINIBLOCK_HIGHDIFF))
 	}
-	params.Difficultyuint64 = diff.Uint64()
-	params.Difficulty = diff.String()
 	client_list_mutex.Lock()
 	defer client_list_mutex.Unlock()
 
@@ -111,6 +167,13 @@ func SendJob() {
 			defer globals.Recover(2)
 			var buf bytes.Buffer
 			encoder := json.NewEncoder(&buf)
+
+			var params rpc.GetBlockTemplate_Result
+			params.JobID = fmt.Sprintf("%d.%d.%s", bl.Timestamp, 0, "notified")
+			params.Height = bl.Height
+			params.Prev_Hash = prev_hash
+			params.Difficultyuint64 = diff.Uint64()
+			params.Difficulty = diff.String()
 
 			mbl := mbl_main
 
@@ -122,20 +185,15 @@ func SendJob() {
 				mbl.Nonce[i] = globals.Global_Random.Uint32() // fill with randomness
 			}
 
-			if v.lasterr != "" {
-				params.LastError = v.lasterr
-				v.lasterr = ""
-			}
-
 			if !v.valid_address && !chain.IsAddressHashValid(false, v.address_sum) {
 				params.LastError = "unregistered miner or you need to wait 15 mins"
 			} else {
-				params.LastError = ""
 				v.valid_address = true
 			}
 			params.Blockhashing_blob = fmt.Sprintf("%x", mbl.Serialize())
 			params.Blocks = v.blocks
 			params.MiniBlocks = v.miniblocks
+			params.Rejected = v.rejected
 
 			encoder.Encode(params)
 			k.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
@@ -186,9 +244,20 @@ func newUpgrader() *websocket.Upgrader {
 			//logger.Infof("Submitted block %s accepted", blid)
 			if blid.IsZero() {
 				sess.miniblocks++
+				atomic.AddInt64(&CountMinisAccepted, 1)
+
+				rate_lock.Lock()
+				defer rate_lock.Unlock()
+				mini_found_time = append(mini_found_time, time.Now().Unix())
 			} else {
 				sess.blocks++
+				atomic.AddInt64(&CountBlocks, 1)
 			}
+		}
+
+		if !sresult || err != nil {
+			sess.rejected++
+			atomic.AddInt64(&CountMinisRejected, 1)
 		}
 
 	})

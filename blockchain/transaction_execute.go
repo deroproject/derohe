@@ -399,7 +399,7 @@ func (chain *Blockchain) process_transaction_sc(cache map[crypto.Hash]*graviton.
 
 		if signer, err1 := Extract_signer(&tx); err1 == nil { // if we can identify sender, return funds to him
 			dvm.ErrorRevert(ss, cache, balance_tree, signer, scid, incoming_value)
-		} else { //  we could not extract signer, give burned funds to SC
+		} else { //  we could not extract signer, we burn all the funds
 			dvm.ErrorRevert(ss, cache, balance_tree, signer, scid, incoming_value)
 		}
 

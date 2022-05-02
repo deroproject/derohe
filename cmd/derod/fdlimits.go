@@ -8,8 +8,8 @@ import "golang.org/x/sys/unix"
 
 // we skip type as go will automatically identify type
 const (
-	UnixMax = 999999
-	OSXMax  = 24576 // see this https://github.com/golang/go/issues/30401
+	UnixMax = 100 * 1024 // some platforms/providers limit these, so we are using a small number
+	OSXMax  = 24576      // see this https://github.com/golang/go/issues/30401
 )
 
 type Limits struct {

@@ -303,20 +303,7 @@ func main() {
 					pcolor = "\033[33m" // make prompt yellow
 				}
 
-				hash_rate_string := ""
-				hash_rate := chain.Get_Network_HashRate()
-				switch {
-				case hash_rate > 1000000000000:
-					hash_rate_string = fmt.Sprintf("%.3f TH/s", float64(hash_rate)/1000000000000.0)
-				case hash_rate > 1000000000:
-					hash_rate_string = fmt.Sprintf("%.3f GH/s", float64(hash_rate)/1000000000.0)
-				case hash_rate > 1000000:
-					hash_rate_string = fmt.Sprintf("%.3f MH/s", float64(hash_rate)/1000000.0)
-				case hash_rate > 1000:
-					hash_rate_string = fmt.Sprintf("%.3f KH/s", float64(hash_rate)/1000.0)
-				case hash_rate > 0:
-					hash_rate_string = fmt.Sprintf("%d H/s", hash_rate)
-				}
+				hash_rate_string := hashratetostring(chain.Get_Network_HashRate())
 
 				testnet_string := ""
 				if globals.IsMainnet() {
@@ -327,7 +314,8 @@ func main() {
 
 				testnet_string += " " + strconv.Itoa(chain.MiniBlocks.Count()) + " " + globals.GetOffset().Round(time.Millisecond).String() + "|" + globals.GetOffsetNTP().Round(time.Millisecond).String() + "|" + globals.GetOffsetP2P().Round(time.Millisecond).String()
 
-				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO HE: \033[0m"+color+"%d/%d [%d/%d] "+pcolor+"P %d TXp %d:%d \033[32mNW %s >Miners %d %s>>\033[0m ", our_height, topo_height, best_height, best_topo_height, peer_count, mempool_tx_count, regpool_tx_count, hash_rate_string, derodrpc.CountMiners(), testnet_string))
+				miner_count := derodrpc.CountMiners()
+				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO HE: \033[0m"+color+"%d/%d [%d/%d] "+pcolor+"P %d TXp %d:%d \033[32mNW %s >MN %d %s>>\033[0m ", our_height, topo_height, best_height, best_topo_height, peer_count, mempool_tx_count, regpool_tx_count, hash_rate_string, miner_count, testnet_string))
 				l.Refresh()
 				last_second = time.Now().Unix()
 				last_our_height = our_height
@@ -859,6 +847,16 @@ restart_loop:
 			fmt.Printf("UTC time %s  (offset %s) (as per daemon) should be close to 0\n", globals.Time().UTC(), time.Now().Sub(globals.Time()))
 			fmt.Printf("Local time %s  (as per system clock) \n", time.Now())
 			fmt.Printf("Local time %s  (offset %s) (as per daemon) should be close to 0\n", globals.Time(), time.Now().Sub(globals.Time()))
+
+			//if derodrpc.CountMiners() > 0 { // only give info if we have a miner connected
+			fmt.Printf("MB:%d MBR:%d IB:%d\n", derodrpc.CountMinisAccepted, derodrpc.CountMinisRejected, derodrpc.CountBlocks)
+			fmt.Printf("MB %.02f%%(1hr) %.05f%%(1d) %.06f%%(7d) (Moving average %%, will be 0 if no miniblock found)\n", derodrpc.HashrateEstimatePercent_1hr(), derodrpc.HashrateEstimatePercent_1day(), derodrpc.HashrateEstimatePercent_7day())
+			mh_1hr := uint64((float64(chain.Get_Network_HashRate()) * derodrpc.HashrateEstimatePercent_1hr()) / 100)
+			mh_1d := uint64((float64(chain.Get_Network_HashRate()) * derodrpc.HashrateEstimatePercent_1day()) / 100)
+			mh_7d := uint64((float64(chain.Get_Network_HashRate()) * derodrpc.HashrateEstimatePercent_7day()) / 100)
+			fmt.Printf("Avg Mining HR %s(1hr) %s(1d) %s(7d)\n", hashratetostring(mh_1hr), hashratetostring(mh_1d), hashratetostring(mh_7d))
+			//}
+
 			tips := chain.Get_TIPS()
 			fmt.Printf("Tips ")
 			for _, tip := range tips {
@@ -1055,6 +1053,24 @@ func writenode(chain *blockchain.Blockchain, w *bufio.Writer, blid crypto.Hash, 
 		}
 	}
 
+}
+
+func hashratetostring(hash_rate uint64) string {
+	hash_rate_string := ""
+
+	switch {
+	case hash_rate > 1000000000000:
+		hash_rate_string = fmt.Sprintf("%.3f TH/s", float64(hash_rate)/1000000000000.0)
+	case hash_rate > 1000000000:
+		hash_rate_string = fmt.Sprintf("%.3f GH/s", float64(hash_rate)/1000000000.0)
+	case hash_rate > 1000000:
+		hash_rate_string = fmt.Sprintf("%.3f MH/s", float64(hash_rate)/1000000.0)
+	case hash_rate > 1000:
+		hash_rate_string = fmt.Sprintf("%.3f KH/s", float64(hash_rate)/1000.0)
+	case hash_rate > 0:
+		hash_rate_string = fmt.Sprintf("%d H/s", hash_rate)
+	}
+	return hash_rate_string
 }
 
 func WriteBlockChainTree(chain *blockchain.Blockchain, filename string, start_height, stop_height int64) (err error) {
