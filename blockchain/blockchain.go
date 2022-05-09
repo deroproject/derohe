@@ -205,6 +205,20 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 	chain.Initialise_Chain_From_DB() // load the chain from the disk
 
+try_again:
+	version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
+	if err != nil {
+		panic(err)
+	}
+	// this case happens when chain syncs from rsync and if rsync takes more time than block_time
+	// basically this can also be fixed, if topo.map file is renamed to name starting with 'a'
+	// it should be the first file to be synced, but instead of renaming file as fix
+	// we are fixing it by checking how much we have progressed and skip those block
+	if _, err = chain.Load_Merkle_Hash(version); err != nil {
+		chain.Rewind_Chain(1) // rewind 1 block
+		goto try_again
+	}
+
 	if chain.Pruned >= 1 {
 		logger.Info("Chain Pruned till", "topoheight", chain.Pruned)
 	}
