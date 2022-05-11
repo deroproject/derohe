@@ -572,7 +572,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		result = true // block's pow is valid
 
 		if !chain.simulator { // if not in simulator mode, relay block to the chain
-			chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network
+			go chain.P2P_Block_Relayer(cbl, 0) // lets relay the block to network
 		}
 	} else {
 		logger.V(3).Error(err, "Block Rejected", "blid", bl.GetHash())

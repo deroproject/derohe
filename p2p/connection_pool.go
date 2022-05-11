@@ -413,6 +413,11 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 	}
 
 	for { // we must send all blocks atleast once, once we are done, break ut
+
+		if len(connections) < 1 {
+			globals.Logger.Error(nil, "we want to broadcast block, but donot have peers, most possibly block will go stale")
+			return
+		}
 		for _, v := range connections {
 			select {
 			case <-Exit_Event:
