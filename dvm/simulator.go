@@ -114,7 +114,7 @@ func (s *Simulator) SCInstall(sc_code string, incoming_values map[crypto.Hash]ui
 		entrypoint = "InitializePrivate"
 	}
 
-	gascompute, gasstorage, err = s.common(w_sc_tree, w_sc_data_tree, scid, s.height, s.height, uint64(time.Now().UnixMilli()), blid, scid, sc, entrypoint, 1, 0, signer_addr, incoming_values, SCDATA, fees, true)
+	gascompute, gasstorage, err = s.common(w_sc_tree, w_sc_data_tree, scid, s.height, s.height, uint64(time.Now().Unix()), blid, scid, sc, entrypoint, 1, 0, signer_addr, incoming_values, SCDATA, fees, true)
 	return
 }
 
@@ -152,7 +152,7 @@ func (s *Simulator) RunSC(incoming_values map[crypto.Hash]uint64, SCDATA rpc.Arg
 		entrypoint := SCDATA.Value("entrypoint", rpc.DataString).(string)
 		balance, sc, _ := ReadSC(w_sc_tree, w_sc_data_tree, scid)
 
-		gascompute, gasstorage, err = s.common(w_sc_tree, w_sc_data_tree, scid, s.height, s.height, uint64(time.Now().UnixMilli()), blid, scid, sc, entrypoint, 1, balance, signer_addr, incoming_values, SCDATA, fees, true)
+		gascompute, gasstorage, err = s.common(w_sc_tree, w_sc_data_tree, scid, s.height, s.height, uint64(time.Now().Unix()), blid, scid, sc, entrypoint, 1, balance, signer_addr, incoming_values, SCDATA, fees, true)
 		return
 	default:
 		err = fmt.Errorf("unknown action_code code %d", action_code)
@@ -168,7 +168,7 @@ func (s *Simulator) common(w_sc_tree, w_sc_data_tree *Tree_Wrapper, scid crypto.
 		copy(signer[:], signer_addr.Compressed())
 	}
 
-	gascompute, gasstorage, err = Execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, uint64(time.Now().UnixMilli()), blid, scid, sc, entrypoint, 1, 0, signer, incoming_values, SCDATA, fees, simulator)
+	gascompute, gasstorage, err = Execute_sc_function(w_sc_tree, w_sc_data_tree, scid, bl_height, bl_topoheight, uint64(time.Now().Unix()), blid, scid, sc, entrypoint, 1, 0, signer, incoming_values, SCDATA, fees, simulator)
 	fmt.Printf("sc execution error %s\n", err)
 
 	// we must commit all the changes

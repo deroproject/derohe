@@ -80,8 +80,8 @@ func (bl *Block) GetTimestamp() time.Time {
 func (bl Block) String() string {
 	r := new(strings.Builder)
 	fmt.Fprintf(r, "BLID:%s\n", bl.GetHash())
-	fmt.Fprintf(r, "Major version:%d Minor version: %d", bl.Major_Version, bl.Minor_Version)
-	fmt.Fprintf(r, "Height:%d\n", bl.Height)
+	fmt.Fprintf(r, "Major version:%d Minor version: %d ", bl.Major_Version, bl.Minor_Version)
+	fmt.Fprintf(r, "Height:%d ", bl.Height)
 	fmt.Fprintf(r, "Timestamp:%d  (%s)\n", bl.Timestamp, bl.GetTimestamp())
 	for i := range bl.Tips {
 		fmt.Fprintf(r, "Past %d:%s\n", i, bl.Tips[i])

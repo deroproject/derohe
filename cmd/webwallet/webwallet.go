@@ -53,6 +53,7 @@ func register_wallet_callbacks() {
 			error_message = "success"
 			Local_wallet_instance = w
 			Local_wallet_instance.SetDaemonAddress(daemon_address)
+			Local_wallet_instance.SetNetwork(globals.IsMainnet()) // set mainnet/testnet
 		} else {
 			error_message = err.Error()
 		}

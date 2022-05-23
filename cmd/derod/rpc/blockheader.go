@@ -19,6 +19,8 @@ package rpc
 //import "fmt"
 import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/config"
+import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/blockchain"
 
 // this function is only used by the RPC and is not used by the core and should be moved to RPC interface
@@ -53,6 +55,34 @@ func GetBlockHeader(chain *blockchain.Blockchain, hash crypto.Hash) (result rpc.
 	}
 	//result.Prev_Hash = bl.Prev_Hash.String()
 	result.Timestamp = bl.Timestamp
+
+	if toporecord, err1 := chain.Store.Topo_store.Read(result.Height); err1 == nil { // we must now fill in compressed ring members
+		if ss, err1 := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version); err1 == nil {
+			if balance_tree, err1 := ss.GetTree(config.BALANCE_TREE); err1 == nil {
+
+				for _, mbl := range bl.MiniBlocks {
+					bits, key, _, err1 := balance_tree.GetKeyValueFromHash(mbl.KeyHash[0:16])
+					if err1 != nil || bits >= 120 {
+						continue
+					}
+					if addr, err1 := rpc.NewAddressFromCompressedKeys(key); err1 == nil {
+						addr.Mainnet = globals.IsMainnet()
+						result.Miners = append(result.Miners, addr.String())
+					}
+				}
+			}
+		}
+	}
+	for len(bl.MiniBlocks) > len(result.Miners) {
+		result.Miners = append(result.Miners, "unknown")
+	}
+
+	{ // last miniblock goes to intgretor
+		if addr, err1 := rpc.NewAddressFromCompressedKeys(bl.Miner_TX.MinerAddress[:]); err1 == nil && len(result.Miners) >= 10 {
+			addr.Mainnet = globals.IsMainnet()
+			result.Miners[9] = addr.String()
+		}
+	}
 
 	return
 }

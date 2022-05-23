@@ -266,7 +266,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				}
 			}
 
-			logger.Info("Destination port is integreted in address.", "dst port", a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64))
+			logger.Info("Destination port is integrated in address.", "dst port", a.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64))
 
 			if a.Arguments.Has(rpc.RPC_COMMENT, rpc.DataString) { // but only it is present
 				logger.Info("Integrated Message", "comment", a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString))
@@ -405,7 +405,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			}
 			// if user provided an integrated address donot ask him payment id
 			if a.IsIntegratedAddress() {
-				globals.Logger.Infof("Payment ID is integreted in address ID:%x", a.PaymentID)
+				globals.Logger.Infof("Payment ID is integrated in address ID:%x", a.PaymentID)
 			}
 
 			if ConfirmYesNoDefaultNo(l, "Confirm Transaction to send entire balance (y/N)") {

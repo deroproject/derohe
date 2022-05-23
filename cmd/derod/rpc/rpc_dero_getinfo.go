@@ -17,11 +17,13 @@
 package rpc
 
 import "fmt"
+import "time"
 import "context"
 import "runtime/debug"
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/p2p"
 
 import "github.com/deroproject/derohe/blockchain"
 
@@ -86,6 +88,21 @@ func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 	if globals.IsSimulator() {
 		result.Network = "Simulator"
 	}
+
+	in, out := p2p.Peer_Direction_Count()
+	result.Incoming_connections_count = in
+	result.Outgoing_connections_count = out
+	result.Miners = CountMiners()
+	result.Miniblocks_In_Memory = chain.MiniBlocks.Count()
+	result.CountMinisRejected = CountMinisRejected
+	result.CountMinisAccepted = CountMinisAccepted
+	result.CountBlocks = CountBlocks
+	result.Mining_Velocity = float64(float64((CountMinisAccepted+CountBlocks)-CountMinisRejected)/time.Now().Sub(globals.StartTime).Seconds()) * 3600
+	result.Uptime = uint64(time.Now().Sub(globals.StartTime).Seconds())
+
+	result.HashrateEstimatePercent_1hr = uint64((float64(chain.Get_Network_HashRate()) * HashrateEstimatePercent_1hr()) / 100)
+	result.HashrateEstimatePercent_1day = uint64((float64(chain.Get_Network_HashRate()) * HashrateEstimatePercent_1day()) / 100)
+	result.HashrateEstimatePercent_7day = uint64((float64(chain.Get_Network_HashRate()) * HashrateEstimatePercent_7day()) / 100)
 
 	return result, nil
 }

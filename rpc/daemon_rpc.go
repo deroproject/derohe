@@ -22,18 +22,19 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 
 // this is used to print blockheader for the rpc and the daemon
 type BlockHeader_Print struct {
-	Depth         int64  `json:"depth"`
-	Difficulty    string `json:"difficulty"`
-	Hash          string `json:"hash"`
-	Height        int64  `json:"height"`
-	TopoHeight    int64  `json:"topoheight"`
-	Major_Version uint64 `json:"major_version"`
-	Minor_Version uint64 `json:"minor_version"`
-	Nonce         uint64 `json:"nonce"`
-	Orphan_Status bool   `json:"orphan_status"`
-	SyncBlock     bool   `json:"syncblock"`
-	SideBlock     bool   `json:"sideblock"`
-	TXCount       int64  `json:"txcount"`
+	Depth         int64    `json:"depth"`
+	Difficulty    string   `json:"difficulty"`
+	Hash          string   `json:"hash"`
+	Height        int64    `json:"height"`
+	TopoHeight    int64    `json:"topoheight"`
+	Major_Version uint64   `json:"major_version"`
+	Minor_Version uint64   `json:"minor_version"`
+	Nonce         uint64   `json:"nonce"`
+	Orphan_Status bool     `json:"orphan_status"`
+	SyncBlock     bool     `json:"syncblock"`
+	SideBlock     bool     `json:"sideblock"`
+	TXCount       int64    `json:"txcount"`
+	Miners        []string `json:"miners"` // note 1 part goes to integrator/remaining is distributed to all
 
 	Reward    uint64   `json:"reward"`
 	Tips      []string `json:"tips"`
@@ -296,6 +297,19 @@ type (
 		Median_Block_Size          uint64  `json:"median_block_size"`
 		White_peerlist_size        uint64  `json:"white_peerlist_size"`
 		Version                    string  `json:"version"`
+
+		Miners               int `json:"connected_miners"`
+		Miniblocks_In_Memory int `json:"miniblocks_in_memory"`
+
+		CountBlocks        int64   `json:"blocks_count"`
+		CountMinisAccepted int64   `json:"miniblocks_accepted_count"`
+		CountMinisRejected int64   `json:"miniblocks_rejected_count"`
+		Mining_Velocity    float64 `json:"mining_velocity"`
+		Uptime             uint64  `json:"uptime"`
+
+		HashrateEstimatePercent_1hr  uint64 `json:"hashrate_1hr"`
+		HashrateEstimatePercent_1day uint64 `json:"hashrate_1d"`
+		HashrateEstimatePercent_7day uint64 `json:"hashrate_7d"`
 
 		Status string `json:"status"`
 	}

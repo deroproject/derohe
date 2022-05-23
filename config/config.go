@@ -133,4 +133,4 @@ var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 b
 }
 
 // mainnet has a remote daemon node, which can be used be default, if user provides a  --remote flag
-const REMOTE_DAEMON = "185.132.176.174" // "https://rwallet.dero.live"
+const REMOTE_DAEMON = "89.38.99.117" // "https://rwallet.dero.live"
