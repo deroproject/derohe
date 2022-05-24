@@ -250,7 +250,12 @@ func P2P_engine() {
 
 	// do not create connections to peers , if requested
 	if _, ok := globals.Arguments["--add-exclusive-node"]; ok && len(globals.Arguments["--add-exclusive-node"].([]string)) == 0 { // check if parameter is supported
-		go maintain_connection_to_peers()  // maintain certain number of  connections for peer to peers
+		go maintain_connection_to_peers() // maintain certain number of connections for peer to peers
+
+		// skip any connections, to allow more testing in closed environments
+		if os.Getenv("SKIP_SEED_NODES") != "" {
+			return
+		}
 		go maintain_seed_node_connection() // maintain connection with atleast 1 seed node
 
 		// this code only triggers when we do not have peer list

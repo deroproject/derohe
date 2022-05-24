@@ -82,6 +82,8 @@ func Verify_MiniBlocks(bl block.Block) (err error) {
 		return
 	}
 
+	collection := block.CreateMiniBlockCollection()
+
 	// check whether the genesis blocks are all equal
 	for _, mbl := range bl.MiniBlocks {
 
@@ -112,6 +114,14 @@ func Verify_MiniBlocks(bl block.Block) (err error) {
 		} else {
 			panic("we only support 1 tips")
 		}*/
+		collection.InsertMiniBlock(mbl)
+	}
+
+	if bl.Height >= 399000 { // soft HF
+		if uint64(collection.Count()) != uint64((config.BLOCK_TIME - config.MINIBLOCK_HIGHDIFF)) {
+			err = fmt.Errorf("block contains invalid number of miniblocks count %d expected %d\n", collection.Count(), uint64((config.BLOCK_TIME - config.MINIBLOCK_HIGHDIFF)))
+			return
+		}
 	}
 
 	return nil

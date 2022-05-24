@@ -189,7 +189,7 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 	chain.RPC_NotifyHeightChanged = sync.NewCond(&sync.Mutex{}) // used by dero daemon to notify all websockets that chain height has changed
 	chain.RPC_NotifyNewMiniBlock = sync.NewCond(&sync.Mutex{})  // used by dero daemon to notify all websockets that new miniblock has arrived
 
-	if !chain.Store.IsBalancesIntialized() {
+	if chain.Store.Topo_store.Count() == 0 && !chain.Store.IsBalancesIntialized() {
 		logger.Info("Genesis block not in store, add it now")
 		var complete_block block.Complete_Block
 		bl := Generate_Genesis_Block()
@@ -208,7 +208,8 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 try_again:
 	version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
 	if err != nil {
-		panic(err)
+		chain.Rewind_Chain(1) // rewind 1 block
+		goto try_again
 	}
 	// this case happens when chain syncs from rsync and if rsync takes more time than block_time
 	// basically this can also be fixed, if topo.map file is renamed to name starting with 'a'
@@ -455,7 +456,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 			}
 
 		} else {
-
+			logger.V(1).Error(err, "Block rejected by chain", "BLID", block_hash, "bl", fmt.Sprintf("%x", bl.Serialize()), "stack", debug.Stack())
 			logger.V(1).Error(err, "Block rejected by chain", "BLID", block_hash)
 		}
 	}()

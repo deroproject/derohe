@@ -348,7 +348,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 			for i := range addr_list {
 				if addr_list[i].IsIntegratedAddress() {
 					payment_id_integrated = true
-					logger.Info("Payment ID is integreted in address ID:%x", addr_list[i].PaymentID)
+					logger.Info("Payment ID is integrated in address ID:%x", addr_list[i].PaymentID)
 				}
 
 			}
