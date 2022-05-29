@@ -16,10 +16,12 @@
 
 package walletapi
 
-import "fmt"
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"fmt"
 
-import "golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/crypto/chacha20poly1305"
+)
 
 // all data in encrypted within the storage using this, PERIOD
 // all data has a new nonce, appended to the the data , last 12 bytes

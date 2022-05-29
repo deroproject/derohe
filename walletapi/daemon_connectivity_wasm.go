@@ -22,32 +22,21 @@ package walletapi
  *
  * *
  */
-//import "io"
-//import "os"
-import "fmt"
-import "net"
-import "time"
+import (
+	"fmt"
+	"net"
+	"time"
 
-import "context"
-import "net/http"
+	"context"
+	"net/http"
 
-import "github.com/deroproject/derohe/glue/rwc"
+	"github.com/deroproject/derohe/glue/rwc"
 
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "nhooyr.io/websocket"
-import "strings"
-
-// there should be no global variables, so multiple wallets can run at the same time with different assset
-
-var netClient *http.Client
-
-type Client struct {
-	WS  *websocket.Conn
-	RPC *jrpc2.Client
-}
-
-var rpc_client = &Client{}
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"nhooyr.io/websocket"
+	"strings"
+)
 
 // this is as simple as it gets
 // single threaded communication to get the daemon status and height

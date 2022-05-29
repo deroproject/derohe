@@ -16,13 +16,13 @@
 
 package walletapi
 
-import "os"
-import "path/filepath"
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
 
-//import "fmt"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
 
 // quick testing of wallet creation
 func Test_Wallet_DB(t *testing.T) {

@@ -16,31 +16,33 @@
 
 package main
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "testing"
-import "bytes"
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-//import "crypto/rand"
-import "path/filepath"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/docopt/docopt-go"
 
-//import "encoding/hex"
-//import "encoding/binary"
-//import "runtime/pprof"
+	//import "crypto/rand"
 
-import "github.com/docopt/docopt-go"
+	//import "encoding/hex"
+	//import "encoding/binary"
+	//import "runtime/pprof"
 
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+	derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+)
 
 func init() {
 	_ = os.Stdout
@@ -211,7 +213,7 @@ func Test_Creation_TX(t *testing.T) {
 	// here we are collecting proofs for later on bennhcmarking
 	for j := 2; j <= 128; j = j * 2 {
 		wsrc.SetRingSize(j)
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {
@@ -228,7 +230,7 @@ func Test_Creation_TX(t *testing.T) {
 	wdst.SetRingSize(2)
 
 	// accounts are reversed
-	reverse_tx, err := wdst.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wsrc.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+	reverse_tx, err := wdst.TransferPayload0([]rpc.Transfer{{Destination: wsrc.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 	if err != nil {
 		t.Fatalf("Cannot create transaction, err %s", err)
 	}
@@ -242,7 +244,7 @@ func Test_Creation_TX(t *testing.T) {
 	pre_transfer_src_balance, _ := wsrc.Get_Balance()
 	pre_transfer_dst_balance, _ := wdst.Get_Balance()
 
-	tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+	tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 	if err != nil {
 		t.Fatalf("Cannot create transaction, err %s", err)
 	} else {
@@ -284,7 +286,7 @@ func Test_Creation_TX(t *testing.T) {
 	var tx_set []*transaction.Transaction
 
 	for i := 0; i < 6; i++ {
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {

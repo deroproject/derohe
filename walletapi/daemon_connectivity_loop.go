@@ -22,9 +22,6 @@ package walletapi
  *
  * *
  */
-//import "io"
-//import "os"
-//import "fmt"
 
 import "time"
 

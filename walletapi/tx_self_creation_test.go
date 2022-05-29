@@ -16,18 +16,19 @@
 
 package walletapi
 
-import "os"
-import "fmt"
-import "time"
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-import "path/filepath"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 // this will test that the keys are placed properly and thus can be decoded by recievers
 func Test_Creation_TX_morecheck(t *testing.T) {
@@ -121,7 +122,7 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 
 		t.Logf("Chain height %d\n", chain.Get_Height())
 
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 700000}}, 0, false, rpc.Arguments{}, 100000, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 700000}}, 0, false, rpc.Arguments{}, 100000, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {

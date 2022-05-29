@@ -16,8 +16,10 @@
 
 package walletapi
 
-import "testing"
-import "crypto/sha256"
+import (
+	"crypto/sha256"
+	"testing"
+)
 
 // functional test whether  the wrappers are okay
 func Test_AEAD_Cipher(t *testing.T) {

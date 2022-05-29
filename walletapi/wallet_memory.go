@@ -16,26 +16,25 @@
 
 package walletapi
 
-import "fmt"
-import "time"
-import "crypto/rand"
-import "crypto/sha1"
-import "sync"
-import "runtime"
+import (
+	"crypto/rand"
+	"crypto/sha1"
+	"encoding/json"
+	"fmt"
+	"runtime"
+	"sync"
+	"time"
 
-//import "strings"
-//import "math/big"
-//import "encoding/hex"
-import "encoding/json"
+	"github.com/blang/semver/v4"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi/mnemonics"
+	"golang.org/x/crypto/pbkdf2"
+)
 
-import "github.com/blang/semver/v4"
-import "golang.org/x/crypto/pbkdf2" // // used to encrypt master password ( so user can change his password anytime)
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/walletapi/mnemonics"
+// // used to encrypt master password ( so user can change his password anytime)
 
 // address book will have random number based entries
 

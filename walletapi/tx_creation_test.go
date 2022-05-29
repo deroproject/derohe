@@ -16,31 +16,32 @@
 
 package walletapi
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "testing"
-import "bytes"
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-//import "crypto/rand"
-import "path/filepath"
+	"github.com/docopt/docopt-go"
 
-//import "encoding/hex"
-//import "encoding/binary"
-//import "runtime/pprof"
+	//import "crypto/rand"
 
-import "github.com/docopt/docopt-go"
+	//import "encoding/hex"
+	//import "encoding/binary"
+	//import "runtime/pprof"
 
-import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/blockchain"
+	derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 func init() {
 	globals.InitializeLog(io.Discard, io.Discard)
@@ -218,7 +219,7 @@ func Test_Creation_TX(t *testing.T) {
 	// here we are collecting proofs for later on bennhcmarking
 	for j := 2; j <= 128; j = j * 2 {
 		wsrc.account.Ringsize = j
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {
@@ -236,7 +237,7 @@ func Test_Creation_TX(t *testing.T) {
 
 	// accounts are reversed
 	wdst.Sync_Wallet_Memory_With_Daemon()
-	reverse_tx, err := wdst.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wsrc.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+	reverse_tx, err := wdst.TransferPayload0([]rpc.Transfer{{Destination: wsrc.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 	if err != nil {
 		t.Fatalf("Cannot create transaction, err %s", err)
 	}
@@ -250,7 +251,7 @@ func Test_Creation_TX(t *testing.T) {
 	pre_transfer_src_balance := wsrc.account.Balance_Mature
 	pre_transfer_dst_balance := wdst.account.Balance_Mature
 
-	tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+	tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 	if err != nil {
 		t.Fatalf("Cannot create transaction, err %s", err)
 	} else {
@@ -277,7 +278,6 @@ func Test_Creation_TX(t *testing.T) {
 		t.Fatalf("nonce not valid. please dig. expected 0 actual %d", nonce)
 	}
 
-	post_transfer_src_balance := wsrc.account.Balance_Mature
 	post_transfer_dst_balance := wdst.account.Balance_Mature
 
 	if post_transfer_dst_balance-pre_transfer_dst_balance != 1 {
@@ -292,7 +292,7 @@ func Test_Creation_TX(t *testing.T) {
 	var tx_set []*transaction.Transaction
 
 	for i := 0; i < 6; i++ {
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 1}}, 0, false, rpc.Arguments{}, 0, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {
@@ -334,7 +334,7 @@ func Test_Creation_TX(t *testing.T) {
 	wsrc.Sync_Wallet_Memory_With_Daemon()
 	wdst.Sync_Wallet_Memory_With_Daemon()
 
-	post_transfer_src_balance = wsrc.account.Balance_Mature
+	post_transfer_src_balance := wsrc.account.Balance_Mature
 	post_transfer_dst_balance = wdst.account.Balance_Mature
 
 	if post_transfer_dst_balance-pre_transfer_dst_balance != 2 {
