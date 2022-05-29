@@ -16,52 +16,49 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "bytes"
-import "errors"
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"runtime"
+	"runtime/pprof"
+	"strconv"
+	"strings"
+	"time"
 
-import "strings"
-import "strconv"
-import "runtime"
-import "os/signal"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/p2p"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/docopt/docopt-go"
+	"github.com/go-logr/logr"
+	"gopkg.in/natefinch/lumberjack.v2"
 
-//import "crypto/sha1"
-import "encoding/hex"
-import "encoding/json"
-import "path/filepath"
-import "runtime/pprof"
+	//import "crypto/sha1"
 
-import "github.com/go-logr/logr"
+	//import "golang.org/x/crypto/sha3"
 
-//import "golang.org/x/crypto/sha3"
-
-import "github.com/chzyer/readline"
-import "github.com/docopt/docopt-go"
-import "gopkg.in/natefinch/lumberjack.v2"
-
-import "github.com/deroproject/derohe/p2p"
-import "github.com/deroproject/derohe/globals"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/blockchain"
-
-//import "github.com/deroproject/derohe/transaction"
-import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+	//import "github.com/deroproject/derohe/transaction"
+	derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+	"github.com/deroproject/derohe/cmd/explorer/explorerlib"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/walletapi"
+)
 
 //import "github.com/deroproject/derosuite/checkpoints"
-import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derosuite/cryptonight"
 
 //import "github.com/deroproject/derosuite/crypto/ringct"
 //import "github.com/deroproject/derohe/blockchain/rpcserver"
-import "github.com/deroproject/derohe/walletapi"
-
-import "github.com/deroproject/derohe/cmd/explorer/explorerlib"
 
 var command_line string = `simulator 
 DERO : A secure, private blockchain with smart-contracts
@@ -136,7 +133,9 @@ func main() {
 	globals.Arguments["--rpc-bind"] = rpcport
 	globals.Arguments["--testnet"] = true
 	globals.Arguments["--simulator"] = true
-	globals.Arguments["--daemon-address"] = rpcport // feed it for wallets
+	//globals.Arguments["--daemon-address"] = rpcport // feed it for wallets
+
+	client := walletapi.NewRPCCLient(rpcport)
 
 	// We need to initialize readline first, so it changes stderr to ansi processor on windows
 
@@ -174,8 +173,8 @@ func main() {
 
 	logger.V(1).Info("", "Arguments", globals.Arguments)
 
-	create_genesis_wallet() // create genesis
-	globals.Initialize()    // setup network and proxy
+	create_genesis_wallet(client) // create genesis
+	globals.Initialize()          // setup network and proxy
 
 	params := map[string]interface{}{}
 	params["--simulator"] = true
@@ -200,10 +199,10 @@ func main() {
 
 	rpcserver, _ := derodrpc.RPCServer_Start(params)
 
-	register_wallets(chain)                               // setup 22 wallets
+	register_wallets(chain, client)                       // setup 22 wallets
 	Mine_block_single(chain, genesis_wallet.GetAddress()) //mine single block to confirm all 22 registrations
 
-	go walletapi.Keep_Connectivity() // all wallets maintain connectivity
+	go client.Keep_Connectivity() // all wallets maintain connectivity
 
 	// lets run the explorer at port 8080
 	if globals.Arguments["--http-address"] == nil {

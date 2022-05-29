@@ -1,3 +1,6 @@
+//go:build wasm
+// +build wasm
+
 // Copyright 2017-2021 DERO Project. All rights reserved.
 // Use of this source code in any form is governed by RESEARCH license.
 // license can be found in the LICENSE file.
@@ -41,7 +44,7 @@ import (
 // this is as simple as it gets
 // single threaded communication to get the daemon status and height
 // this will tell whether the wallet can connection successfully to  daemon or not
-func Connect(endpoint string) (err error) {
+func (c *Client) Connect(endpoint string) (err error) {
 
 	Daemon_Endpoint_Active = get_daemon_address()
 
@@ -63,10 +66,10 @@ func Connect(endpoint string) (err error) {
 	if strings.HasPrefix(Daemon_Endpoint, "https") {
 		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint), "https://")
 		fmt.Printf("will use endpoint %s\n", "wss://"+ld+"/ws")
-		rpc_client.WS, _, err = websocket.Dial(context.Background(), "wss://"+ld+"/ws", nil)
+		c.WS, _, err = websocket.Dial(context.Background(), "wss://"+ld+"/ws", nil)
 	} else {
 		fmt.Printf("will use endpoint %s\n", "ws://"+Daemon_Endpoint+"/ws")
-		rpc_client.WS, _, err = websocket.Dial(context.Background(), "ws://"+Daemon_Endpoint+"/ws", nil)
+		c.WS, _, err = websocket.Dial(context.Background(), "ws://"+Daemon_Endpoint+"/ws", nil)
 	}
 
 	// notify user of any state change
@@ -86,8 +89,8 @@ func Connect(endpoint string) (err error) {
 		return
 	}
 
-	input_output := rwc.NewNhooyr(rpc_client.WS)
-	rpc_client.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), &jrpc2.ClientOptions{OnNotify: Notify_broadcaster})
+	input_output := rwc.NewNhooyr(c.WS)
+	c.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), &jrpc2.ClientOptions{OnNotify: c.Notify_broadcaster})
 
 	return test_connectivity()
 }

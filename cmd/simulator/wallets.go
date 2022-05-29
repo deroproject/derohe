@@ -16,23 +16,21 @@
 
 package main
 
-import "os"
+import (
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
-import "fmt"
-
-import "time"
-
-//import "math/big"
-import "encoding/hex"
-import "path/filepath"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/rpcserver"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/deroproject/derohe/walletapi/rpcserver"
+) //import "math/big"
 
 const WALLET_PASSWORD = ""
 
@@ -90,8 +88,9 @@ func create_wallet(name string, seed string) (wallet *walletapi.Wallet_Disk) {
 
 }
 
-func create_genesis_wallet() {
+func create_genesis_wallet(c *walletapi.Client) {
 	genesis_wallet = create_wallet("genesis", genesis_seed)
+	genesis_wallet.SetClient(c)
 	fix_startup() // fixup genesis
 }
 
@@ -108,16 +107,17 @@ func fix_startup() {
 }
 
 // genesis wallet already exists, register other wallet by sending registratuin tx, then mining them
-func register_wallets(chain *blockchain.Blockchain) {
+func register_wallets(chain *blockchain.Blockchain, c *walletapi.Client) {
 	for i := range wallets_seeds {
-		wallets = append(wallets, create_wallet(fmt.Sprintf("wallet_%d.db", i), wallets_seeds[i]))
+		wallet := create_wallet(fmt.Sprintf("wallet_%d.db", i), wallets_seeds[i])
+		wallet.SetClient(c)
+		wallets = append(wallets, wallet)
 	}
 	for i := range wallets { // first register wallets
 		err := chain.Add_TX_To_Pool(wallets[i].GetRegistrationTX())
 		if err != nil {
 			logger.Error(err, "Cannot add regtx to pool")
 		}
-		wallets[i].SetDaemonAddress(rpcport)
 		wallets[i].SetOnlineMode() // make wallet connect to daemon
 
 		globals.Arguments["--rpc-bind"] = fmt.Sprintf("127.0.0.1:%d", wallet_ports_start+i)

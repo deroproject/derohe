@@ -19,49 +19,30 @@
 
 package walletapi
 
-// this file needs  serious improvements but have extremely limited time
-/* this file handles communication with the daemon
- * this includes receiving output information
- *
- * *
- */
-
 import (
 	"github.com/creachadair/jrpc2"
-	"github.com/creachadair/jrpc2/channel"
-	"github.com/deroproject/derohe/glue/rwc"
 	"github.com/gorilla/websocket"
 )
 
-// this is as simple as it gets
-// single threaded communication to get the daemon status and height
-// this will tell whether the wallet can connection successfully to  daemon or not
-func Connect(endpoint string) (err error) {
+type Client struct {
+	endpoint  string
+	connected bool
+	WS        *websocket.Conn
+	RPC       *jrpc2.Client
+}
 
-	Daemon_Endpoint_Active = get_daemon_address()
+//var rpc_client = &Client{}
 
-	logger.V(1).Info("Daemon endpoint ", "address", Daemon_Endpoint_Active)
-
-	rpc_client.WS, _, err = websocket.DefaultDialer.Dial("ws://"+Daemon_Endpoint_Active+"/ws", nil)
-
-	// notify user of any state change
-	// if daemon connection breaks or comes live again
-	if err == nil {
-		if !Connected {
-			logger.V(1).Info("Connection to RPC server successful", "address", "ws://"+Daemon_Endpoint_Active+"/ws")
-			Connected = true
-		}
-	} else {
-
-		if Connected {
-			logger.V(1).Error(err, "Connection to RPC server Failed", "endpoint", "ws://"+Daemon_Endpoint_Active+"/ws")
-		}
-		Connected = false
-		return
+func NewRPCCLient(endpoint string) *Client {
+	return &Client{
+		endpoint: endpoint,
 	}
+}
 
-	input_output := rwc.New(rpc_client.WS)
-	rpc_client.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), &jrpc2.ClientOptions{OnNotify: Notify_broadcaster})
+func (c *Client) IsConnected() bool {
+	return c.connected
+}
 
-	return test_connectivity()
+func (c *Client) SetConnected(connected bool) {
+	c.connected = connected
 }

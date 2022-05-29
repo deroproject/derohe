@@ -16,27 +16,27 @@
 
 package main
 
-import "os"
-import "io"
-import "fmt"
-import "bytes"
-import "time"
+import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi"
+)
 
 //import "io/ioutil"
 //import "path/filepath"
-import "strings"
-import "unicode"
-import "strconv"
-import "encoding/hex"
-
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
 
 var account walletapi.Account
 
@@ -274,7 +274,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 
 			//uid, err := wallet.PoolTransferWithBurn(addr, send_amount, burn_amount, data, rpc.Arguments{})
 
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{Amount: send_amount, Burn: burn_amount, Destination: addr}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{{Amount: send_amount, Burn: burn_amount, Destination: addr}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")
@@ -826,7 +826,6 @@ func ReadConfirmedPassword(l *readline.Instance, first_prompt string, second_pro
 
 		if bytes.Equal(password_bytes, confirmed_bytes) {
 			password = string(password_bytes)
-			err = nil
 			return
 		}
 
@@ -954,7 +953,7 @@ func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi
 // show the transfers to the user originating from this account
 func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, scid crypto.Hash, limit uint64) {
 
-	if wallet.GetMode() && walletapi.IsDaemonOnline() { // if wallet is in offline mode , we cannot do anything
+	if wallet.GetMode() && wallet.IsDaemonOnline() { // if wallet is in offline mode , we cannot do anything
 		if err := wallet.Sync_Wallet_Memory_With_Daemon_internal(scid); err != nil {
 			logger.Error(err, "Error syncing wallet", "scid", scid.String())
 			return

@@ -16,18 +16,18 @@
 
 package main
 
-import "os"
-import "fmt"
-import "time"
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-import "path/filepath"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi"
+)
 
 //import "github.com/deroproject/derohe/cryptography/crypto"
 
@@ -73,7 +73,7 @@ func Test_Blockchain_Deviation(t *testing.T) {
 	chain, rpcserver, _ := simulator_chain_start()
 	defer simulator_chain_stop(chain, rpcserver)
 
-	globals.Arguments["--daemon-address"] = rpcport_test
+	//globals.Arguments["--daemon-address"] = rpcport_test
 
 	t.Logf("src %s\n", wsrc.GetAddress())
 	t.Logf("dst %s\n", wdst.GetAddress())

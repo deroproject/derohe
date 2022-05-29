@@ -48,6 +48,8 @@ type KDF struct {
 
 // this is stored in disk in encrypted form
 type Wallet_Memory struct {
+	Client *Client `json:"-"` // the client for all rpc requests
+
 	Version semver.Version `json:"version"` // database version
 	Secret  []byte         `json:"secret"`  // actual unlocker to the DB, depends on password from user, stored encrypted
 	// secret key used to encrypt all DB data ( both keys and values )
@@ -341,4 +343,8 @@ func (w *Wallet_Memory) save_if_disk() {
 	if runtime.GOARCH != "wasm" {
 		w.wallet_disk.Save_Wallet()
 	}
+}
+
+func (w *Wallet_Memory) SetClient(c *Client) {
+	w.Client = c
 }

@@ -369,12 +369,6 @@ func (w *Wallet_Memory) GetMode() bool {
 	return w.wallet_online_mode
 }
 
-// use the endpoint set  by the program
-func (w *Wallet_Memory) SetDaemonAddress(endpoint string) string {
-	Daemon_Endpoint = endpoint
-	return Daemon_Endpoint
-}
-
 // by default a wallet opens in Offline Mode
 // however, It can be made online by calling this
 func (w *Wallet_Memory) SetOnlineMode() bool {

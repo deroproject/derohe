@@ -35,7 +35,6 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/deroproject/derohe/block"
-	"github.com/deroproject/derohe/config"
 	"github.com/deroproject/derohe/cryptography/bn256"
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/errormsg"
@@ -45,7 +44,7 @@ import (
 )
 
 // this global variable should be within wallet structure
-var Connected bool = false
+//var Connected bool = false
 
 var daemon_height int64
 var daemon_topoheight int64
@@ -63,8 +62,6 @@ func Get_Daemon_TopoHeight() int64 {
 var simulator bool // turns on simulator, which has 0 fees
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
-
-var endpoint string
 
 var output_lock sync.Mutex
 
@@ -85,7 +82,7 @@ func WaitNewHeightBlock() {
 	NotifyHeightChange.L.Unlock()
 }
 
-func Notify_broadcaster(req *jrpc2.Request) {
+func (c *Client) Notify_broadcaster(req *jrpc2.Request) {
 	timer.Reset(timeout) // connection is alive
 	switch req.Method() {
 	case "Block":
@@ -96,7 +93,7 @@ func Notify_broadcaster(req *jrpc2.Request) {
 		NotifyHeightChange.L.Lock()
 		NotifyHeightChange.Broadcast()
 		NotifyHeightChange.L.Unlock()
-		go test_connectivity()
+		go c.test_connectivity()
 	case "MiniBlock": // we can skip this
 	default:
 		logger.V(1).Info("Notification received", "method", req.Method())
@@ -104,46 +101,23 @@ func Notify_broadcaster(req *jrpc2.Request) {
 
 }
 
-var Daemon_Endpoint string
-var Daemon_Endpoint_Active string
-
-func get_daemon_address() string {
-	if globals.Arguments["--remote"] == true && globals.IsMainnet() {
-		Daemon_Endpoint_Active = config.REMOTE_DAEMON + fmt.Sprintf(":%d", config.Mainnet.RPC_Default_Port)
-	}
-
-	// if user provided endpoint has error, use default
-	if Daemon_Endpoint_Active == "" {
-		Daemon_Endpoint_Active = "127.0.0.1:" + fmt.Sprintf("%d", config.Mainnet.RPC_Default_Port)
-		if !globals.IsMainnet() {
-			Daemon_Endpoint_Active = "127.0.0.1:" + fmt.Sprintf("%d", config.Testnet.RPC_Default_Port)
-		}
-	}
-
-	if globals.Arguments["--daemon-address"] != nil {
-		Daemon_Endpoint_Active = globals.Arguments["--daemon-address"].(string)
-	}
-
-	return Daemon_Endpoint_Active
-}
-
 // tests connectivity when connectivity to daemon
-func test_connectivity() (err error) {
+func (c *Client) test_connectivity() (err error) {
 	var result string
 
 	// Issue a call with a response.
-	if err = rpc_client.Call("DERO.Echo", []string{"hello", "world"}, &result); err != nil {
+	if err = c.Call("DERO.Echo", []string{"hello", "world"}, &result); err != nil {
 		logger.V(1).Error(err, "DERO.Echo Call failed:")
-		Connected = false
+		c.SetConnected(false)
 		return
 	}
 	//fmt.Println(result)
 
 	var info rpc.GetInfo_Result
 	// Issue a call with a response.
-	if err = rpc_client.Call("DERO.GetInfo", nil, &info); err != nil {
+	if err = c.Call("DERO.GetInfo", nil, &info); err != nil {
 		logger.V(1).Error(err, "DERO.GetInfo Call failed:")
-		Connected = false
+		c.SetConnected(false)
 		return
 	}
 
@@ -176,7 +150,7 @@ func (w *Wallet_Memory) sync_loop() {
 
 		}
 
-		if IsDaemonOnline() && test_connectivity() != nil {
+		if w.IsDaemonOnline() && w.Client.test_connectivity() != nil {
 			time.Sleep(timeout) // wait 5 seconds
 			continue
 		}
@@ -203,8 +177,11 @@ func (cli *Client) Call(method string, params interface{}, result interface{}) e
 }
 
 // returns whether wallet was online some time ago
-func (w *Wallet_Memory) IsDaemonOnlineCached() bool {
-	return Connected
+func (w *Wallet_Memory) IsDaemonOnline() bool {
+	if w.Client == nil {
+		return false
+	}
+	return w.Client.IsConnected()
 }
 
 // currently process url  with compatibility for older ip address
@@ -219,8 +196,8 @@ func buildurl(endpoint string) string {
 // this is as simple as it gets
 // single threaded communication to get the daemon status and height
 // this will tell whether the wallet can connection successfully to  daemon or not
-func IsDaemonOnline() bool {
-	if rpc_client.WS == nil || rpc_client.RPC == nil {
+func (c *Client) IsDaemonOnline() bool {
+	if c.WS == nil || c.RPC == nil {
 		return false
 	}
 	return true
@@ -230,7 +207,7 @@ func IsDaemonOnline() bool {
 // we have now the apis to avoid polling
 func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash) (err error) {
 
-	if !IsDaemonOnline() {
+	if !w.IsDaemonOnline() {
 		daemon_height = 0
 		daemon_topoheight = 0
 		return fmt.Errorf("Daemon is offline")
@@ -273,13 +250,13 @@ func (w *Wallet_Memory) NameToAddress(name string) (addr string, err error) {
 		return addr, fmt.Errorf("empty string is not a valid address")
 	}
 
-	if !IsDaemonOnline() {
+	if !w.IsDaemonOnline() {
 		err = fmt.Errorf("offline or not connected. cannot translate name to address")
 		return
 	}
 
 	var result rpc.NameToAddress_Result
-	if err = rpc_client.Call("DERO.NameToAddress", rpc.NameToAddress_Params{Name: name, TopoHeight: -1}, &result); err != nil {
+	if err = w.Client.Call("DERO.NameToAddress", rpc.NameToAddress_Params{Name: name, TopoHeight: -1}, &result); err != nil {
 		return
 	}
 
@@ -301,14 +278,14 @@ func (w *Wallet_Memory) SendTransaction(tx *transaction.Transaction) (err error)
 		return fmt.Errorf("Can not send nil transaction")
 	}
 
-	if !IsDaemonOnline() {
+	if !w.IsDaemonOnline() {
 		return fmt.Errorf("offline or not connected. cannot send transaction.")
 	}
 
 	params := rpc.SendRawTransaction_Params{Tx_as_hex: hex.EncodeToString(tx.Serialize())}
 	var result rpc.SendRawTransaction_Result
 
-	if err := rpc_client.Call("DERO.SendRawTransaction", params, &result); err != nil {
+	if err := w.Client.Call("DERO.SendRawTransaction", params, &result); err != nil {
 		return err
 	}
 
@@ -337,7 +314,7 @@ func (w *Wallet_Memory) GetSelfEncryptedBalanceAtTopoHeight(scid crypto.Hash, to
 		}
 	}()
 
-	err = rpc_client.Call("DERO.GetEncryptedBalance", rpc.GetEncryptedBalance_Params{SCID: scid, Address: w.GetAddress().String(), TopoHeight: topoheight}, &r)
+	err = w.Client.Call("DERO.GetEncryptedBalance", rpc.GetEncryptedBalance_Params{SCID: scid, Address: w.GetAddress().String(), TopoHeight: topoheight}, &r)
 	return
 }
 
@@ -360,8 +337,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		err = fmt.Errorf("wallet is in offline mode")
 		return
 	}
-
-	if !IsDaemonOnline() {
+	if !w.IsDaemonOnline() {
 		err = fmt.Errorf("offline or not connected")
 		return
 	}
@@ -370,7 +346,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 	var result rpc.GetEncryptedBalance_Result
 
 	// Issue a call with a response.
-	if err = rpc_client.Call("DERO.GetEncryptedBalance", rpc.GetEncryptedBalance_Params{SCID: scid, Address: accountaddr, TopoHeight: topoheight}, &result); err != nil {
+	if err = w.Client.Call("DERO.GetEncryptedBalance", rpc.GetEncryptedBalance_Params{SCID: scid, Address: accountaddr, TopoHeight: topoheight}, &result); err != nil {
 		logger.Error(err, "DERO.GetEncryptedBalance Call failed:")
 
 		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errormsg.ErrAccountUnregistered.Error())) && accountaddr == w.GetAddress().String() && scid.IsZero() {
@@ -476,7 +452,7 @@ func (w *Wallet_Memory) Random_ring_members(scid crypto.Hash) (alist []string) {
 	//fmt.Printf("getting ring members %s  %s\n",scid.String(), debug.Stack())
 
 	// Issue a call with a response.
-	if err := rpc_client.Call("DERO.GetRandomAddress", rpc.GetRandomAddress_Params{SCID: scid}, &result); err != nil {
+	if err := w.Client.Call("DERO.GetRandomAddress", rpc.GetRandomAddress_Params{SCID: scid}, &result); err != nil {
 		logger.V(1).Error(err, "DERO.GetRandomAddress Call failed:")
 		return
 	}
@@ -525,7 +501,7 @@ func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
 			var result rpc.GetBlockHeaderByHeight_Result
 
 			// Issue a call with a response.
-			if err := rpc_client.Call("DERO.GetBlockHeaderByTopoHeight", rpc.GetBlockHeaderByTopoHeight_Params{TopoHeight: uint64(entries[i].TopoHeight)}, &result); err != nil {
+			if err := w.Client.Call("DERO.GetBlockHeaderByTopoHeight", rpc.GetBlockHeaderByTopoHeight_Params{TopoHeight: uint64(entries[i].TopoHeight)}, &result); err != nil {
 				logger.V(1).Error(err, "DERO.GetBlockHeaderByTopoHeight Call failed:")
 				return 0
 			}
@@ -683,7 +659,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 	var bl block.Block
 	var bresult rpc.GetBlock_Result
-	if err = rpc_client.Call("DERO.GetBlock", rpc.GetBlock_Params{Height: uint64(topo)}, &bresult); err != nil {
+	if err = w.Client.Call("DERO.GetBlock", rpc.GetBlock_Params{Height: uint64(topo)}, &bresult); err != nil {
 		return fmt.Errorf("getblock rpc failed")
 	}
 
@@ -720,7 +696,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 			//fmt.Printf("Requesting tx data %s\n", bl.Tx_hashes[i].String())
 
-			if err = rpc_client.Call("DERO.GetTransaction", tx_params, &tx_result); err != nil {
+			if err = w.Client.Call("DERO.GetTransaction", tx_params, &tx_result); err != nil {
 				return fmt.Errorf("gettransa rpc failed %s", err)
 			}
 

@@ -25,7 +25,6 @@ import (
 
 	"github.com/deroproject/derohe/blockchain"
 	"github.com/deroproject/derohe/config"
-	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/transaction"
 )
@@ -69,13 +68,14 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 	config.Testnet.Genesis_Block_Hash = genesis_block.GetHash()
 	config.Mainnet.Genesis_Block_Hash = genesis_block.GetHash()
 
-	chain, rpcserver, params := simulator_chain_start()
+	chain, rpcserver, _ := simulator_chain_start()
 	defer simulator_chain_stop(chain, rpcserver)
-	_ = params
 
-	globals.Arguments["--daemon-address"] = rpcport
-
-	go Keep_Connectivity()
+	client := NewRPCCLient(rpcport)
+	go client.Keep_Connectivity()
+	wsrc.SetClient(client)
+	wdst.SetClient(client)
+	wgenesis.SetClient(client)
 
 	t.Logf("src %s\n", wsrc.GetAddress())
 	t.Logf("dst %s\n", wdst.GetAddress())
@@ -93,9 +93,6 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
 	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
 
-	wgenesis.SetDaemonAddress(rpcport)
-	wsrc.SetDaemonAddress(rpcport)
-	wdst.SetDaemonAddress(rpcport)
 	wgenesis.SetOnlineMode()
 	wsrc.SetOnlineMode()
 	wdst.SetOnlineMode()
@@ -159,5 +156,4 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 	if wdst.account.Balance_Mature != 1500000 {
 		t.Fatalf("failed balance check, expected 1500000 actual %d", wdst.account.Balance_Mature)
 	}
-
 }

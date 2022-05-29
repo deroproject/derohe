@@ -18,37 +18,36 @@ package main
 
 /// this file implements the wallet and rpc wallet
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "sync"
-import "strings"
-import "strconv"
-import "runtime"
+import (
+	"fmt"
+	"io"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "sync/atomic"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/deroproject/derohe/walletapi/mnemonics"
+	"github.com/docopt/docopt-go"
+	"github.com/go-logr/logr"
+)
 
 //import "io/ioutil"
 //import "bufio"
 //import "bytes"
 //import "net/http"
 
-import "github.com/go-logr/logr"
-
-import "github.com/chzyer/readline"
-import "github.com/docopt/docopt-go"
-
 //import "github.com/vmihailenco/msgpack"
 
 //import "github.com/deroproject/derosuite/address"
 
-import "github.com/deroproject/derohe/config"
-
 //import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/mnemonics"
 
 //import "encoding/json"
 
@@ -172,6 +171,9 @@ func main() {
 	globals.Initialize() // setup network and proxy
 	logger.V(0).Info("", "MODE", globals.Config.Name)
 
+	endpoint := get_daemon_address()
+	client := walletapi.NewRPCCLient(endpoint)
+
 	// disable menu mode if requested
 	if globals.Arguments["--prompt"] != nil && globals.Arguments["--prompt"].(bool) {
 		menu_mode = false
@@ -215,6 +217,7 @@ func main() {
 			logger.Error(err, "Error occurred while restoring wallet")
 			return
 		}
+		wallet.SetClient(client)
 
 		logger.V(1).Info("Seed Language", "language", account.SeedLanguage)
 		logger.Info("Successfully recovered wallet from seed")
@@ -237,6 +240,7 @@ func main() {
 			wallet = nil
 			return
 		}
+		wallet.SetClient(client)
 		logger.V(1).Info("Seed Language", "language", account.SeedLanguage)
 		display_seed(l, wallet)
 	}
@@ -264,6 +268,7 @@ func main() {
 					logger.Error(err, "Error occurred while opening wallet.")
 					os.Exit(-1)
 				}
+				wallet.SetClient(client)
 			} else { // request user the password
 
 				// ask user a password
@@ -272,6 +277,7 @@ func main() {
 					if err != nil {
 						logger.Error(err, "Error occurred while opening wallet.")
 					} else { //  user knows the password and is db is valid
+						wallet.SetClient(client)
 						break
 					}
 				}
@@ -287,7 +293,8 @@ func main() {
 	if wallet != nil {
 		common_processing(wallet)
 	}
-	go walletapi.Keep_Connectivity() // maintain connectivity
+
+	go client.Keep_Connectivity() // maintain connectivity
 
 	//pipe_reader, pipe_writer = io.Pipe() // create pipes
 
@@ -344,7 +351,7 @@ func main() {
 					PressAnyKey(l, wallet)
 				}
 			} else {
-				handle_easymenu_pre_open_command(l, line)
+				handle_easymenu_pre_open_command(l, line, client)
 			}
 		} else {
 			handle_prompt_command(l, line)
@@ -448,38 +455,6 @@ func update_prompt(l *readline.Instance) {
 
 	}
 
-}
-
-// create a new wallet from scratch from random numbers
-func Create_New_Wallet(l *readline.Instance) (w *walletapi.Wallet_Disk, err error) {
-
-	// ask user a file name to store the data
-
-	walletpath := read_line_with_prompt(l, "Please enter wallet file name : ")
-	walletpassword := ""
-
-	account, _ := walletapi.Generate_Keys_From_Random()
-	account.SeedLanguage = choose_seed_language(l)
-
-	w, err = walletapi.Create_Encrypted_Wallet(walletpath, walletpassword, account.Keys.Secret)
-
-	if err != nil {
-		return
-	}
-
-	// set wallet seed language
-
-	// a new account has been created, append the seed to user home directory
-
-	//usr, err := user.Current()
-	/*if err != nil {
-	      globals.Logger.Warnf("Cannot get current username to save recovery key and password")
-	  }else{ // we have a user, get his home dir
-
-
-	  }*/
-
-	return
 }
 
 /*
@@ -610,4 +585,25 @@ func filterInput(r rune) (rune, bool) {
 		atomic.StoreUint32(&tablock, 0) // enable prompt update
 	}
 	return r, true
+}
+
+func get_daemon_address() string {
+	var endpoint string
+	if globals.Arguments["--remote"] == true && globals.IsMainnet() {
+		endpoint = config.REMOTE_DAEMON + fmt.Sprintf(":%d", config.Mainnet.RPC_Default_Port)
+	}
+
+	// if user provided endpoint has error, use default
+	if endpoint == "" {
+		endpoint = "127.0.0.1:" + fmt.Sprintf("%d", config.Mainnet.RPC_Default_Port)
+		if !globals.IsMainnet() {
+			endpoint = "127.0.0.1:" + fmt.Sprintf("%d", config.Testnet.RPC_Default_Port)
+		}
+	}
+
+	if globals.Arguments["--daemon-address"] != nil {
+		endpoint = globals.Arguments["--daemon-address"].(string)
+	}
+
+	return endpoint
 }

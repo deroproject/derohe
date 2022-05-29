@@ -179,9 +179,11 @@ func Test_Creation_TX(t *testing.T) {
 	chain, rpcserver, _ := simulator_chain_start()
 	defer simulator_chain_stop(chain, rpcserver)
 
-	globals.Arguments["--daemon-address"] = rpcport_test
-
-	go walletapi.Keep_Connectivity()
+	client := walletapi.NewRPCCLient(rpcport_test)
+	go client.Keep_Connectivity()
+	wsrc.SetClient(client)
+	wdst.SetClient(client)
+	wgenesis.SetClient(client)
 
 	t.Logf("src %s\n", wsrc.GetAddress())
 	t.Logf("dst %s\n", wdst.GetAddress())
@@ -195,9 +197,6 @@ func Test_Creation_TX(t *testing.T) {
 
 	simulator_chain_mineblock(chain, wgenesis.GetAddress(), t) // mine a block at tip
 
-	wgenesis.SetDaemonAddress(rpcport)
-	wsrc.SetDaemonAddress(rpcport)
-	wdst.SetDaemonAddress(rpcport)
 	wgenesis.SetOnlineMode()
 	wsrc.SetOnlineMode()
 	wdst.SetOnlineMode()
@@ -271,7 +270,6 @@ func Test_Creation_TX(t *testing.T) {
 		t.Fatalf("nonce not valid. please dig. expected 0 actual %d", nonce)
 	}
 
-	post_transfer_src_balance, _ := wsrc.Get_Balance()
 	post_transfer_dst_balance, _ := wdst.Get_Balance()
 
 	if post_transfer_dst_balance-pre_transfer_dst_balance != 1 {
@@ -328,7 +326,7 @@ func Test_Creation_TX(t *testing.T) {
 	wsrc.Sync_Wallet_Memory_With_Daemon()
 	wdst.Sync_Wallet_Memory_With_Daemon()
 
-	post_transfer_src_balance, _ = wsrc.Get_Balance()
+	post_transfer_src_balance, _ := wsrc.Get_Balance()
 	post_transfer_dst_balance, _ = wdst.Get_Balance()
 
 	if post_transfer_dst_balance-pre_transfer_dst_balance != 2 {

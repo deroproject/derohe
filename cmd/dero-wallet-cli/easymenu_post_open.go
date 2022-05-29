@@ -16,26 +16,25 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "errors"
-import "runtime"
-import "strings"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
-import "path/filepath"
-import "encoding/json"
-
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "github.com/deroproject/derohe/address"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
 
 // handle menu if a wallet is currently opened
 func display_easymenu_post_open_command(l *readline.Instance) {
@@ -204,7 +203,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 		}
 
 		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{SCID: scid, Amount: amount_to_transfer, Destination: a.String()}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{{SCID: scid, Amount: amount_to_transfer, Destination: a.String()}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")
@@ -270,7 +269,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 			if a.Arguments.Has(rpc.RPC_COMMENT, rpc.DataString) { // but only it is present
 				logger.Info("Integrated Message", "comment", a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString))
-				arguments = append(arguments, rpc.Argument{rpc.RPC_COMMENT, rpc.DataString, a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString)})
+				arguments = append(arguments, rpc.Argument{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: a.Arguments.Value(rpc.RPC_COMMENT, rpc.DataString)})
 			}
 		}
 
@@ -369,7 +368,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 			//src_port := uint64(0xffffffffffffffff)
 
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{rpc.Transfer{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")

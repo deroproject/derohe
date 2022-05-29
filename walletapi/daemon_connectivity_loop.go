@@ -30,8 +30,8 @@ var timer = time.NewTimer(time.Millisecond)
 
 // this function continously turns connectivity online/offline
 // avoid connectivity calls when possible
-func Keep_Connectivity() {
-	Connect("")
+func (c *Client) Keep_Connectivity() {
+	c.Connect()
 	for {
 		select {
 		//case <- w.quit:
@@ -39,26 +39,23 @@ func Keep_Connectivity() {
 		case <-timer.C: // we disconnected and did not connect, this timer fires every 5 secs,
 
 			timer.Reset(timeout)
-			if !Connected {
-				Connect("")
+			if !c.IsConnected() {
+				c.Connect()
 			} else {
-				if IsDaemonOnline() {
+				if c.IsDaemonOnline() {
 					var result string
-					if err := rpc_client.Call("DERO.Ping", nil, &result); err != nil {
+					if err := c.Call("DERO.Ping", nil, &result); err != nil {
 						// fmt.Printf("Ping failed: %v", err)
-						rpc_client.RPC.Close()
-						rpc_client.WS = nil
-						rpc_client.RPC = nil
-						Connected = false
-						Connect("") // try to connect again
-
+						c.RPC.Close()
+						c.WS = nil
+						c.RPC = nil
+						c.SetConnected(false)
+						c.Connect() // try to connect again
 					} else {
 						//fmt.Printf("Pong Received %s\n", result)
 					}
 				}
 			}
 		}
-
 	}
-
 }
