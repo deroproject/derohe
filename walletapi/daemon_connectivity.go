@@ -31,8 +31,6 @@ type Client struct {
 	RPC       *jrpc2.Client
 }
 
-//var rpc_client = &Client{}
-
 func NewRPCCLient(endpoint string) *Client {
 	return &Client{
 		endpoint: endpoint,
@@ -45,4 +43,8 @@ func (c *Client) IsConnected() bool {
 
 func (c *Client) SetConnected(connected bool) {
 	c.connected = connected
+}
+
+func (c *Client) SetEndpoint(e string) {
+	c.endpoint = e
 }
