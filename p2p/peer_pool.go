@@ -19,22 +19,23 @@ package p2p
 /* this file implements the peer manager, keeping a list of peers which can be tried for connection etc
  *
  */
-import "os"
-import "fmt"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"sync"
+	"time"
 
-import "errors"
-import "sync"
-import "time"
-import "sort"
-import "path/filepath"
-import "encoding/json"
+	"github.com/deroproject/derohe/globals"
+)
 
 //import "encoding/binary"
 //import "container/list"
 
 //import log "github.com/sirupsen/logrus"
-
-import "github.com/deroproject/derohe/globals"
 
 //import "github.com/deroproject/derosuite/crypto"
 
@@ -53,14 +54,21 @@ type Peer struct {
 	ID      uint64 `json:"peerid"`  // peer id
 	Miner   bool   `json:"miner"`   // miner
 	//NeverBlacklist    bool    // this address will never be blacklisted
-	LastConnected   uint64 `json:"lastconnected"`   // epoch time when it was connected , 0 if never connected
-	FailCount       uint64 `json:"failcount"`       // how many times have we failed  (tcp errors)
-	ConnectAfter    uint64 `json:"connectafter"`    // we should connect when the following timestamp passes
-	BlacklistBefore uint64 `json:"blacklistbefore"` // peer blacklisted till epoch , priority nodes are never blacklisted, 0 if not blacklist
-	GoodCount       uint64 `json:"goodcount"`       // how many times peer has been shared with us
-	Version         int    `json:"version"`         // version 1 is original C daemon peer, version 2 is golang p2p version
-	Whitelist       bool   `json:"whitelist"`
+	LastConnected    uint64 `json:"lastconnected"`   // epoch time when it was connected , 0 if never connected
+	FailCount        uint64 `json:"failcount"`       // how many times have we failed  (tcp errors)
+	ConnectAfter     uint64 `json:"connectafter"`    // we should connect when the following timestamp passes
+	BlacklistBefore  uint64 `json:"blacklistbefore"` // peer blacklisted till epoch , priority nodes are never blacklisted, 0 if not blacklist
+	GoodCount        uint64 `json:"goodcount"`       // how many times peer has been shared with us
+	Version          int    `json:"version"`         // version 1 is original C daemon peer, version 2 is golang p2p version
+	Whitelist        bool   `json:"whitelist"`
+	ConnectionStatus string `json:"connectionstatus"`
 	sync.Mutex
+}
+
+type PeersInfo struct {
+	Peers         []*Peer `json:"peers"`
+	WhitelistSize int     `json:"whitelist_size"`
+	GreylistSize  int     `json:"greylist_size"`
 }
 
 var peer_map = map[string]*Peer{}
@@ -242,35 +250,42 @@ func Peer_Delete(p *Peer) {
 
 // prints all the connection info to screen
 func PeerList_Print() {
-	peer_mutex.Lock()
-	defer peer_mutex.Unlock()
 	fmt.Printf("Peer List\n")
 	fmt.Printf("%-22s %-6s %-4s   %-5s %-7s %9s %3s\n", "Remote Addr", "Active", "Good", "Fail", " State", "Height", "DIR")
 
+	info := GetPeersInfo()
+	for _, v := range info.Peers {
+		fmt.Printf("%-22s %-6s %4d %5d \n", v.Address, v.ConnectionStatus, v.GoodCount, v.FailCount)
+	}
+
+	fmt.Printf("\nWhitelist size %d\n", info.WhitelistSize)
+	fmt.Printf("Greylist size %d\n", info.GreylistSize)
+
+}
+
+// GetAllPeers returns a list of all peers
+func GetPeersInfo() *PeersInfo {
+	peer_mutex.Lock()
+	defer peer_mutex.Unlock()
 	var list []*Peer
 	greycount := 0
 	for _, v := range peer_map {
 		if v.Whitelist { // only display white listed peer
+			if IsAddressConnected(ParseIPNoError(v.Address)) {
+				v.ConnectionStatus = "ACTIVE"
+			}
 			list = append(list, v)
 		} else {
 			greycount++
 		}
 	}
-
 	// sort the list
 	sort.Slice(list, func(i, j int) bool { return list[i].Address < list[j].Address })
-
-	for i := range list {
-		connected := ""
-		if IsAddressConnected(ParseIPNoError(list[i].Address)) {
-			connected = "ACTIVE"
-		}
-		fmt.Printf("%-22s %-6s %4d %5d \n", list[i].Address, connected, list[i].GoodCount, list[i].FailCount)
+	return &PeersInfo{
+		Peers:         list,
+		WhitelistSize: len(peer_map) - greycount,
+		GreylistSize:  greycount,
 	}
-
-	fmt.Printf("\nWhitelist size %d\n", len(peer_map)-greycount)
-	fmt.Printf("Greylist size %d\n", greycount)
-
 }
 
 // this function return peer count which are in our list

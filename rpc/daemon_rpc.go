@@ -18,7 +18,9 @@
 
 package rpc
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
 
 // this is used to print blockheader for the rpc and the daemon
 type BlockHeader_Print struct {
