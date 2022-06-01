@@ -20,30 +20,29 @@ package p2p
  * this will also ensure that a single IP is connected only once
  *
  */
-import "os"
-import "fmt"
-import "net"
-import "math"
-import "sync"
-import "sort"
-import "time"
-import "strings"
-import "strconv"
-import "context"
-import "sync/atomic"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"math"
+	"net"
+	"os"
+	"runtime/debug"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "github.com/go-logr/logr"
-
-import "github.com/dustin/go-humanize"
-
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/metrics"
-import "github.com/deroproject/derohe/transaction"
-
-import "github.com/cenkalti/rpc2"
+	"github.com/cenkalti/rpc2"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/dustin/go-humanize"
+	"github.com/go-logr/logr"
+)
 
 // any connection incoming/outgoing can only be in this state
 //type Conn_State uint32
@@ -60,53 +59,53 @@ const MAX_CLOCK_DATA_SET = 16
 // golang restricts 64 bit uint64/int atomic on a 64 bit boundary
 // therefore all atomics are on the top, As suggested by Slixe
 type Connection struct {
-	Height                int64  // last height sent by peer  ( first member alignments issues)
-	StableHeight          int64  // last stable height
-	TopoHeight            int64  // topo height, current topo height, this is the only thing we require for syncing
-	Pruned                int64  // till where chain has been pruned on this node
-	LastObjectRequestTime int64  // when was the last item placed in object list
-	Latency               int64  // time.Duration            // latency to this node when sending timed sync
-	BytesIn               uint64 // total bytes in
-	BytesOut              uint64 // total bytes out
-	Top_Version           uint64 // current hard fork version supported by peer
-	Peer_ID               uint64 // Remote peer id
-	Port                  uint32 // port advertised by other end as its server,if it's 0 server cannot accept connections
-	State                 uint32 // state of the connection
-	Syncing               int32  // denotes whether we are syncing and thus stop pinging
+	Height                int64  `json:"height"`                // last height sent by peer  ( first member alignments issues)
+	StableHeight          int64  `json:"stableHeight"`          // last stable height
+	TopoHeight            int64  `json:"topoHeight"`            // topo height, current topo height, this is the only thing we require for syncing
+	Pruned                int64  `json:"pruned"`                // till where chain has been pruned on this node
+	LastObjectRequestTime int64  `json:"lastObjectRequestTime"` // when was the last item placed in object list
+	Latency               int64  `json:"latency"`               // time.Duration            // latency to this node when sending timed sync
+	BytesIn               uint64 `json:"bytesIn"`               // total bytes in
+	BytesOut              uint64 `json:"bytesOut"`              // total bytes out
+	Top_Version           uint64 `json:"topVersion"`            // current hard fork version supported by peer
+	Peer_ID               uint64 `json:"peer_ID"`               // Remote peer id
+	Port                  uint32 `json:"port"`                  // port advertised by other end as its server,if it's 0 server cannot accept connections
+	State                 uint32 `json:"state"`                 // state of the connection
+	Syncing               int32  `json:"syncing"`               // denotes whether we are syncing and thus stop pinging
 
-	Client  *rpc2.Client
-	Conn    net.Conn // actual object to talk
-	ConnTls net.Conn // tls layered conn
+	Client  *rpc2.Client `json:"-"`
+	Conn    net.Conn     `json:"-"` // actual object to talk
+	ConnTls net.Conn     `json:"-"` // tls layered conn
 
-	StateHash crypto.Hash // statehash at the top
+	StateHash crypto.Hash `json:"stateHash"` // statehash at the top
 
-	Created time.Time // when was object created
+	Created time.Time `json:"created"` // when was object created
 
-	Incoming        bool     // is connection incoming or outgoing
-	Addr            net.Addr // endpoint on the other end
-	SyncNode        bool     // whether the peer has been added to command line as sync node
-	ProtocolVersion string
-	Tag             string // tag for the other end
-	DaemonVersion   string
-	Top_ID          crypto.Hash // top block id of the connection
+	Incoming        bool        `json:"incoming"` // is connection incoming or outgoing
+	Addr            net.Addr    `json:"addr"`     // endpoint on the other end
+	SyncNode        bool        `json:"syncNode"` // whether the peer has been added to command line as sync node
+	ProtocolVersion string      `json:"protocolVersion"`
+	Tag             string      `json:"tag"` // tag for the other end
+	DaemonVersion   string      `json:"daemonVersion"`
+	Top_ID          crypto.Hash `json:"topID"` // top block id of the connection
 
-	logger logr.Logger // connection specific logger
+	logger logr.Logger `json:"-"` // connection specific logger
 
-	Requested_Objects [][32]byte // currently unused as we sync up with a single peer at a time
+	Requested_Objects [][32]byte `json:"-"` // currently unused as we sync up with a single peer at a time
 
-	peer_sent_time   time.Time // contains last time when peerlist was sent
-	update_received  time.Time // last time when upated was received
-	ping_in_progress int32     // contains ping pending against this connection
+	peer_sent_time   time.Time `json:"-"` // contains last time when peerlist was sent
+	update_received  time.Time `json:"-"` // last time when upated was received
+	ping_in_progress int32     `json:"-"` // contains ping pending against this connection
 
-	ping_count int64
+	ping_count int64 `json:"-"`
 
-	clock_index   int
-	clock_offsets [MAX_CLOCK_DATA_SET]time.Duration
-	delays        [MAX_CLOCK_DATA_SET]time.Duration
-	clock_offset  int64 // duration updated on every miniblock
-	onceexit      sync.Once
+	clock_index   int                               `json:"-"`
+	clock_offsets [MAX_CLOCK_DATA_SET]time.Duration `json:"-"`
+	delays        [MAX_CLOCK_DATA_SET]time.Duration `json:"-"`
+	clock_offset  int64                             `json:"-"` // duration updated on every miniblock
+	onceexit      sync.Once                         `json:"-"`
 
-	Mutex sync.Mutex // used only by connection go routine
+	Mutex sync.Mutex `json:"-"` // used only by connection go routine
 }
 
 func Address(c *Connection) string {
@@ -239,15 +238,23 @@ func ping_loop() {
 	})
 }
 
-// prints all the connection info to screen
-func Connection_Print() {
+func GetConnections() []*Connection {
 	var clist []*Connection
 
 	connection_map.Range(func(k, value interface{}) bool {
-		v := value.(*Connection)
+		v, ok := value.(*Connection)
+		if !ok {
+			return false
+		}
 		clist = append(clist, v)
 		return true
 	})
+	return clist
+}
+
+// prints all the connection info to screen
+func Connection_Print() {
+	clist := GetConnections()
 
 	version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
 	if err != nil {
