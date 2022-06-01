@@ -25,10 +25,10 @@ import (
 	"github.com/stratumfarm/derohe/rpc"
 )
 
-func CheckAddressStatus(ctx context.Context, p rpc.CheckAddressStatusParams) (result rpc.CheckAddressStatusResult) {
+func CheckAddressStatus(ctx context.Context, p rpc.CheckAddressStatusParams) (result rpc.CheckAddressStatusResult, err error) {
 	uaddress, err := globals.ParseValidateAddress(p.Address)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	topoheight := chain.Load_TOPO_HEIGHT()
@@ -36,23 +36,23 @@ func CheckAddressStatus(ctx context.Context, p rpc.CheckAddressStatusParams) (re
 
 	toporecord, err := chain.Store.Topo_store.Read(topoheight)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
 	if err != nil {
-		panic(err)
+		return
 	}
 
 	treename := string(crypto.ZEROHASH[:])
 	keyname := uaddress.Compressed()
 	if balance_tree, err = ss.GetTree(treename); err != nil {
-		panic(err)
+		return
 	}
 	_, _, _, err = balance_tree.GetKeyValueFromKey(keyname)
 	var registered bool
 	if err == nil {
 		registered = true
 	}
-	return rpc.CheckAddressStatusResult{Registered: registered}
+	return rpc.CheckAddressStatusResult{Registered: registered}, nil
 }
