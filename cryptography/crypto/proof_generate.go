@@ -16,16 +16,18 @@
 
 package crypto
 
-import "fmt"
-import "math"
-import "math/big"
-import "bytes"
-import "strconv"
+import (
+	"bytes"
+	"fmt"
+	"math"
+	"math/big"
+	"strconv"
+
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+)
 
 //import "crypto/rand"
 //import "encoding/hex"
-
-import "github.com/deroproject/derohe/cryptography/bn256"
 
 //import "golang.org/x/crypto/sha3"
 

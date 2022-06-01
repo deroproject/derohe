@@ -16,11 +16,13 @@
 
 package crypto
 
-import "math/big"
-import "golang.org/x/crypto/chacha20"
-import "github.com/deroproject/derohe/cryptography/bn256"
+import (
+	"math/big"
 
-import "github.com/go-logr/logr"
+	"github.com/go-logr/logr"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+	"golang.org/x/crypto/chacha20"
+)
 
 var Logger logr.Logger = logr.Discard() // default discard all logs, someone needs to set this up
 

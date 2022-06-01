@@ -35,13 +35,13 @@ import (
 	"time"
 
 	"github.com/cenkalti/rpc2"
-	"github.com/deroproject/derohe/block"
-	"github.com/deroproject/derohe/cryptography/crypto"
-	"github.com/deroproject/derohe/globals"
-	"github.com/deroproject/derohe/metrics"
-	"github.com/deroproject/derohe/transaction"
 	"github.com/dustin/go-humanize"
 	"github.com/go-logr/logr"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/metrics"
+	"github.com/stratumfarm/derohe/transaction"
 )
 
 // any connection incoming/outgoing can only be in this state

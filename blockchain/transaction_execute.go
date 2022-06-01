@@ -18,25 +18,27 @@ package blockchain
 
 // this file implements  core execution of all changes to block chain homomorphically
 
-import "fmt"
-import "bufio"
-import "strings"
-import "strconv"
-import "runtime/debug"
-import "encoding/hex"
-import "math/big"
-import "golang.org/x/xerrors"
+import (
+	"bufio"
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"runtime/debug"
+	"strconv"
+	"strings"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/premine"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/dvm"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/premine"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+	"golang.org/x/xerrors"
+)
 
 // convert bitcoin model to our, but skip initial 4 years of supply, so our total supply gets to 10.5 million
 const RewardReductionInterval = 210000 * 600 / config.BLOCK_TIME // 210000 comes from bitcoin

@@ -18,23 +18,23 @@ package dvm
 
 // this file implements necessary structure to  SC handling
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+	"math/big"
+	"math/rand"
+	"time"
 
-//import "bytes"
-//import "runtime/debug"
-import "encoding/binary"
-import "time"
-import "math/big"
-import "math/rand"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/config" //import "bytes"
+	//import "runtime/debug"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/rpc"
+	"golang.org/x/xerrors"
+)
 
-import "golang.org/x/xerrors"
-import "github.com/deroproject/graviton"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-
-//import "github.com/deroproject/derohe/transaction"
+//import "github.com/stratumfarm/derohe/transaction"
 
 type Simulator struct {
 	ss           *graviton.Snapshot

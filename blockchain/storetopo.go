@@ -16,14 +16,16 @@
 
 package blockchain
 
-import "os"
-import "fmt"
-import "math"
-import "path/filepath"
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
 type TopoRecord struct {
 	BLOCK_ID      [32]byte

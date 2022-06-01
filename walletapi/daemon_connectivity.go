@@ -30,13 +30,14 @@ package walletapi
 //import "fmt"
 
 //import "net/url"
-import "net/http"
+import (
+	"net/http"
 
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "github.com/gorilla/websocket"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/gorilla/websocket"
+	"github.com/stratumfarm/derohe/glue/rwc"
+)
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
 

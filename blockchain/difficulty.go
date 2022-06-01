@@ -16,14 +16,16 @@
 
 package blockchain
 
-import "fmt"
-import "math"
-import "math/big"
+import (
+	"fmt"
+	"math"
+	"math/big"
 
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+)
 
 var (
 	// bigZero is 0 represented as a big.Int.  It is defined here to avoid

@@ -19,10 +19,10 @@ package rpc
 import (
 	"context"
 
-	"github.com/deroproject/derohe/cryptography/crypto"
-	"github.com/deroproject/derohe/globals"
-	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
 )
 
 func CheckAddressStatus(ctx context.Context, p rpc.CheckAddressStatusParams) (result rpc.CheckAddressStatusResult) {

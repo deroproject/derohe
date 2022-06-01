@@ -19,7 +19,7 @@ package rpc
 import (
 	"context"
 
-	"github.com/deroproject/derohe/p2p"
+	"github.com/stratumfarm/derohe/p2p"
 )
 
 func GetPeersInfo(ctx context.Context) (result *p2p.PeersInfo) {

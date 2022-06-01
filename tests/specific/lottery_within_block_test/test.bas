@@ -1,7 +1,7 @@
 /* Lottery Smart Contract Example in DVM-BASIC.  
 This lottery smart contract will give lottery wins on every second try in following default contract.
 	Make depost transaction to this SCID to play lottery. 
-	Check https://github.com/deroproject/derohe/blob/main/guide/examples/lottery_sc_guide.md
+	Check https://github.com/stratumfarm/derohe/blob/main/guide/examples/lottery_sc_guide.md
 */
 
 

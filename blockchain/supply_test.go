@@ -16,8 +16,11 @@
 
 package blockchain
 
-import "testing"
-import "github.com/deroproject/derohe/globals"
+import (
+	"testing"
+
+	"github.com/stratumfarm/derohe/globals"
+)
 
 func Test_Supply(t *testing.T) {
 

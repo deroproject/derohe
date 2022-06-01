@@ -36,13 +36,13 @@ import (
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/creachadair/jrpc2/jhttp"
-	"github.com/deroproject/derohe/blockchain"
-	"github.com/deroproject/derohe/config"
-	"github.com/deroproject/derohe/globals"
-	"github.com/deroproject/derohe/glue/rwc"
-	"github.com/deroproject/derohe/metrics"
 	"github.com/go-logr/logr"
 	"github.com/gorilla/websocket"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/glue/rwc"
+	"github.com/stratumfarm/derohe/metrics"
 )
 
 //import "github.com/creachadair/jrpc2/server"

@@ -16,10 +16,10 @@
 
 package config
 
-import "github.com/satori/go.uuid"
-
-//import "github.com/caarlos0/env/v6"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	uuid "github.com/satori/go.uuid"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+) //import "github.com/caarlos0/env/v6"
 
 // all global configuration variables are picked from here
 

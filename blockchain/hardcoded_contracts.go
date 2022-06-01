@@ -18,12 +18,14 @@ package blockchain
 
 // this file installs hard coded contracts
 
-import _ "embed"
+import (
+	_ "embed"
 
-import "github.com/deroproject/graviton"
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/dvm"
+	"github.com/stratumfarm/derohe/globals"
+)
 
 //go:embed hardcoded_sc/nameservice.bas
 var source_nameservice string

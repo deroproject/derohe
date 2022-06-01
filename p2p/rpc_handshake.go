@@ -16,16 +16,17 @@
 
 package p2p
 
-import "fmt"
-import "net"
-import "bytes"
-import "context"
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"net"
+	"sync/atomic"
+	"time"
 
-import "sync/atomic"
-import "time"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+)
 
 // verify incoming handshake for number of checks such as mainnet/testnet etc etc
 func Verify_Handshake(handshake *Handshake_Struct) bool {

@@ -19,7 +19,7 @@
 package rpc
 
 import (
-	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
 )
 
 // this is used to print blockheader for the rpc and the daemon

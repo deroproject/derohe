@@ -17,10 +17,12 @@
 package transaction
 
 //import "fmt"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"testing"
+)
 
-//import "github.com/deroproject/derohe/crypto"
+//import "github.com/stratumfarm/derohe/crypto"
 
 // parse the tx and verify
 func Test_Tx_Genesis(t *testing.T) {

@@ -16,16 +16,18 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
 
-import "github.com/deroproject/derohe/rpc"
-
-//import "github.com/deroproject/derohe/rpc"
+//import "github.com/stratumfarm/derohe/rpc"
 
 func SplitIntegratedAddress(ctx context.Context, p rpc.Split_Integrated_Address_Params) (result rpc.Split_Integrated_Address_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

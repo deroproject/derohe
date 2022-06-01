@@ -18,10 +18,13 @@ package rpc
 
 // get block template handler not implemented
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 func GetLastBlockHeader(ctx context.Context) (result rpc.GetLastBlockHeader_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

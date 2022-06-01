@@ -23,7 +23,7 @@ import "encoding/binary"
 
 //import "github.com/romana/rlog"
 
-// import "github.com/deroproject/derohe/cryptography/bn256"
+// import "github.com/stratumfarm/derohe/cryptography/bn256"
 
 // this structure is used to store balance in the balance tree
 type NonceBalance struct {

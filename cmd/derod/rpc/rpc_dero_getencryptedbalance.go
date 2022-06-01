@@ -22,16 +22,16 @@ import (
 	"math"
 	"runtime/debug"
 
-	"github.com/deroproject/derohe/config"
-	"github.com/deroproject/derohe/errormsg"
-	"github.com/deroproject/derohe/globals"
-	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/errormsg"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
 	"golang.org/x/xerrors"
 )
 
-//import "github.com/deroproject/derohe/dvm"
-//import "github.com/deroproject/derohe/cryptography/crypto"
+//import "github.com/stratumfarm/derohe/dvm"
+//import "github.com/stratumfarm/derohe/cryptography/crypto"
 
 func GetEncryptedBalance(ctx context.Context, p rpc.GetEncryptedBalance_Params) (result rpc.GetEncryptedBalance_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

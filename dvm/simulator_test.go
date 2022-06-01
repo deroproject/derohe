@@ -18,16 +18,18 @@ package dvm
 
 //import "fmt"
 //import "reflect"
-import "strings"
-import "testing"
+import (
+	"strings"
+	"testing"
 
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 var sc = `/* Lottery Smart Contract Example in DVM-BASIC.  
 This lottery smart contract will give lottery wins on every second try in following default contract.
 	Make depost transaction to this SCID to play lottery. 
-	Check https://github.com/deroproject/derohe/blob/main/guide/examples/lottery_sc_guide.md
+	Check https://github.com/stratumfarm/derohe/blob/main/guide/examples/lottery_sc_guide.md
 */
 
 

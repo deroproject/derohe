@@ -1,22 +1,22 @@
 package p2p
 
 // this file implements incoming chunk processor
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+	"sync"
+	"time"
 
-import "time"
-import "sync"
-import "bytes"
-
-import "github.com/fxamacker/cbor/v2"
-
-import "github.com/klauspost/reedsolomon"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/metrics"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/fxamacker/cbor/v2"
+	"github.com/klauspost/reedsolomon"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/errormsg"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/metrics"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
 var chunk_map sync.Map // key is blid, value is pointer to  Chunks_Per_Block_Data
 

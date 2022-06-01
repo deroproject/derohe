@@ -16,10 +16,12 @@
 
 package blockchain
 
-import "bytes"
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
-//import "github.com/deroproject/derohe/block"
+//import "github.com/stratumfarm/derohe/block"
 
 func Test_Genesis_block(t *testing.T) {
 

@@ -16,19 +16,20 @@
 
 package main
 
-import "io"
-import "fmt"
-import "time"
-import "strings"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"fmt"
+	"io"
+	"strings"
+	"time"
 
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/rpcserver"
+	"github.com/chzyer/readline"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/walletapi"
+	"github.com/stratumfarm/derohe/walletapi/rpcserver"
+)
 
 // display menu before a wallet is opened
 func display_easymenu_pre_open_command(l *readline.Instance) {

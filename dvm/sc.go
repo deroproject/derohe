@@ -18,18 +18,20 @@ package dvm
 
 // this file implements necessary structure to  SC handling
 
-import "fmt"
-import "bytes"
-import "runtime/debug"
-import "encoding/binary"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"runtime/debug"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
+)
 
-//import "github.com/deroproject/derohe/transaction"
+//import "github.com/stratumfarm/derohe/transaction"
 
 // currently DERO hash 2 contract types
 // 1 OPEN

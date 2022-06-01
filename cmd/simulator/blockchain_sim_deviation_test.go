@@ -16,20 +16,21 @@
 
 package main
 
-import "os"
-import "fmt"
-import "time"
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-import "path/filepath"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/transaction"
+	"github.com/stratumfarm/derohe/walletapi"
+)
 
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/blockchain"
-
-//import "github.com/deroproject/derohe/cryptography/crypto"
+//import "github.com/stratumfarm/derohe/cryptography/crypto"
 
 // this will test that the keys are placed properly and thus can be decoded by recievers
 func Test_Blockchain_Deviation(t *testing.T) {

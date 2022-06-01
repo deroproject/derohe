@@ -8,39 +8,35 @@ import (
 	"sort"
 	"time"
 
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"math/big"
+	"net"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/deroproject/graviton"
+	"github.com/go-logr/logr"
 	"github.com/lesismal/llib/std/crypto/tls"
+	"github.com/lesismal/nbio"
+	"github.com/lesismal/nbio/logging"
 	"github.com/lesismal/nbio/nbhttp"
 	"github.com/lesismal/nbio/nbhttp/websocket"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
 )
-
-import "github.com/lesismal/nbio"
-import "github.com/lesismal/nbio/logging"
-
-import "net"
-import "bytes"
-import "encoding/hex"
-import "encoding/json"
-import "runtime"
-import "strings"
-import "math/big"
-import "crypto/ecdsa"
-import "crypto/elliptic"
-
-import "sync/atomic"
-import "crypto/rand"
-import "crypto/x509"
-import "encoding/pem"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/graviton"
-import "github.com/go-logr/logr"
 
 // this file implements the non-blocking job streamer
 // only job is to stream jobs to thousands of workers, if any is successful,accept and report back
-
-import "sync"
 
 var memPool = sync.Pool{
 	New: func() interface{} {

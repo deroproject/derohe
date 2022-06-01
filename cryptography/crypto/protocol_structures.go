@@ -16,11 +16,14 @@
 
 package crypto
 
-import "bytes"
-import "encoding/binary"
-import "math/big"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/graviton"
+import (
+	"bytes"
+	"encoding/binary"
+	"math/big"
+
+	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+)
 
 type Statement struct {
 	RingSize                 uint64

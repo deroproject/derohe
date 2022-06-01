@@ -16,31 +16,32 @@
 
 package walletapi
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "testing"
-import "bytes"
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-//import "crypto/rand"
-import "path/filepath"
+	"github.com/docopt/docopt-go"
 
-//import "encoding/hex"
-//import "encoding/binary"
-//import "runtime/pprof"
+	//import "crypto/rand"
 
-import "github.com/docopt/docopt-go"
+	//import "encoding/hex"
+	//import "encoding/binary"
+	//import "runtime/pprof"
 
-import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/stratumfarm/derohe/blockchain"
+	derodrpc "github.com/stratumfarm/derohe/cmd/derod/rpc"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
 func init() {
 	globals.InitializeLog(io.Discard, io.Discard)

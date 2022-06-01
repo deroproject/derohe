@@ -16,9 +16,12 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 func GetTxPool(ctx context.Context) (result rpc.GetTxPool_Result) {
 	result.Status = "OK"

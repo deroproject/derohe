@@ -16,24 +16,22 @@
 
 package p2p
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+	"math/big"
+	"math/bits"
+	"sync/atomic"
+	"time"
 
-//import "net"
-import "time"
-import "math/big"
-import "math/bits"
-import "sync/atomic"
-import "encoding/binary"
+	"github.com/deroproject/graviton"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto" //import "net"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/block"
-
-//import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/transaction"
-
-import "github.com/deroproject/graviton"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
+//import "github.com/stratumfarm/derohe/errormsg"
 
 //import "github.com/deroproject/derosuite/blockchain"
 

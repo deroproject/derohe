@@ -16,15 +16,17 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "strings"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+	"strings"
+
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
-
-import "github.com/deroproject/derohe/rpc"
 
 func QueryKey(ctx context.Context, p rpc.Query_Key_Params) (result rpc.Query_Key_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

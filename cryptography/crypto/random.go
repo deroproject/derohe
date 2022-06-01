@@ -16,9 +16,12 @@
 
 package crypto
 
-import "math/big"
-import "crypto/rand"
-import "github.com/deroproject/derohe/cryptography/bn256"
+import (
+	"crypto/rand"
+	"math/big"
+
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+)
 
 func RandomScalar() *big.Int {
 

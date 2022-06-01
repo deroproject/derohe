@@ -16,18 +16,20 @@
 
 package p2p
 
-import "fmt"
-import "time"
-import "math/big"
-import "sync/atomic"
+import (
+	"fmt"
+	"math/big"
+	"sync/atomic"
+	"time"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/errormsg"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
 // used to satisfy difficulty interface
 type MemorySource struct {

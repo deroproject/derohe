@@ -19,23 +19,25 @@ package p2p
 /* this file implements the peer manager, keeping a list of peers which can be tried for connection etc
  *
  */
-import "os"
-import "fmt"
-import "net"
-import "sync"
-import "time"
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/stratumfarm/derohe/globals"
+)
 
 //import "sort"
-import "path/filepath"
-import "encoding/json"
 
 //import "encoding/binary"
 //import "container/list"
 
 //import log "github.com/sirupsen/logrus"
-
-import "github.com/deroproject/derohe/globals"
 
 //import "github.com/deroproject/derosuite/crypto"
 

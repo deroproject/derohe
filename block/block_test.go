@@ -17,12 +17,14 @@
 package block
 
 //import "bytes"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"testing"
 
-import "github.com/deroproject/derohe/config"
+	"github.com/stratumfarm/derohe/config"
+)
 
-//import "github.com/deroproject/derohe/crypto"
+//import "github.com/stratumfarm/derohe/crypto"
 
 func Test_Generic_block_serdes(t *testing.T) {
 	var bl, bldecoded Block

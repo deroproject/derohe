@@ -16,13 +16,16 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "encoding/hex"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/p2p"
-import "github.com/deroproject/derohe/transaction"
+import (
+	"context"
+	"encoding/hex"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/stratumfarm/derohe/p2p"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
 //NOTE: finally we have shifted to json api
 func SendRawTransaction(ctx context.Context, p rpc.SendRawTransaction_Params) (result rpc.SendRawTransaction_Result, err error) {

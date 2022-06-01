@@ -16,9 +16,12 @@
 
 package p2p
 
-import "fmt"
-import "strings"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
 // This file defines the structure for the protocol which is CBOR ( which is standard) stream multiplexed using yamux
 // stream multiplexing allows us have bidirection RPC using net/rpc

@@ -18,37 +18,36 @@ package main
 
 /// this file implements the wallet and rpc wallet
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "sync"
-import "strings"
-import "strconv"
-import "runtime"
+import (
+	"fmt"
+	"io"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "sync/atomic"
+	"github.com/chzyer/readline"
+	"github.com/docopt/docopt-go"
+	"github.com/go-logr/logr"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/walletapi"
+	"github.com/stratumfarm/derohe/walletapi/mnemonics"
+)
 
 //import "io/ioutil"
 //import "bufio"
 //import "bytes"
 //import "net/http"
 
-import "github.com/go-logr/logr"
-
-import "github.com/chzyer/readline"
-import "github.com/docopt/docopt-go"
-
 //import "github.com/vmihailenco/msgpack"
 
 //import "github.com/deroproject/derosuite/address"
 
-import "github.com/deroproject/derohe/config"
-
-//import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/mnemonics"
+//import "github.com/stratumfarm/derohe/crypto"
 
 //import "encoding/json"
 

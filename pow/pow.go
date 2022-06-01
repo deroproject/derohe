@@ -1,8 +1,10 @@
 package pow
 
 //import "crypto/sha256"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/astrobwt"
+import (
+	"github.com/stratumfarm/derohe/astrobwt"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
 // patch algorithm in here to conduct various tests
 func Pow(input []byte) (output crypto.Hash) {

@@ -18,7 +18,7 @@ package blockchain
 
 //import "math/big"
 
-import "github.com/deroproject/derohe/config"
+import "github.com/stratumfarm/derohe/config"
 
 //import "github.com/deroproject/derosuite/emission"
 

@@ -16,9 +16,11 @@
 
 package blockchain
 
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
+import (
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+)
 
 // the voting for hard fork works as follows
 // block major version remains contant, while block minor version contains the next hard fork number,

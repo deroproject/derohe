@@ -16,11 +16,14 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "golang.org/x/time/rate"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/stratumfarm/derohe/rpc"
+	"golang.org/x/time/rate"
+)
 
 // rate limiter is deployed, in case RPC is exposed over internet
 // someone should not be just giving fake inputs and delay chain syncing

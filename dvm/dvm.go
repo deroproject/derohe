@@ -16,22 +16,24 @@
 
 package dvm
 
-import "fmt"
-import "text/scanner"
-import "strings"
-import "strconv"
-import "unicode"
-import "unicode/utf8"
-import "go/ast"
-import "go/parser"
-import "go/token"
-import "math"
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"math"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"text/scanner"
+	"unicode"
+	"unicode/utf8"
 
-import "runtime/debug"
-import "github.com/blang/semver/v4"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/blang/semver/v4"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
-//import "github.com/deroproject/derohe/rpc"
+//import "github.com/stratumfarm/derohe/rpc"
 
 type Vtype int
 

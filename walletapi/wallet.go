@@ -16,26 +16,25 @@
 
 package walletapi
 
-import "fmt"
-import "sort"
-import "sync"
-import "strings"
-import "math/big"
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"encoding/binary"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"sort"
+	"strings"
+	"sync"
 
-import "encoding/pem"
-import "encoding/binary"
+	"github.com/go-logr/logr"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+	"github.com/stratumfarm/derohe/walletapi/mnemonics"
+)
 
-import "github.com/go-logr/logr"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-
-import "github.com/deroproject/derohe/walletapi/mnemonics"
-import "github.com/deroproject/derohe/transaction"
-
-//import "github.com/deroproject/derohe/blockchain/inputmaturity"
+//import "github.com/stratumfarm/derohe/blockchain/inputmaturity"
 
 var logger logr.Logger = logr.Discard() // default discard all logs
 

@@ -16,14 +16,16 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
-
-import "github.com/deroproject/derohe/rpc"
 
 func GetAddress(ctx context.Context) (result rpc.GetAddress_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

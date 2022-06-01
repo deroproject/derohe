@@ -16,10 +16,12 @@
 
 package blockchain
 
-import "fmt"
+import (
+	"fmt"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
 // used to verify complete block which contains expanded transaction
 type cbl_verify struct {

@@ -16,44 +16,43 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "bytes"
+import (
+	"bufio"
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math/big"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"runtime"
+	"runtime/debug"
+	"runtime/pprof"
+	"strconv"
+	"strings"
+	"time"
 
-import "bufio"
-import "strings"
-import "strconv"
-import "runtime"
-import "runtime/debug"
-import "math/big"
-import "os/signal"
+	"github.com/chzyer/readline"
+	"github.com/docopt/docopt-go"
+	"github.com/go-logr/logr"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/p2p"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+	"gopkg.in/natefinch/lumberjack.v2"
 
-//import "crypto/sha1"
-import "encoding/hex"
-import "encoding/json"
-import "path/filepath"
-import "runtime/pprof"
+	//import "crypto/sha1"
 
-import "github.com/go-logr/logr"
+	//import "golang.org/x/crypto/sha3"
 
-//import "golang.org/x/crypto/sha3"
-
-import "github.com/chzyer/readline"
-import "github.com/docopt/docopt-go"
-import "gopkg.in/natefinch/lumberjack.v2"
-
-import "github.com/deroproject/derohe/p2p"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/blockchain"
-import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
+	derodrpc "github.com/stratumfarm/derohe/cmd/derod/rpc"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
 var command_line string = `derod 
 DERO : A secure, private blockchain with smart-contracts

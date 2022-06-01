@@ -16,23 +16,21 @@
 
 package main
 
-import "os"
+import (
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
-import "fmt"
-
-import "time"
-
-//import "math/big"
-import "encoding/hex"
-import "path/filepath"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/rpcserver"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/transaction"
+	"github.com/stratumfarm/derohe/walletapi"
+	"github.com/stratumfarm/derohe/walletapi/rpcserver"
+) //import "math/big"
 
 const WALLET_PASSWORD = ""
 

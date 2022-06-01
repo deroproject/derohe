@@ -22,12 +22,14 @@
 
 package rpc
 
-import "fmt"
-import "time"
-import "strings"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+	"strings"
+	"time"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
 // these structures are completely decoupled from blockchain and live only within the wallet
 // all inputs and outputs which modify balance are presented by this structure

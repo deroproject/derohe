@@ -17,11 +17,12 @@
 package crypto
 
 //import "fmt"
-import "math/big"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"math/big"
 
-//import "crypto/rand"
-import "github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/stratumfarm/derohe/cryptography/bn256"
+) //import "crypto/rand"
 
 // this file implements Big Number Reduced form with bn256's Order
 

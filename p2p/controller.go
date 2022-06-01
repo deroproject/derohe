@@ -16,40 +16,36 @@
 
 package p2p
 
-import "fmt"
-import "net"
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha1"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"math/big"
+	"net"
+	"os"
+	"runtime/debug"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "os"
-import "time"
-import "sort"
-import "sync"
-import "strings"
-import "math/big"
-import "strconv"
-
-import "crypto/sha1"
-import "crypto/ecdsa"
-import "crypto/elliptic"
-
-import "crypto/tls"
-import "crypto/rand"
-import "crypto/x509"
-import "encoding/pem"
-import "sync/atomic"
-import "runtime/debug"
-
-import "github.com/go-logr/logr"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/metrics"
-import "github.com/deroproject/derohe/blockchain"
-
-import "github.com/xtaci/kcp-go/v5"
-import "golang.org/x/crypto/pbkdf2"
-import "golang.org/x/time/rate"
-
-import "github.com/cenkalti/rpc2"
+	"github.com/cenkalti/rpc2"
+	"github.com/go-logr/logr"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/metrics"
+	"github.com/xtaci/kcp-go/v5"
+	"golang.org/x/crypto/pbkdf2"
+	"golang.org/x/time/rate"
+)
 
 //import "github.com/txthinking/socks5"
 

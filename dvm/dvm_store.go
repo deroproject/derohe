@@ -16,9 +16,12 @@
 
 package dvm
 
-import "fmt"
-import "encoding/binary"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"encoding/binary"
+	"fmt"
+
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+)
 
 // this package exports an interface which is used by blockchain to persist/query data
 

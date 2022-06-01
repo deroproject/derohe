@@ -17,11 +17,13 @@
 package rpc
 
 //import "fmt"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
+import (
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 // this function is only used by the RPC and is not used by the core and should be moved to RPC interface
 

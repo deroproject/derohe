@@ -16,13 +16,16 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/dvm"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/dvm"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 //import "github.com/deroproject/derosuite/blockchain"
 

@@ -16,17 +16,18 @@
 
 package block
 
-import "fmt"
-import "hash"
-import "sync"
-import "bytes"
-import "strings"
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"hash"
+	"strings"
+	"sync"
 
-import "golang.org/x/crypto/sha3"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/pow"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/pow"
+	"golang.org/x/crypto/sha3"
+)
 
 const MINIBLOCK_SIZE = 48
 

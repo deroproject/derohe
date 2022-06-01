@@ -16,16 +16,19 @@
 
 package rpc
 
-import "fmt"
-import "bytes"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"runtime/debug"
 
-//import "github.com/deroproject/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
+)
+
+//import "github.com/stratumfarm/derohe/blockchain"
 
 // only give random members who have not been used in last 5 blocks
 func GetRandomAddress(ctx context.Context, p rpc.GetRandomAddress_Params) (result rpc.GetRandomAddress_Result, err error) {

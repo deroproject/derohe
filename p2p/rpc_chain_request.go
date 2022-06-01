@@ -21,8 +21,10 @@ package p2p
 
 //import "container/list"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
+import (
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+)
 
 //import "github.com/deroproject/derosuite/blockchain"
 

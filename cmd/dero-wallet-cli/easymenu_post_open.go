@@ -16,26 +16,25 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "errors"
-import "runtime"
-import "strings"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
-import "path/filepath"
-import "encoding/json"
+	"github.com/chzyer/readline"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+)
 
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
-
-//import "github.com/deroproject/derohe/address"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
+//import "github.com/stratumfarm/derohe/address"
 
 // handle menu if a wallet is currently opened
 func display_easymenu_post_open_command(l *readline.Instance) {

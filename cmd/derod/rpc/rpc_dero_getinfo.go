@@ -16,16 +16,18 @@
 
 package rpc
 
-import "fmt"
-import "time"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/p2p"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+	"time"
 
-import "github.com/deroproject/derohe/blockchain"
+	"github.com/stratumfarm/derohe/blockchain"
+	"github.com/stratumfarm/derohe/config"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/p2p"
+	"github.com/stratumfarm/derohe/rpc"
+)
 
 func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 

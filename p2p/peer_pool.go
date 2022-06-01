@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deroproject/derohe/globals"
+	"github.com/stratumfarm/derohe/globals"
 )
 
 //import "encoding/binary"

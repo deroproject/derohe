@@ -24,36 +24,37 @@ package explorerlib
 // TODO: error handling is non-existant ( as this was built up in hrs ). Add proper error handling
 //
 
-import "time"
-import "fmt"
+import (
+	"bytes"
+	"context"
+	"embed"
+	"encoding/hex"
+	"fmt"
+	"html/template"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+	"unsafe"
 
-import "embed"
-import "bytes"
-import "unicode"
-import "unsafe" // need to avoid this, but only used by byteviewer
-import "strings"
-import "strconv"
-import "context"
-import "encoding/hex"
-import "net/http"
-import "html/template"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/go-logr/logr"
+	"github.com/gorilla/websocket"
+	"github.com/stratumfarm/derohe/block"
+	"github.com/stratumfarm/derohe/cryptography/crypto"
+	"github.com/stratumfarm/derohe/globals"
+	"github.com/stratumfarm/derohe/glue/rwc"
+	"github.com/stratumfarm/derohe/proof"
+	"github.com/stratumfarm/derohe/rpc"
+	"github.com/stratumfarm/derohe/transaction"
+)
+
+// need to avoid this, but only used by byteviewer
 
 //import "encoding/json"
 //import "io/ioutil"
-
-import "github.com/go-logr/logr"
-
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/proof"
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "github.com/gorilla/websocket"
 
 //go:embed templates/*.tmpl
 var tpls embed.FS

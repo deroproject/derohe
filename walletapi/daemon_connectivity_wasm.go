@@ -31,7 +31,7 @@ import "time"
 import "context"
 import "net/http"
 
-import "github.com/deroproject/derohe/glue/rwc"
+import "github.com/stratumfarm/derohe/glue/rwc"
 
 import "github.com/creachadair/jrpc2"
 import "github.com/creachadair/jrpc2/channel"
