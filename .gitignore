@@ -1,3 +1,5 @@
 .vscode
 cmd/derod/mainnet
 cmd/derod/testnet
+testnet_wallet.db
+testnet_wallet.db.bak
