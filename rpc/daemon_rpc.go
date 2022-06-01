@@ -323,3 +323,12 @@ type GasEstimate_Result struct {
 	GasStorage uint64 `json:"gasstorage"`
 	Status     string `json:"status"`
 }
+
+type (
+	CheckAddressStatusParams struct {
+		Address string `json:"address"`
+	}
+	CheckAddressStatusResult struct {
+		Registered bool `json:"registered"`
+	}
+)

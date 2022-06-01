@@ -340,6 +340,7 @@ var servicemux = handler.ServiceMap{
 		"NameToAddress":              handler.New(NameToAddress),
 		"GetPeers":                   handler.New(GetPeersInfo),
 		"GetConnections":             handler.New(GetConnections),
+		"CheckAddressStatus":         handler.New(CheckAddressStatus),
 	},
 	"DAEMON": handler.Map{
 		"Echo": handler.New(DAEMON_Echo),
