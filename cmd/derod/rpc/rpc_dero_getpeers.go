@@ -20,8 +20,34 @@ import (
 	"context"
 
 	"github.com/stratumfarm/derohe/p2p"
+	"github.com/stratumfarm/derohe/rpc"
 )
 
-func GetPeersInfo(ctx context.Context) (result *p2p.PeersInfo) {
-	return p2p.GetPeersInfo()
+func GetPeers(ctx context.Context) (result *rpc.GetPeersResult) {
+	p := p2p.GetPeersInfo()
+	return &rpc.GetPeersResult{
+		Peers:         toRpcPeers(p.Peers),
+		WhitelistSize: p.WhitelistSize,
+		GreylistSize:  p.GreylistSize,
+	}
+}
+
+func toRpcPeers(p []*p2p.Peer) []*rpc.Peer {
+	rp := make([]*rpc.Peer, len(p))
+	for i, v := range p {
+		rp[i] = &rpc.Peer{
+			Address:          v.Address,
+			ID:               v.ID,
+			Miner:            v.Miner,
+			LastConnected:    v.LastConnected,
+			FailCount:        v.FailCount,
+			ConnectAfter:     v.ConnectAfter,
+			BlacklistBefore:  v.BlacklistBefore,
+			GoodCount:        v.GoodCount,
+			Version:          v.Version,
+			Whitelist:        v.Whitelist,
+			ConnectionStatus: v.ConnectionStatus,
+		}
+	}
+	return rp
 }
