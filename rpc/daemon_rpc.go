@@ -323,3 +323,37 @@ type GasEstimate_Result struct {
 	GasStorage uint64 `json:"gasstorage"`
 	Status     string `json:"status"`
 }
+<<<<<<< HEAD
+=======
+
+type (
+	GetPeersParams struct{}
+	GetPeersResult struct {
+		Peers         []*Peer `json:"peers"`
+		WhitelistSize int     `json:"whitelist_size"`
+		GreylistSize  int     `json:"greylist_size"`
+	}
+	Peer struct {
+		Address          string `json:"address"`         // pairs in the ip:port or dns:port, basically  endpoint
+		ID               uint64 `json:"peerid"`          // peer id
+		Miner            bool   `json:"miner"`           // miner
+		LastConnected    uint64 `json:"lastconnected"`   // epoch time when it was connected , 0 if never connected
+		FailCount        uint64 `json:"failcount"`       // how many times have we failed  (tcp errors)
+		ConnectAfter     uint64 `json:"connectafter"`    // we should connect when the following timestamp passes
+		BlacklistBefore  uint64 `json:"blacklistbefore"` // peer blacklisted till epoch , priority nodes are never blacklisted, 0 if not blacklist
+		GoodCount        uint64 `json:"goodcount"`       // how many times peer has been shared with us
+		Version          int    `json:"version"`         // version 1 is original C daemon peer, version 2 is golang p2p version
+		Whitelist        bool   `json:"whitelist"`
+		ConnectionStatus string `json:"connectionstatus"`
+	}
+)
+
+type (
+	CheckAddressStatusParams struct {
+		Address string `json:"address"`
+	}
+	CheckAddressStatusResult struct {
+		Registered bool `json:"registered"`
+	}
+)
+>>>>>>> f492d5e (refactor: getpeers to be more consistant)
