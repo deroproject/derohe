@@ -354,3 +354,34 @@ type (
 		Registered bool `json:"registered"`
 	}
 )
+
+type (
+	GetConnectionParams struct{}
+	GetConnectionResult struct {
+		Connections []*Connection `json:"connections"`
+	}
+	Connection struct {
+		Height                int64  `json:"height"`                // last height sent by peer  ( first member alignments issues)
+		StableHeight          int64  `json:"stableHeight"`          // last stable height
+		TopoHeight            int64  `json:"topoHeight"`            // topo height, current topo height, this is the only thing we require for syncing
+		Pruned                int64  `json:"pruned"`                // till where chain has been pruned on this node
+		LastObjectRequestTime int64  `json:"lastObjectRequestTime"` // when was the last item placed in object list
+		Latency               int64  `json:"latency"`               // time.Duration            // latency to this node when sending timed sync
+		BytesIn               uint64 `json:"bytesIn"`               // total bytes in
+		BytesOut              uint64 `json:"bytesOut"`              // total bytes out
+		Top_Version           uint64 `json:"topVersion"`            // current hard fork version supported by peer
+		Peer_ID               uint64 `json:"peer_ID"`               // Remote peer id
+		Port                  uint32 `json:"port"`                  // port advertised by other end as its server,if it's 0 server cannot accept connections
+		State                 uint32 `json:"state"`                 // state of the connection
+		Syncing               int32  `json:"syncing"`               // denotes whether we are syncing and thus stop pinging
+		StateHash             string `json:"stateHash"`             // statehash at the top
+		Created               string `json:"created"`               // when was object created
+		Incoming              bool   `json:"incoming"`              // is connection incoming or outgoing
+		Addr                  string `json:"addr"`                  // endpoint on the other end
+		SyncNode              bool   `json:"syncNode"`              // whether the peer has been added to command line as sync node
+		ProtocolVersion       string `json:"protocolVersion"`
+		Tag                   string `json:"tag"` // tag for the other end
+		DaemonVersion         string `json:"daemonVersion"`
+		Top_ID                string `json:"topID"` // top block id of the connection
+	}
+)

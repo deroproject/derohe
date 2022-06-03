@@ -20,8 +20,42 @@ import (
 	"context"
 
 	"github.com/stratumfarm/derohe/p2p"
+	"github.com/stratumfarm/derohe/rpc"
 )
 
-func GetConnections(ctx context.Context) (result []*p2p.Connection) {
-	return p2p.GetConnections()
+func GetConnections(ctx context.Context) (result rpc.GetConnectionResult) {
+	return rpc.GetConnectionResult{
+		Connections: toRpcConnections(p2p.GetConnections()),
+	}
+}
+
+func toRpcConnections(c []*p2p.Connection) []*rpc.Connection {
+	rc := make([]*rpc.Connection, len(c))
+	for i, v := range c {
+		rc[i] = &rpc.Connection{
+			Height:                v.Height,
+			StableHeight:          v.StableHeight,
+			TopoHeight:            v.TopoHeight,
+			Pruned:                v.Pruned,
+			LastObjectRequestTime: v.LastObjectRequestTime,
+			Latency:               v.Latency,
+			BytesIn:               v.BytesIn,
+			BytesOut:              v.BytesOut,
+			Top_Version:           v.Top_Version,
+			Peer_ID:               v.Peer_ID,
+			Port:                  v.Port,
+			State:                 v.State,
+			Syncing:               v.Syncing,
+			StateHash:             v.StateHash.String(),
+			Created:               v.Created.String(),
+			Incoming:              v.Incoming,
+			Addr:                  v.Addr.String(),
+			SyncNode:              v.SyncNode,
+			ProtocolVersion:       v.ProtocolVersion,
+			Tag:                   v.Tag,
+			DaemonVersion:         v.DaemonVersion,
+			Top_ID:                v.Top_ID.String(),
+		}
+	}
+	return nil
 }
