@@ -33,6 +33,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -294,7 +295,7 @@ func main() {
 
 	go func() {
 		var gracefulStop = make(chan os.Signal, 1)
-		signal.Notify(gracefulStop, os.Interrupt) // listen to all signals
+		signal.Notify(gracefulStop, os.Interrupt, syscall.SIGINT, syscall.SIGTERM) // listen to all signals
 		for {
 			sig := <-gracefulStop
 			fmt.Printf("received signal %s\n", sig)

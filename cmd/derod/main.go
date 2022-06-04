@@ -32,6 +32,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/chzyer/readline"
@@ -338,7 +339,7 @@ func main() {
 
 	go func() {
 		var gracefulStop = make(chan os.Signal, 1)
-		signal.Notify(gracefulStop, os.Interrupt) // listen to all signals
+		signal.Notify(gracefulStop, os.Interrupt, syscall.SIGINT, syscall.SIGTERM) // listen to all signals
 		for {
 			sig := <-gracefulStop
 			logger.Info("received signal", "signal", sig)
