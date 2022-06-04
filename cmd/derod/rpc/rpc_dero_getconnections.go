@@ -57,5 +57,5 @@ func toRpcConnections(c []*p2p.Connection) []*rpc.Connection {
 			Top_ID:                v.Top_ID.String(),
 		}
 	}
-	return nil
+	return rc
 }
