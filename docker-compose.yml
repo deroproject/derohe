@@ -1,0 +1,21 @@
+---
+version: "3.8"
+services:
+  derod:
+    build: .
+    volumes:
+      - ./testnet:/testnet
+    ports:
+      - 127.0.0.1:10100:10100
+      - 44044:44044/udp
+      - 127.0.0.1:40402:40402
+      - 127.0.0.1:40403:40403
+    networks:
+      default:
+    tty: true
+    command:
+      - screen -S dero 
+      - /app/derod 
+      - --testnet 
+      - --p2p-bind=0.0.0.0:44044 
+      - --rpc-bind=0.0.0.0:40402
