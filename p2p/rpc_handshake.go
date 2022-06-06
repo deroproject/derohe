@@ -24,12 +24,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/blang/semver/v4"
 	"github.com/stratumfarm/derohe/config"
 	"github.com/stratumfarm/derohe/globals"
 )
 
 // verify incoming handshake for number of checks such as mainnet/testnet etc etc
 func Verify_Handshake(handshake *Handshake_Struct) bool {
+	v := semver.MustParse(handshake.DaemonVersion)
+	var pre int
+	fmt.Sscanf(v.Pre[0].String(), "%d", &pre)
+	if pre < 78 {
+		return false
+	}
+
 	return bytes.Equal(handshake.Network_ID[:], globals.Config.Network_ID[:])
 }
 

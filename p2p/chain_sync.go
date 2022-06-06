@@ -121,6 +121,9 @@ func (connection *Connection) sync_chain() {
 
 try_again:
 
+	request = Chain_Request_Struct{}
+	response = Chain_Response_Struct{}
+
 	// send our blocks, first 10 blocks directly, then decreasing in powers of 2
 	start_point := chain.Load_TOPO_HEIGHT()
 	for i := int64(0); i < start_point; {
@@ -171,6 +174,7 @@ try_again:
 		connection.logger.V(3).Info("rewinding status", "our topoheight", chain.Load_TOPO_HEIGHT(), "peer topoheight", response.Start_topoheight)
 		pop_count := chain.Load_TOPO_HEIGHT() - response.Start_topoheight
 		chain.Rewind_Chain(int(pop_count)) // pop as many blocks as necessary
+		pop_count = 0
 
 		// we should NOT queue blocks, instead we sent our chain request again
 		goto try_again
@@ -249,8 +253,8 @@ try_again:
 		return
 	}
 
-	// response only 128 blocks at a time
-	max_blocks_to_queue := 128
+	// response only 4096 blocks at a time
+	max_blocks_to_queue := 4096
 	// check whether the objects are in our db or not
 	// until we put in place a parallel object tracker, do it one at a time
 
