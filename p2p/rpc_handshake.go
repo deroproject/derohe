@@ -31,10 +31,15 @@ import "github.com/blang/semver/v4"
 // verify incoming handshake for number of checks such as mainnet/testnet etc etc
 func Verify_Handshake(handshake *Handshake_Struct) bool {
 	v := semver.MustParse(handshake.DaemonVersion)
-	var pre int
-	fmt.Sscanf(v.Pre[0].String(), "%d", &pre)
-	if pre < 78 {
-		return false
+
+	if v.Major >= 3 && v.Minor >= 5 && v.Patch >= 0 {
+
+	} else {
+		var pre int
+		fmt.Sscanf(v.Pre[0].String(), "%d", &pre) // make sure previous releases can connect
+		if pre < 88 {
+			return false
+		}
 	}
 
 	return bytes.Equal(handshake.Network_ID[:], globals.Config.Network_ID[:])
