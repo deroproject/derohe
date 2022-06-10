@@ -1,6 +1,8 @@
 package astrobwtv3
 
 import "fmt"
+
+//import "os"
 import "math/bits"
 import "encoding/binary"
 import "crypto/rand"
@@ -36,14 +38,14 @@ func AstroBWTv3(input []byte) (outputhash [32]byte) {
 	scratch := Pool.Get().(*ScratchData)
 	defer Pool.Put(scratch)
 
-	/*	defer func() {
-			if r := recover(); r != nil { // if something happens due to RAM issues in miner, we should continue, avoiding crashes if possible
-				var buf [16]byte
-				rand.Read(buf[:])
-				outputhash = sha256.Sum256(buf[:]) // return a random falsified hash which will fail the check
-			}
-		}()
-	*/
+	defer func() {
+		if r := recover(); r != nil { // if something happens due to RAM issues in miner, we should continue, avoiding crashes if possible
+			var buf [16]byte
+			rand.Read(buf[:])
+			outputhash = sha256.Sum256(buf[:]) // return a random falsified hash which will fail the check
+		}
+	}()
+
 	var step_3 [256]byte
 	var counter [16]byte
 
@@ -2423,11 +2425,12 @@ func AstroBWTv3(input []byte) (outputhash [32]byte) {
 
 		step_3[255] = step_3[255] ^ step_3[pos1] ^ step_3[pos2]
 
+		copy(scratch.data[(tries-1)*256:], step_3[:]) // copy all the tmp states
+
 		if tries > 260+16 || (step_3[255] >= 0xf0 && tries > 260) { // keep looping until condition is satisfied
 			break
 		}
 
-		copy(scratch.data[(tries-1)*256:], step_3[:]) // copy all the tmp states
 	}
 
 	if CALCULATE_DISTRIBUTION {
@@ -2444,7 +2447,6 @@ func AstroBWTv3(input []byte) (outputhash [32]byte) {
 	if LittleEndian {
 		scratch.hasher.Reset()
 		scratch.hasher.Write(scratch.sa_bytes[:data_len*4])
-
 	} else {
 		var s [MAX_LENGTH * 4]byte
 		for i, c := range scratch.sa[:data_len] {
