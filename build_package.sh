@@ -43,7 +43,7 @@ CURRENT_DIRECTORY=${PWD##*/}
 OUTPUT="$package_name" # if no src file given, use current dir name
 
 GCFLAGS=""
-#if [[ "${OUTPUT}" == "dero-miner" ]]; then GCFLAGS="github.com/deroproject/derohe/astrobwt=-B"; fi
+#if [[ "${OUTPUT}" == "dero-miner" ]]; then GCFLAGS="github.com/stratumfarm/derohe/astrobwt=-B"; fi
 
 for PLATFORM in $PLATFORMS; do
   GOOS=${PLATFORM%/*}

@@ -1,6 +1,6 @@
 ### Welcome to the DEROHE Testnet
 
-[Explorer](https://testnetexplorer.dero.io) [Source](https://github.com/deroproject/derohe) [Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Wiki](https://wiki.dero.io) [Github](https://github.com/deroproject/derohe) [DERO CryptoNote Mainnet Stats](http://network.dero.io) [Mainnet WebWallet](https://wallet.dero.io/) 
+[Explorer](https://testnetexplorer.dero.io) [Source](https://github.com/stratumfarm/derohe) [Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Wiki](https://wiki.dero.io) [Github](https://github.com/stratumfarm/derohe) [DERO CryptoNote Mainnet Stats](http://network.dero.io) [Mainnet WebWallet](https://wallet.dero.io/) 
 
 ### DERO HE Changelog
 

@@ -439,7 +439,7 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 				// due to overheads
 				// if the other end is > 2 blocks forwards, do not broadcast block to him
 				peer_height := atomic.LoadInt64(&v.Height)
-				if (our_height-peer_height) > 2 || (peer_height - our_height) > 2 {
+				if (our_height-peer_height) > 2 || (peer_height-our_height) > 2 {
 					continue
 				}
 
@@ -504,7 +504,7 @@ func broadcast_Chunk(chunk *Block_Chunk, PeerID uint64, first_seen int64) { // i
 			// every peer will keep on broadcasting and thus making it more lagging
 			// due to overheads
 			peer_height := atomic.LoadInt64(&v.Height)
-			if (our_height-peer_height) > 3 || (peer_height - our_height) > 3 {
+			if (our_height-peer_height) > 3 || (peer_height-our_height) > 3 {
 				continue
 			}
 
@@ -679,10 +679,10 @@ func trigger_sync() {
 
 		//connection.Lock()   recursive mutex are not suported
 		// only choose highest available peers for syncing
-		if atomic.LoadUint32(&connection.State) != HANDSHAKE_PENDING && (height < atomic.LoadInt64(&connection.Height) ||  (connection.SyncNode && height >  (atomic.LoadInt64(&connection.Height)+2)) ) { // skip pre-handshake connections
+		if atomic.LoadUint32(&connection.State) != HANDSHAKE_PENDING && (height < atomic.LoadInt64(&connection.Height) || (connection.SyncNode && height > (atomic.LoadInt64(&connection.Height)+2))) { // skip pre-handshake connections
 			// check whether we are lagging with this connection
 			//connection.Lock()
-			islagging := (height < atomic.LoadInt64(&connection.Height) ||  (connection.SyncNode && height >  (atomic.LoadInt64(&connection.Height)+2)) )
+			islagging := (height < atomic.LoadInt64(&connection.Height) || (connection.SyncNode && height > (atomic.LoadInt64(&connection.Height)+2)))
 
 			//fmt.Printf("checking cdiff is lagging %+v  topoheight %d peer topoheight %d \n", islagging, topoheight, connection.TopoHeight)
 
@@ -695,9 +695,8 @@ func trigger_sync() {
 				}
 
 				time.Sleep(time.Second)
-					height := chain.Get_Height()
-					islagging = (height < atomic.LoadInt64(&connection.Height) ||  (connection.SyncNode && height >  (atomic.LoadInt64(&connection.Height)+2)) )
-				
+				height := chain.Get_Height()
+				islagging = (height < atomic.LoadInt64(&connection.Height) || (connection.SyncNode && height > (atomic.LoadInt64(&connection.Height)+2)))
 
 				if islagging {
 					//connection.Lock()
@@ -720,7 +719,7 @@ func trigger_sync() {
 					}
 					break
 				}
-				
+
 			}
 		}
 

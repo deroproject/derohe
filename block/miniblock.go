@@ -24,8 +24,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/stratumfarm/derohe/astrobwt"
+	"github.com/stratumfarm/derohe/astrobwt/astrobwtv3"
 	"github.com/stratumfarm/derohe/cryptography/crypto"
-	"github.com/stratumfarm/derohe/pow"
+	"github.com/stratumfarm/derohe/globals"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -110,7 +112,10 @@ func (mbl *MiniBlock) GetHash() (result crypto.Hash) {
 
 // Get PoW hash , this is very slow function
 func (mbl *MiniBlock) GetPoWHash() (hash crypto.Hash) {
-	return pow.Pow(mbl.Serialize())
+	if mbl.Height < uint64(globals.Config.MAJOR_HF2_HEIGHT) {
+		return astrobwt.POW16(mbl.Serialize())
+	}
+	return astrobwtv3.AstroBWTv3(mbl.Serialize())
 }
 
 func (mbl *MiniBlock) SanityCheck() error {

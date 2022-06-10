@@ -1,6 +1,6 @@
 ### Welcome to the DEROHE Testnet
 
-[Explorer](https://testnetexplorer.dero.io) [Source](https://github.com/deroproject/derohe) [Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Wiki](https://wiki.dero.io) [Github](https://github.com/deroproject/derohe) [DERO CryptoNote Mainnet Stats](http://network.dero.io) [Mainnet WebWallet](https://wallet.dero.io/) 
+[Explorer](https://testnetexplorer.dero.io) [Source](https://github.com/stratumfarm/derohe) [Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Wiki](https://wiki.dero.io) [Github](https://github.com/stratumfarm/derohe) [DERO CryptoNote Mainnet Stats](http://network.dero.io) [Mainnet WebWallet](https://wallet.dero.io/) 
 
 ### DERO HE [ DERO Homomorphic Encryption]
 
@@ -225,7 +225,7 @@ Wallet RPC Default Port: 40403
 #### Installation From Source
 
 1. Install Golang, Golang version 1.12.12 required.  
-2. In go workspace: ```go get -u github.com/deroproject/derohe/...```  
+2. In go workspace: ```go get -u github.com/stratumfarm/derohe/...```  
 3. Check go workspace bin folder for binaries. 
 4. For example on Linux machine following binaries will be created:
    1. derod-linux-amd64 -> DERO daemon.  

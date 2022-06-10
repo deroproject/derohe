@@ -1,9 +1,9 @@
-1] ### DEROHE Installation, https://github.com/deroproject/derohe  
+1] ### DEROHE Installation, https://github.com/stratumfarm/derohe  
 
         DERO is written in golang and very easy to install both from source and binary.
 Installation From Source:  
     Install Golang, minimum Golang 1.17 required.
-    In go workspace: go get -u github.com/deroproject/derohe/...
+    In go workspace: go get -u github.com/stratumfarm/derohe/...
     Check go workspace bin folder for binaries.
     For example on Linux machine following binaries will be created:
         derod-linux-amd64 -> DERO daemon.
@@ -12,7 +12,7 @@ Installation From Source:
 
 Installation From Binary  
         Download DERO binaries for ARM, INTEL, MAC platform and Windows, Mac, FreeBSD, OpenBSD, Linux etc. operating systems.  
-https://github.com/deroproject/derohe/releases
+https://github.com/stratumfarm/derohe/releases
 
 2] ### Running DERO Daemon  
 ./derod-linux-amd64 
