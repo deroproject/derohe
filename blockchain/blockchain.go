@@ -476,8 +476,6 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 	}
 
-	
-
 	if bl.Height > uint64(chain.Get_Height()+2) {
 		return fmt.Errorf("advance Block"), false // block in future skipping it
 	}

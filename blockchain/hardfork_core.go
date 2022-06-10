@@ -46,13 +46,14 @@ var mainnet_hard_forks = []Hard_fork{
 	// {1, 0,0,0,0,true}, // dummy entry so as we can directly use the fork index into this entry
 	{1, 0, 0, 0, 0, true}, // version 1 hard fork where genesis block landed and chain migration occurs
 	// version 1 has difficulty hardcoded to 1
-	//{2, 10, 0, 0, 0, true}, // version 2 hard fork where SC gets update functionality , it's mandatory
+	{2, config.Mainnet.MAJOR_HF2_HEIGHT, 0, 0, 0, true}, // version 2 hard fork where PoW gets changed
 	//    {3, 721000, 0, 0, 0, true}, // version 3 hard fork emission fix, it's mandatory
 }
 
 // current testnet_hard_forks
 var testnet_hard_forks = []Hard_fork{
-	{1, 0, 0, 0, 0, true}, // version 1 hard fork where genesis block landed
+	{1, 0, 0, 0, 0, true},                               // version 1 hard fork where genesis block landed
+	{2, config.Testnet.MAJOR_HF2_HEIGHT, 0, 0, 0, true}, // version 2 hard fork where PoW gets changed
 	//{3, 0, 0, 0, 0, true}, // version 3 hard fork where we started , it's mandatory
 	//{4, 3, 0, 0, 0, true}, // version 4 hard fork where we change mining algorithm it's mandatory
 }
@@ -83,7 +84,6 @@ func init_hard_forks(params map[string]interface{}) {
 			current_hard_forks = testnet_hard_forks
 			logger.V(1).Info("testnet hardforks are online")
 		}
-
 	}
 
 	// if voting in progress, load all votes from db, since we do not store votes in disk,

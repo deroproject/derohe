@@ -26,7 +26,9 @@ import "encoding/binary"
 import "golang.org/x/crypto/sha3"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/pow"
+import "github.com/deroproject/derohe/astrobwt"
+import "github.com/deroproject/derohe/astrobwt/astrobwtv3"
+import "github.com/deroproject/derohe/globals"
 
 const MINIBLOCK_SIZE = 48
 
@@ -109,7 +111,10 @@ func (mbl *MiniBlock) GetHash() (result crypto.Hash) {
 
 // Get PoW hash , this is very slow function
 func (mbl *MiniBlock) GetPoWHash() (hash crypto.Hash) {
-	return pow.Pow(mbl.Serialize())
+	if mbl.Height < uint64(globals.Config.MAJOR_HF2_HEIGHT) {
+		return astrobwt.POW16(mbl.Serialize())
+	}
+	return astrobwtv3.AstroBWTv3(mbl.Serialize())
 }
 
 func (mbl *MiniBlock) SanityCheck() error {
