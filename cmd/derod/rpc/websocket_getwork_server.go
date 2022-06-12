@@ -8,39 +8,35 @@ import (
 	"sort"
 	"time"
 
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"math/big"
+	"net"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/graviton"
+	"github.com/go-logr/logr"
 	"github.com/lesismal/llib/std/crypto/tls"
+	"github.com/lesismal/nbio"
+	"github.com/lesismal/nbio/logging"
 	"github.com/lesismal/nbio/nbhttp"
 	"github.com/lesismal/nbio/nbhttp/websocket"
 )
 
-import "github.com/lesismal/nbio"
-import "github.com/lesismal/nbio/logging"
-
-import "net"
-import "bytes"
-import "encoding/hex"
-import "encoding/json"
-import "runtime"
-import "strings"
-import "math/big"
-import "crypto/ecdsa"
-import "crypto/elliptic"
-
-import "sync/atomic"
-import "crypto/rand"
-import "crypto/x509"
-import "encoding/pem"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/graviton"
-import "github.com/go-logr/logr"
-
 // this file implements the non-blocking job streamer
 // only job is to stream jobs to thousands of workers, if any is successful,accept and report back
-
-import "sync"
 
 var memPool = sync.Pool{
 	New: func() interface{} {
@@ -64,8 +60,14 @@ type user_session struct {
 	address_sum   [32]byte
 }
 
+type banned struct {
+	fail_count uint8
+	timestamp  time.Time
+}
+
 var client_list_mutex sync.Mutex
 var client_list = map[*websocket.Conn]*user_session{}
+var ban_list = make(map[string]banned)
 
 var miners_count int
 
@@ -218,6 +220,7 @@ func newUpgrader() *websocket.Upgrader {
 		}
 
 		sess := c.Session().(*user_session)
+		miner := ParseIPNoError(c.RemoteAddr().String())
 
 		client_list_mutex.Lock()
 		defer client_list_mutex.Unlock()
@@ -249,6 +252,14 @@ func newUpgrader() *websocket.Upgrader {
 				rate_lock.Lock()
 				defer rate_lock.Unlock()
 				mini_found_time = append(mini_found_time, time.Now().Unix())
+
+				// Reset fail count in case of valid PoW
+				for i, t := range ban_list {
+					if miner == i {
+						t.fail_count = 0
+						ban_list[miner] = t
+					}
+				}
 			} else {
 				sess.blocks++
 				atomic.AddInt64(&CountBlocks, 1)
@@ -258,6 +269,17 @@ func newUpgrader() *websocket.Upgrader {
 		if !sresult || err != nil {
 			sess.rejected++
 			atomic.AddInt64(&CountMinisRejected, 1)
+
+			// Increase fail count and ban miner in case of 3 invalid PoW's in a row
+			i := ban_list[miner]
+			i.fail_count++
+			if i.fail_count >= 3 {
+				i.timestamp = time.Now()
+				c.Close()
+				delete(client_list, c)
+				logger_getwork.Info("Banned miner", "Address", miner, "Info", "Banned")
+			}
+			ban_list[miner] = i
 		}
 
 	})
@@ -291,6 +313,21 @@ func onWebsocket(w http.ResponseWriter, r *http.Request) {
 		//panic(err)
 		return
 	}
+
+	// Check incoming connections if ban still exists
+	// Ban is active for 15 minutes
+	miner := ParseIPNoError(r.RemoteAddr)
+	for i, t := range ban_list {
+		if miner == i {
+			if time.Now().Sub(t.timestamp) < time.Minute*15 {
+				logger_getwork.V(1).Info("Banned miner", "Address", i, "Info", "Ban still active")
+				conn.Close()
+			} else {
+				delete(ban_list, i)
+			}
+		}
+	}
+
 	wsConn := conn.(*websocket.Conn)
 
 	session := user_session{address: *addr, address_sum: graviton.Sum(addr_raw)}
@@ -453,4 +490,23 @@ func generate_random_tls_cert() tls.Certificate {
 		panic(err)
 	}
 	return tlsCert
+}
+
+func ParseIP(s string) (string, error) {
+	ip, _, err := net.SplitHostPort(s)
+	if err == nil {
+		return ip, nil
+	}
+
+	ip2 := net.ParseIP(s)
+	if ip2 == nil {
+		return "", fmt.Errorf("invalid IP")
+	}
+
+	return ip2.String(), nil
+}
+
+func ParseIPNoError(s string) string {
+	ip, _ := ParseIP(s)
+	return ip
 }
