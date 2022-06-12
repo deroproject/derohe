@@ -4,6 +4,7 @@ import "os"
 import "fmt"
 import "math/rand"
 import "testing"
+import "encoding/hex"
 
 var cases [][]byte
 
@@ -36,8 +37,8 @@ var random_pow_tests = []PowTest{
 	{"715c3d8c61a967b7664b1413f8af5a2a9ba0005922cb0ba4fac8a2d502b92cd6", "abc"},
 	{"74cc16efc1aac4768eb8124e23865da4c51ae134e29fa4773d80099c8bd39ab8", "abcd"},
 	{"d080d0484272d4498bba33530c809a02a4785368560c5c3eac17b5dacd357c4b", "abcde"},
-	{"ecd6e38831e64304071517c2eaa2f8a90333643849b672e81ab72c41d1237e9c", "abcdef"},
-	{"18dae03cfaedbe50859e19f599ea39aa541058a8c536b5697032d484c3747d74", "abcdefg"},
+	{"813e89e0484cbd3fbb3ee059083af53ed761b770d9c245be142c676f669e4607", "abcdef"},
+	{"3972fe8fe2c9480e9d4eff383b160e2f05cc855dc47604af37bc61fdf20f21ee", "abcdefg"},
 	{"f96191b7e39568301449d75d42d05090e41e3f79a462819473a62b1fcc2d0997", "abcdefgh"},
 	{"8c76af6a57dfed744d5b7467fa822d9eb8536a851884aa7d8e3657028d511322", "abcdefghi"},
 	{"f838568c38f83034b2ff679d5abf65245bd2be1b27c197ab5fbac285061cf0a7", "abcdefghij"},
@@ -49,6 +50,25 @@ func TestAstroBWTv3(t *testing.T) {
 		s := fmt.Sprintf("%x", AstroBWTv3([]byte(g.in)))
 		if s != g.out {
 			t.Fatalf("Pow function: pow(%s) = %s want %s", g.in, s, g.out)
+		}
+	}
+}
+
+func TestAstroBWTv3repeattest(t *testing.T) {
+	data, _ := hex.DecodeString("419ebb000000001bbdc9bf2200000000635d6e4e24829b4249fe0e67878ad4350000000043f53e5436cf610000086b00")
+
+	var random_data [48]byte
+
+	for i := 0; i < 1024; i++ {
+		rand.Read(random_data[:])
+
+		if i%2 == 0 {
+			hash := fmt.Sprintf("%x", AstroBWTv3(data[:]))
+			if hash != "c392762a462fd991ace791bfe858c338c10c23c555796b50f665b636cb8c8440" {
+				t.Fatalf("%d test failed hash %s", i, hash)
+			}
+		} else {
+			_ = AstroBWTv3(random_data[:])
 		}
 	}
 }
