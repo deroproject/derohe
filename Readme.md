@@ -4,14 +4,14 @@
 
 ### DERO HE [ DERO Homomorphic Encryption]
 
-[From Wikipedia: ](https://en.wikipedia.org/wiki/Homomorphic_encryption) 
+[From Wikipedia:](https://en.wikipedia.org/wiki/Homomorphic_encryption) 
 
-**Homomorphic encryption is a form of encryption allowing one to perform calculations on encrypted data without decrypting it first. The result of the computation is in an encrypted form, when decrypted the output is the same as if the operations had been performed on the unencrypted data.**
+**Homomorphic encryption is a form of encryption allowing one to perform calculations on encrypted data without decrypting it first. The result of the computation is in an encrypted form such that when decrypted the output is the same as if the operations had been performed on the unencrypted data.**
 
-Homomorphic encryption can be used for privacy-preserving outsourced storage and computation. This allows data to be encrypted and out-sourced to commercial cloud environments for processing, all while encrypted. In highly regulated industries, such as health care, homomorphic encryption can be used to enable new services by removing privacy barriers inhibiting data sharing. For example, predictive analytics in health care can be hard to apply via a third party service provider due to medical data privacy concerns, but if the predictive analytics service provider can operate on encrypted data instead, these privacy concerns are diminished.  
+Homomorphic encryption can be used for privacy-preserving outsourced storage and computation. This allows data to be encrypted and outsourced to commercial cloud environments for processing, all while encrypted. In highly regulated industries, such as health care, homomorphic encryption can be used to enable new services by removing privacy barriers inhibiting data sharing. For example, predictive analytics in health care can be hard to apply via a third party service provider due to medical data privacy concerns, but if the predictive analytics service provider can operate on encrypted data instead, these privacy concerns are diminished.  
 
-**DERO is pleased to announce release of DERO Homomorphic Encryption Protocol testnet.** 
-DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphic Encryption Blockchain Protocol(DHEBP).
+**DERO is pleased to announce the release of the DERO Homomorphic Encryption Protocol testnet.** 
+DERO will migrate from the exisiting CryptoNote Protocol to its own DERO Homomorphic Encryption Blockchain Protocol (DHEBP).
 
 ### Table of Contents [DEROHE]
 
@@ -42,50 +42,50 @@ DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphi
 
 #### ABOUT DERO PROJECT
 
-&nbsp; &nbsp; &nbsp; &nbsp; [DERO](https://github.com/deroproject/derosuite) is decentralized DAG(Directed Acyclic Graph) based blockchain with enhanced reliability, privacy, security, and usability. Consensus algorithm is PoW based on [DERO AstroBWT: ASIC/FPGA/GPU resistant CPU mining algorithm ](https://github.com/deroproject/astrobwt). DERO is industry leading and the first blockchain to have bulletproofs, TLS encrypted Network.  
-&nbsp; &nbsp; &nbsp; &nbsp; DERO is the first crypto project to combine a Proof of Work blockchain with a DAG block structure and fully anonymous transactions based on [Homomorphic Encryption](https://en.wikipedia.org/wiki/Homomorphic_encryption). The fully distributed ledger processes transactions with a sixty-seconds average block time and is secure against majority hashrate attacks. DERO will be the first Homomorphic Encryption based blockchain to have smart contracts on its native chain without any extra layers or secondary blockchains. At present DERO has Smart Contracts on old CryptoNote protocol [testnet](https://github.com/deroproject/documentation/blob/master/testnet/stargate.md).
+&nbsp; &nbsp; &nbsp; &nbsp; [DERO](https://github.com/deroproject/derosuite) is a decentralized DAG (Directed Acyclic Graph) based blockchain with enhanced reliability, privacy, security, and usability. The consensus algorithm is PoW based on [DERO AstroBWT: ASIC/FPGA/GPU resistant CPU mining algorithm ](https://github.com/deroproject/astrobwt). DERO is industry leading and the first blockchain to have bulletproofs, TLS encrypted Network.  
+&nbsp; &nbsp; &nbsp; &nbsp; DERO is the first crypto project to combine a Proof of Work blockchain with a DAG block structure and fully anonymous transactions based on [Homomorphic Encryption](https://en.wikipedia.org/wiki/Homomorphic_encryption). The fully distributed ledger processes transactions with a sixty-second average block time and is secure against the majority of hashrate attacks. DERO will be the first Homomorphic Encryption based blockchain to have smart contracts on its native chain without any extra layers or secondary blockchains. At present DERO has Smart Contracts on the old CryptoNote protocol [testnet](https://github.com/deroproject/documentation/blob/master/testnet/stargate.md).
 
 #### DERO HE Features
 
-1. **Homomorphic account based model** [First privacy chain to have this.](Check  blockchain/transaction_execute.go line 82-95).
+1. **Homomorphic account based model** [First privacy chain to have this.](Check blockchain/transaction_execute.go line 82-95).
 
-2. Instant account balances[ Need to get 66 bytes of data only from the blockchain]. 
+2. Instant account balances [Need to get 66 bytes of data only from the blockchain]. 
 
-3. DAG/MINIDAG with 1 miniblock every second
+3. DAG/MINIDAG with 1 miniblock every second.
 
-4. Mining Decentralization.No more mining pools, daily 100000 reward blocks, no need for pools and thus no attacks
+4. Mining Decentralization. No more mining pools, daily 100000 reward blocks, no need for pools and thus no attacks.
 
 5. Erasure coded blocks, lower bandwidth requirements, very low propagation time.
 
-6. No more chain scanning  or wallet scanning to detect funds, no key images etc.
+6. No more chain scanning or wallet scanning to detect funds, no key images etc.
 
-7. Truly light weight and efficient wallets.
+7. Truly lightweight and efficient wallets.
 
-8. Fixed per account cost of  66 bytes in blockchain[Immense scalability].
+8. Fixed per-account cost of 66 bytes in the blockchain [Immense scalability].
 
 9. Perfectly anonymous transactions with many-out-of-many proofs [bulletproofs and sigma protocol]
 
-10. Deniability
+10. Deniability.
 
-11. Fixed transaction size say  ~2.5KB (ring size 8) or ~3.4 KB (ring size 16) etc based on chosen anonymity group size[ logarithmic growth]
+11. Fixed transaction size, say ~2.5KB (ring size 8) or ~3.4 KB (ring size 16), etc, based on chosen anonymity group size [logarithmic growth]
 
 12. Anonymity group can be chosen in powers of 2.
 
-13. Allows homomorphic assets ( programmable SCs with fixed overhead per asset ), with open Smart Contract but encrypted data [Internal testing/implementation not on this current testnet branch].
+13. Allows homomorphic assets (programmable SCs with fixed overhead per asset), with open Smart Contract but encrypted data [Internal testing/implementation not on this current testnet branch].
 
-14. Allows open assets ( programmable SCs with fixed overhead per asset ) [Internal testing/implementation not on this current testnet branch]
+14. Allows open assets  programmable SCs with fixed overhead per asset) [Internal testing/implementation not on this current testnet branch].
 
 15. Allows chain pruning on daemons to control growth of data on daemons. 
 
 16. Transaction generation takes less than 25 ms.
 
-17. Transaction verification takes even less than 25ms time.
+17. Transaction verification takes even less than 25 ms time.
 
 18. No trusted setup, no hidden parameters.
 
-19. Pruning chain/history for immense scalibility[while still secured using merkle proofs].
+19. Pruning chain/history for immense scalibility [while still secured using merkle proofs].
 
-20. Example disk  requirements of 1 billion accounts ( assumming it does not want to keep history of transactions, but keeps proofs to prove that the node is in sync with all other nodes)
+20. Example disk requirements of 1 billion accounts (assumming it does not want to keep a history of transactions, but keeps proofs to prove that the node is in sync with all other nodes)
     
     ```
     Requirement of 1 account = 66 bytes
@@ -94,12 +94,12 @@ DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphi
     Assuming we are off by factor of 4 = 800GB
     ```
 
-21. Note that, Even after 1 trillion transactions, 1 billion accounts will consume 800GB only, If history is not maintained, and everything still will be in proved state using merkle roots.
-    And so, Even Raspberry Pi can host the entire chain.
+21. Note that even after 1 trillion transactions, 1 billion accounts will consume onlyn 800 GB, if history is not maintained, and everything will still be in a proved state using merkle roots.
+    And so even a Raspberry Pi can host the entire chain.
 
-22. Senders can prove to receiver what amount they have send (without revealing themselves).
+22. Senders can prove to a receiver what amount they have sent (without revealing themselves).
 
-23. Worlds first Erasure Coded Propagation protocol, which allows 100x block size without increasing propagation delays.
+23. World's first Erasure Coded Propagation protocol, which allows 100x block size without increasing propagation delays.
 
 24. Entire chain is rsyncable while in operation.
 
@@ -122,10 +122,10 @@ DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphi
 
 #### DERO Crypto
 
-&nbsp; &nbsp; &nbsp; &nbsp; Secure and fast crypto is the basic necessity of this project and adequate amount of time has been devoted to develop/study/implement/audit it. Most of the crypto such as ring signatures have been studied by various researchers and are in production by number of projects. As far as the Bulletproofs are considered, since DERO is the first one to implement/deploy, they have been given a more detailed look. First, a bare bones bulletproofs was implemented, then implementations in development were studied (Benedict Bunz,XMR, Dalek Bulletproofs) and thus improving our own implementation.  
-&nbsp; &nbsp; &nbsp; &nbsp; Some new improvements were discovered and implemented (There are number of other improvements which are not explained here). Major improvements are in the Double-Base Double-Scalar Multiplication while validating bulletproofs. A typical bulletproof takes ~15-17 ms to verify. Optimised bulletproofs takes ~1 to ~2 ms(simple bulletproof, no aggregate/batching). Since, in the case of bulletproofs the bases are fixed, we can use precompute table to convert 64*2 Base Scalar multiplication into doublings and additions (NOTE: We do not use Bos-Coster/Pippienger methods). This time can be again easily decreased to .5 ms with some more optimizations. With batching and aggregation, 5000 range-proofs (~2500 TX) can be easily verified on even a laptop. The implementation for bulletproofs is in github.com/deroproject/derosuite/crypto/ringct/bulletproof.go , optimized version is in github.com/deroproject/derosuite/crypto/ringct/bulletproof_ultrafast.go
+&nbsp; &nbsp; &nbsp; &nbsp; Secure and fast crypto is the basic necessity of this project and adequate time has been devoted to develop/study/implement/audit it. Most of the crypto such as ring signatures have been studied by various researchers and are in production by a number of projects. As far as the Bulletproofs, since DERO is the first one to implement/deploy, they have been given a more detailed look. First, a bare-bones bulletproof was implemented, then implementations in development were studied (Benedict Bunz,XMR, Dalek Bulletproofs) to improve our own implementation.  
+&nbsp; &nbsp; &nbsp; &nbsp; Some new improvements were discovered and implemented (There are number of other improvements which are not explained here). Major improvements are in the Double-Base Double-Scalar Multiplication while validating bulletproofs. A typical bulletproof takes ~15-17 ms to verify. Optimised bulletproofs take ~1 to ~2 ms (simple bulletproof, no aggregate/batching). Since in the case of bulletproofs the bases are fixed, we can use precompute table to convert 64\*2 Base Scalar multiplication into doublings and additions (NOTE: We do not use Bos-Coster/Pippienger methods). This time can be again easily decreased to .5 ms with some more optimizations. With batching and aggregation, 5000 range-proofs (~2500 TX) can be easily verified even on a laptop. The implementation for bulletproofs is in github.com/deroproject/derosuite/crypto/ringct/bulletproof.go, the optimized version is in github.com/deroproject/derosuite/crypto/ringct/bulletproof_ultrafast.go
 
-&nbsp; &nbsp; &nbsp; &nbsp; There are other optimizations such as base-scalar multiplication could be done in less than a microsecond. Some of these optimizations are not yet deployed and may be deployed at a later stage.  
+&nbsp; &nbsp; &nbsp; &nbsp; There are other optimizations such as base-scalar multiplication which could be done in less than a microsecond. Some of these optimizations are not yet deployed and may be deployed at a later stage.  
 
 #### DEROHE PORTS
 
@@ -141,26 +141,26 @@ Wallet RPC Default Port: 40403
 
 #### Technical
 
-&nbsp; &nbsp; &nbsp; &nbsp; For specific details of current DERO core (daemon) implementation and capabilities, see below:  
+&nbsp; &nbsp; &nbsp; &nbsp; For specific details of the current DERO core (daemon) implementation and its capabilities, see below:  
 
-1. **DAG:** No orphan blocks, No soft-forks.
-2. **BulletProofs:** Zero Knowledge range-proofs(NIZK)
-3. **AstroBWT:** This is memory-bound algorithm. This provides assurance that all miners are equal. ( No miner has any advantage over common miners).
+1. **DAG:** No orphan blocks, no soft-forks.
+2. **BulletProofs:** Zero Knowledge range-proofs (NIZK)
+3. **AstroBWT:** This is a memory-bound algorithm. This provides assurance that all miners are equal. (No miner has any advantage over common miners).
 4. **P2P Protocol:** This layers controls exchange of blocks, transactions and blockchain itself.
-5. **Pederson Commitment:** (Part of ring confidential transactions): Pederson commitment algorithm is a cryptographic primitive that allows user to commit to a chosen value  while keeping it hidden to others. Pederson commitment  is used to hide all amounts without revealing the actual amount. It is a homomorphic commitment scheme.
-6. **Homomorphic Encryption:** Homomorphic Encryption is used to to do operations such as addition/substraction to settle balances with data being always encrypted (Balances are never decrypted before/during/after operations in any form.).
-7. **Homomorphic Ring Confidential Transactions:** Gives untraceability , privacy and fungibility while making sure that the system is stable and secure.
-8. **Core-Consensus Protocol implemented:** Consensus protocol serves 2 major purpose
+5. **Pederson Commitment:** (Part of ring confidential transactions): The Pederson commitment algorithm is a cryptographic primitive that allows a user to commit to a chosen value while keeping it hidden to others. Pederson commitment is used to hide all amounts without revealing the actual amount. It is a homomorphic commitment scheme.
+6. **Homomorphic Encryption:** Homomorphic Encryption is used to do operations such as addition/substraction to settle balances with data being always encrypted (Balances are never decrypted before/during/after operations in any form).
+7. **Homomorphic Ring Confidential Transactions:** Gives untraceability, privacy, and fungibility while making sure that the system is stable and secure.
+8. **Core-Consensus Protocol implemented:** The consensus protocol serves 2 major purposes:
    1. Protects the system from adversaries and protects it from forking and tampering.
-   2. Next block in the chain is the one and only correct version of truth ( balances).
-9. **Proof-of-Work(PoW) algorithm:**  PoW part of core consensus protocol which is used to cryptographically prove that X amount of work has been done to successfully find a block.
-10. **Difficulty algorithm**: Difficulty algorithm controls the system so as blocks are found roughly at the same speed, irrespective of the number and amount of mining power deployed.
-11. **Serialization/De-serialization of blocks**: Capability to encode/decode/process blocks .
-12. **Serialization/De-serialization of transactions**: Capability to encode/decode/process transactions.
-13. **Transaction validity and verification**: Any transactions flowing within the DERO network are validated,verified.
-14. **Socks proxy:** Socks proxy has been implemented and integrated within the daemon to decrease user identifiability and improve user anonymity.
-15. **Interactive daemon** can print blocks, txs, even entire blockchain from within the daemon 
-16. **status, diff, print_bc, print_block, print_tx** and several other commands implemented
+   2. Next block in the chain is the one and only correct version of truth (balances).
+9. **Proof-of-Work(PoW) algorithm:**  The PoW part of the core consensus protocol which is used to cryptographically prove that X amount of work has been done to successfully find a block.
+10. **Difficulty algorithm:** The difficulty algorithm controls the system so that blocks are found roughly at the same speed, irrespective of the number and amount of mining power deployed.
+11. **Serialization/De-serialization of blocks:** Capability to encode/decode/process blocks.
+12. **Serialization/De-serialization of transactions:** Capability to encode/decode/process transactions.
+13. **Transaction validity and verification:** Any transactions flowing within the DERO network are validated and verified.
+14. **Socks proxy:** A socks proxy has been implemented and integrated within the daemon to decrease user identifiability and improve user anonymity.
+15. **Interactive daemon:** Can print blocks, txs, even entire blockchain from within the daemon 
+16. **status, diff, print_bc, print_block, print_tx** and several other commands are implemented
 17. GO DERO Daemon has both mainnet, testnet support.
 18. **Enhanced Reliability, Privacy, Security, Useability, Portabilty assured.**
 
@@ -171,12 +171,12 @@ Wallet RPC Default Port: 40403
 - 60 Second Block time.
 - Extremely fast transactions with one minute/block confirmation time.
 - SSL/TLS P2P Network.
-- Homomorphic: Fully Encrypted Blockchain
+- Homomorphic: Fully Encrypted Blockchain.
 - [Dero Fastest Rocket BulletProofs](#dero-rocket-bulletproofs): Zero Knowledge range-proofs(NIZK). 
 - Ring signatures.
 - Fully Auditable Supply.
-- DERO blockchain is written from scratch in Golang. [See all unique blockchains from scratch.](https://twitter.com/cryptic_monk/status/999227961059528704) 
-- Developed and maintained by original developers.
+- The DERO blockchain is written from scratch in Golang. [See all unique blockchains from scratch.](https://twitter.com/cryptic_monk/status/999227961059528704) 
+- Developed and maintained by the original developers.
 
 #### DERO Innovations
 
@@ -184,7 +184,7 @@ Wallet RPC Default Port: 40403
 
 #### DERO DAG
 
-&nbsp; &nbsp; &nbsp; &nbsp; DERO DAG implementation builds outs a main chain from the DAG network of blocks which refers to main blocks (100% reward) and side blocks (8% rewards).  
+&nbsp; &nbsp; &nbsp; &nbsp; The DERO DAG implementation builds outs a main chain from the DAG network of blocks which refers to main blocks (100% reward) and side blocks (8% rewards).
 
 ![DERO DAG stats.dero.io](https://raw.githubusercontent.com/deroproject/documentation/master/images/Dag1.jpeg)  
 *DERO DAG Screenshot* [Live](https://stats.dero.io/)  
@@ -194,11 +194,11 @@ Wallet RPC Default Port: 40403
 
 #### **Erasure Coded Blocks**
 
-        Traditional Blockchains process blocks as single unit of computation(if a double-spend tx occurs within the block, entire block is rejected). As soon as a block is found, it is sent to all its peers.DERO blockchain erasure codes the block into 48 chunks, dispersing and chunks are dispersed to peers randomly.Any peer receiving any 16 chunks( from 48 chunks) can regerate the block and thus lower overheads and lower propagation time.
+        Traditional Blockchains process each block as a single unit of computation (if a double-spend tx occurs within the block, the entire block is rejected). As soon as a block is found, it is sent to all its peers. The DERO blockchain erasure codes the block into 48 chunks, and chunks are dispersed to peers randomly. Any peer receiving any 16 chunks (from 48 chunks) can regenerate the block and thus lower overheads and lower propagation time.
 
 #### Client Protocol
 
-&nbsp; &nbsp; &nbsp; &nbsp; Traditional Blockchains process blocks as single unit of computation(if a double-spend tx occurs within the block, entire block is rejected). However DERO network accepts such blocks since DERO blockchain considers transaction as a single unit of computation.DERO blocks may contain duplicate or double-spend transactions which are filtered by client protocol and ignored by the network. DERO DAG processes transactions atomically one transaction at a time.
+&nbsp; &nbsp; &nbsp; &nbsp; Traditional Blockchains process each block as single unit of computation (if a double-spend tx occurs within the block, the entire block is rejected). However the DERO network accepts such blocks, since the DERO blockchain considers transaction as a single unit of computation. DERO blocks may contain duplicate or double-spend transactions which are filtered by the client protocol and ignored by the network. The DERO DAG processes transactions atomically, one transaction at a time.
 
 #### DERO Rocket Bulletproofs
 
@@ -262,14 +262,14 @@ Contact for support of other hardware and OS.
 
 #### Running DERO Wallet
 
-Dero cmdline wallet is most reliable and has support of all functions. Cmdline wallet is most secure and reliable.
+The DERO cmdline wallet is most secure and reliable and has support of all functions.
 
 #### DERO Cmdline Wallet
 
-&nbsp; &nbsp; &nbsp; &nbsp; DERO cmdline wallet is menu based and very easy to operate. 
-Use various options to create, recover, transfer balance etc.  
-**NOTE:** DERO cmdline wallet by default connects DERO daemon running on local machine on port 20206.  
-If DERO daemon is not running start DERO wallet with --remote option like following:  
+&nbsp; &nbsp; &nbsp; &nbsp; The DERO cmdline wallet is menu-based and very easy to operate. 
+Use various options to create, recover, transfer balance, etc.  
+**NOTE:** The DERO cmdline wallet by default connects to the DERO daemon running on the local machine on port 20206.  
+If the DERO daemon is not running, start DERO wallet with the `--remote` option like the following:  
 **./dero-wallet-cli-linux-amd64 --remote** 
 
 ![DERO Wallet](https://raw.githubusercontent.com/deroproject/documentation/master/images/wallet-recover2.png)  
@@ -277,17 +277,17 @@ If DERO daemon is not running start DERO wallet with --remote option like follow
 
 #### DERO Explorer
 
-[DERO Explorer](https://explorer.dero.io/) is used to check and confirm transaction  on DERO Network.  
-[DERO testnet Explorer](https://testnetexplorer.dero.io/) is used to check and confirm transaction  on DERO Network.  
-DERO users can run their own explorer on local machine and can [browse](http://127.0.0.1:8080) on local machine port 8080.  
+[DERO Explorer](https://explorer.dero.io/) is used to check and confirm transaction on the DERO Network.  
+[DERO testnet Explorer](https://testnetexplorer.dero.io/) is used to check and confirm transaction on the DERO Network.  
+DERO users can run their own explorer on a local machine and can [browse](http://127.0.0.1:8080) on the local machine's port 8080.  
 ![DERO Explorer](https://github.com/deroproject/documentation/raw/master/images/dero_explorer.png)
 *DERO EXPLORER Screenshot*  
 
 #### Proving DERO Transactions
 
-DERO blockchain is completely private, so anyone cannot view, confirm, verify any other's wallet balance or any transactions. 
+The DERO blockchain is completely private, so no one can view, confirm, or verify anyone else's wallet balance or any transactions. 
 So to prove any transaction you require *TXID* and *deroproof*.  
-deroproof can be obtained using get_tx_key command in dero-wallet-cli.  
+deroproof can be obtained using the get_tx_key command in dero-wallet-cli.  
 Enter the *TXID* and *deroproof* in [DERO EXPLORER](https://testnetexplorer.dero.io)  
 ![DERO Explorer Proving Transaction](https://github.com/deroproject/documentation/raw/master/images/explorer-prove-tx.png)
 *DERO Explorer Proving Transaction*  
