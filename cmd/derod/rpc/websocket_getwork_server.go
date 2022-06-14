@@ -60,8 +60,17 @@ type user_session struct {
 	address_sum   [32]byte
 }
 
+type banned struct {
+	fail_count uint8
+	timestamp  time.Time
+}
+
 var client_list_mutex sync.Mutex
 var client_list = map[*websocket.Conn]*user_session{}
+
+var ban_time = time.Minute * 15
+var ban_list_mutex sync.Mutex
+var ban_list = make(map[string]banned)
 
 var miners_count int
 
@@ -214,6 +223,7 @@ func newUpgrader() *websocket.Upgrader {
 		}
 
 		sess := c.Session().(*user_session)
+		miner := ParseIPNoError(c.RemoteAddr().String())
 
 		client_list_mutex.Lock()
 		defer client_list_mutex.Unlock()
@@ -245,6 +255,16 @@ func newUpgrader() *websocket.Upgrader {
 				rate_lock.Lock()
 				defer rate_lock.Unlock()
 				mini_found_time = append(mini_found_time, time.Now().Unix())
+
+				// Reset fail count in case of valid PoW
+				ban_list_mutex.Lock()
+				for i, t := range ban_list {
+					if miner == i {
+						t.fail_count = 0
+						ban_list[miner] = t
+					}
+				}
+				ban_list_mutex.Unlock()
 			} else {
 				sess.blocks++
 				atomic.AddInt64(&CountBlocks, 1)
@@ -254,6 +274,19 @@ func newUpgrader() *websocket.Upgrader {
 		if !sresult || err != nil {
 			sess.rejected++
 			atomic.AddInt64(&CountMinisRejected, 1)
+
+			// Increase fail count and ban miner in case of 3 invalid PoW's in a row
+			ban_list_mutex.Lock()
+			i := ban_list[miner]
+			i.fail_count++
+			if i.fail_count >= 3 {
+				i.timestamp = time.Now()
+				c.Close()
+				delete(client_list, c)
+				logger_getwork.Info("Banned miner", "Address", miner, "Info", "Banned")
+			}
+			ban_list[miner] = i
+			ban_list_mutex.Unlock()
 		}
 
 	})
@@ -287,6 +320,23 @@ func onWebsocket(w http.ResponseWriter, r *http.Request) {
 		//panic(err)
 		return
 	}
+
+	// Check incoming connections if ban still exists
+	// Ban is active for 15 minutes
+	miner := ParseIPNoError(r.RemoteAddr)
+	ban_list_mutex.Lock()
+	for i, t := range ban_list {
+		if miner == i {
+			if time.Now().Sub(t.timestamp) < ban_time {
+				logger_getwork.V(1).Info("Banned miner", "Address", i, "Info", "Ban still active")
+				conn.Close()
+			} else {
+				delete(ban_list, i)
+			}
+		}
+	}
+	ban_list_mutex.Unlock()
+
 	wsConn := conn.(*websocket.Conn)
 
 	session := user_session{address: *addr, address_sum: graviton.Sum(addr_raw)}
@@ -449,4 +499,23 @@ func generate_random_tls_cert() tls.Certificate {
 		panic(err)
 	}
 	return tlsCert
+}
+
+func ParseIP(s string) (string, error) {
+	ip, _, err := net.SplitHostPort(s)
+	if err == nil {
+		return ip, nil
+	}
+
+	ip2 := net.ParseIP(s)
+	if ip2 == nil {
+		return "", fmt.Errorf("invalid IP")
+	}
+
+	return ip2.String(), nil
+}
+
+func ParseIPNoError(s string) string {
+	ip, _ := ParseIP(s)
+	return ip
 }
