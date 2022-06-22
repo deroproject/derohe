@@ -220,6 +220,56 @@ var execution_tests_functions = []struct {
 		Variable{Type: String, ValueString: string("")},
 	},
 	{
+		"tolower()",
+		`Function TestRun(input String) String
+		 30 return  tolower(input)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("A0b1C2d3E5f6")},
+		nil,
+		Variable{Type: String, ValueString: string("a0b1c2d3e5f6")},
+	},
+	{
+		"toupper()",
+		`Function TestRun(input String) String
+		 30 return  toupper(input)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("A0b1C2d3E5f6")},
+		nil,
+		Variable{Type: String, ValueString: string("A0B1C2D3E5F6")},
+	},
+	{
+		"subfield()",
+		`Function TestRun(input String) String
+		 30 return  subfield(input, ":", 3)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("This::is:a:test")},
+		nil,
+		Variable{Type: String, ValueString: string("a")},
+	},
+	{
+		"subfield()",
+		`Function TestRun(input String) String
+		 30 return  subfield(input, ":", 5)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("This::is:a:test")},
+		nil,
+		Variable{Type: String, ValueString: string("")},
+	},
+	{
+		"subfield()",
+		`Function TestRun(input String) String
+		 30 return  subfield(input, ":", 1)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("This::is:a:test")},
+		nil,
+		Variable{Type: String, ValueString: string("")},
+	},
+	{
 		"mapget()",
 		`Function TestRun(input String) String
 		 10 mapstore("input",input)
