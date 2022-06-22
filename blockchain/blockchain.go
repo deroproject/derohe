@@ -476,6 +476,16 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		}
 	}
 
+	if bl.Height > uint64(chain.Get_Height()+2) {
+		return fmt.Errorf("advance Block"), false // block in future skipping it
+	}
+
+	if bl.Height > uint64(config.STABLE_LIMIT) {
+		if bl.Height < uint64(chain.Get_Height()-config.STABLE_LIMIT) {
+			return fmt.Errorf("previous Block"), false // block in past skipping it
+		}
+	}
+
 	// only 1 tips allowed in block
 	if len(bl.Tips) > 1 {
 		block_logger.V(1).Error(fmt.Errorf("More than 1 tips present in block rejecting"), "")

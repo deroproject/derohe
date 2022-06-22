@@ -278,53 +278,57 @@ func main() {
 				return
 			default:
 			}
-			our_height := chain.Get_Height()
-			best_height, best_topo_height := p2p.Best_Peer_Height()
-			peer_count := p2p.Peer_Count()
-			topo_height := chain.Load_TOPO_HEIGHT()
 
-			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
-			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
+			func() {
+				defer globals.Recover(0) // a panic might occur, due to some rare file system issues, so skip them
+				our_height := chain.Get_Height()
+				best_height, best_topo_height := p2p.Best_Peer_Height()
+				peer_count := p2p.Peer_Count()
+				topo_height := chain.Load_TOPO_HEIGHT()
 
-			// only update prompt if needed
-			if last_second != time.Now().Unix() || last_our_height != our_height || last_best_height != best_height || last_peer_count != peer_count || last_topo_height != topo_height || last_mempool_tx_count != mempool_tx_count || last_regpool_tx_count != regpool_tx_count {
-				// choose color based on urgency
-				color := "\033[32m" // default is green color
-				if our_height < best_height {
-					color = "\033[33m" // make prompt yellow
-				} else if our_height > best_height {
-					color = "\033[31m" // make prompt red
+				mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
+				regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
+
+				// only update prompt if needed
+				if last_second != time.Now().Unix() || last_our_height != our_height || last_best_height != best_height || last_peer_count != peer_count || last_topo_height != topo_height || last_mempool_tx_count != mempool_tx_count || last_regpool_tx_count != regpool_tx_count {
+					// choose color based on urgency
+					color := "\033[32m" // default is green color
+					if our_height < best_height {
+						color = "\033[33m" // make prompt yellow
+					} else if our_height > best_height {
+						color = "\033[31m" // make prompt red
+					}
+
+					pcolor := "\033[32m" // default is green color
+					if peer_count < 1 {
+						pcolor = "\033[31m" // make prompt red
+					} else if peer_count <= 8 {
+						pcolor = "\033[33m" // make prompt yellow
+					}
+
+					hash_rate_string := hashratetostring(chain.Get_Network_HashRate())
+
+					testnet_string := ""
+					if globals.IsMainnet() {
+						testnet_string = "\033[31m MAINNET"
+					} else {
+						testnet_string = "\033[31m TESTNET"
+					}
+
+					testnet_string += " " + strconv.Itoa(chain.MiniBlocks.Count()) + " " + globals.GetOffset().Round(time.Millisecond).String() + "|" + globals.GetOffsetNTP().Round(time.Millisecond).String() + "|" + globals.GetOffsetP2P().Round(time.Millisecond).String()
+
+					miner_count := derodrpc.CountMiners()
+					l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO HE: \033[0m"+color+"%d/%d [%d/%d] "+pcolor+"P %d TXp %d:%d \033[32mNW %s >MN %d %s>>\033[0m ", our_height, topo_height, best_height, best_topo_height, peer_count, mempool_tx_count, regpool_tx_count, hash_rate_string, miner_count, testnet_string))
+					l.Refresh()
+					last_second = time.Now().Unix()
+					last_our_height = our_height
+					last_best_height = best_height
+					last_peer_count = peer_count
+					last_mempool_tx_count = mempool_tx_count
+					last_regpool_tx_count = regpool_tx_count
+					last_topo_height = best_topo_height
 				}
-
-				pcolor := "\033[32m" // default is green color
-				if peer_count < 1 {
-					pcolor = "\033[31m" // make prompt red
-				} else if peer_count <= 8 {
-					pcolor = "\033[33m" // make prompt yellow
-				}
-
-				hash_rate_string := hashratetostring(chain.Get_Network_HashRate())
-
-				testnet_string := ""
-				if globals.IsMainnet() {
-					testnet_string = "\033[31m MAINNET"
-				} else {
-					testnet_string = "\033[31m TESTNET"
-				}
-
-				testnet_string += " " + strconv.Itoa(chain.MiniBlocks.Count()) + " " + globals.GetOffset().Round(time.Millisecond).String() + "|" + globals.GetOffsetNTP().Round(time.Millisecond).String() + "|" + globals.GetOffsetP2P().Round(time.Millisecond).String()
-
-				miner_count := derodrpc.CountMiners()
-				l.SetPrompt(fmt.Sprintf("\033[1m\033[32mDERO HE: \033[0m"+color+"%d/%d [%d/%d] "+pcolor+"P %d TXp %d:%d \033[32mNW %s >MN %d %s>>\033[0m ", our_height, topo_height, best_height, best_topo_height, peer_count, mempool_tx_count, regpool_tx_count, hash_rate_string, miner_count, testnet_string))
-				l.Refresh()
-				last_second = time.Now().Unix()
-				last_our_height = our_height
-				last_best_height = best_height
-				last_peer_count = peer_count
-				last_mempool_tx_count = mempool_tx_count
-				last_regpool_tx_count = regpool_tx_count
-				last_topo_height = best_topo_height
-			}
+			}()
 			time.Sleep(1 * time.Second)
 		}
 	}()
