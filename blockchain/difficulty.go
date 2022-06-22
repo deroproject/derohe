@@ -230,6 +230,11 @@ func Get_Difficulty_At_Tips(source DiffProvider, tips []crypto.Hash) *big.Int {
 		return GenesisDifficulty
 	}
 
+	// after thr HF keep difficulty in control
+	if height >= globals.Config.MAJOR_HF2_HEIGHT && height <= (globals.Config.MAJOR_HF2_HEIGHT+2) {
+		return GenesisDifficulty
+	}
+
 	tip_difficulty := source.Load_Block_Difficulty(tips[0])
 	tip_time := source.Load_Block_Timestamp(tips[0])
 

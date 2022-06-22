@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -21,11 +22,33 @@ import (
 )
 
 var js = flag.Bool("json", false, "Output as JSON")
+var level = flag.Int("check-level", 0, "Check microarchitecture level. Exit code will be 0 if supported")
 
 func main() {
 	flag.Parse()
+	if level != nil && *level > 0 {
+		if *level < 1 || *level > 4 {
+			log.Fatalln("Supply CPU level 1-4 to test as argument")
+		}
+		log.Println(cpuid.CPU.BrandName)
+		if cpuid.CPU.X64Level() < *level {
+			// Does os.Exit(1)
+			log.Fatalf("Microarchitecture level %d not supported. Max level is %d.", *level, cpuid.CPU.X64Level())
+		}
+		log.Printf("Microarchitecture level %d is supported. Max level is %d.", *level, cpuid.CPU.X64Level())
+		os.Exit(0)
+	}
 	if *js {
-		b, err := json.MarshalIndent(cpuid.CPU, "", "  ")
+		info := struct {
+			cpuid.CPUInfo
+			Features []string
+			X64Level int
+		}{
+			CPUInfo:  cpuid.CPU,
+			Features: cpuid.CPU.FeatureSet(),
+			X64Level: cpuid.CPU.X64Level(),
+		}
+		b, err := json.MarshalIndent(info, "", "  ")
 		if err != nil {
 			panic(err)
 		}
@@ -40,7 +63,8 @@ func main() {
 	fmt.Println("Threads Per Core:", cpuid.CPU.ThreadsPerCore)
 	fmt.Println("Logical Cores:", cpuid.CPU.LogicalCores)
 	fmt.Println("CPU Family", cpuid.CPU.Family, "Model:", cpuid.CPU.Model)
-	fmt.Println("Features:", fmt.Sprintf(strings.Join(cpuid.CPU.FeatureSet(), ",")))
+	fmt.Println("Features:", strings.Join(cpuid.CPU.FeatureSet(), ","))
+	fmt.Println("Microarchitecture level:", cpuid.CPU.X64Level())
 	fmt.Println("Cacheline bytes:", cpuid.CPU.CacheLine)
 	fmt.Println("L1 Instruction Cache:", cpuid.CPU.Cache.L1I, "bytes")
 	fmt.Println("L1 Data Cache:", cpuid.CPU.Cache.L1D, "bytes")
