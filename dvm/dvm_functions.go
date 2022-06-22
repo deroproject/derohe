@@ -93,6 +93,9 @@ func init() {
 	func_table["max"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_max}}
 	func_table["strlen"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrU: dvm_strlen}}
 	func_table["substr"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrS: dvm_substr}}
+	func_table["tolower"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_tolower}}
+	func_table["toupper"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_toupper}}
+	func_table["subfield"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_subfield}}
 	func_table["panic"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_panic}}
 }
 
@@ -572,6 +575,50 @@ func dvm_substr(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result 
 	}
 
 	return true, substr(input_eval.(string), offset_eval.(uint64), length_eval.(uint64))
+}
+
+func dvm_tolower(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+	input_eval := dvm.eval(expr.Args[0])
+	if _, ok := input_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+
+	return true, strings.ToLower(input_eval.(string))
+}
+
+func dvm_toupper(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+	input_eval := dvm.eval(expr.Args[0])
+	if _, ok := input_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+
+	return true, strings.ToUpper(input_eval.(string))
+}
+
+func dvm_subfield(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
+	checkargscount(3, len(expr.Args)) // check number of arguments
+	input_eval := dvm.eval(expr.Args[0])
+	if _, ok := input_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+	separator_eval := dvm.eval(expr.Args[1])
+	if _, ok := separator_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+	field_eval := dvm.eval(expr.Args[2])
+	if _, ok := field_eval.(uint64); !ok {
+		panic("input argument must be valid uint64")
+	}
+
+	res := ""
+	s := strings.Split(input_eval.(string), separator_eval.(string))
+	if field_eval.(uint64) < uint64(len(s)) {
+		res = s[field_eval.(uint64)]
+	}
+
+	return true, res
 }
 
 func dvm_sha256(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
