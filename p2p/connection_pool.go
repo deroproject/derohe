@@ -418,6 +418,9 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 			globals.Logger.Error(nil, "we want to broadcast block, but donot have peers, most possibly block will go stale")
 			return
 		}
+		if len(connections) == 1 && (PeerID == connections[0].Peer_ID || connections[0].Peer_ID == GetPeerID()) {
+			return
+		}
 		for _, v := range connections {
 			select {
 			case <-Exit_Event:
@@ -460,8 +463,6 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 
 				}(v, count)
 				count++
-			} else if len(connections) == 1 && (PeerID == v.Peer_ID || v.Peer_ID == GetPeerID()) {
-				goto done
 			}
 		}
 	}
