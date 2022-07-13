@@ -460,6 +460,8 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 
 				}(v, count)
 				count++
+			} else if len(connections) == 1 && (PeerID == v.Peer_ID || v.Peer_ID == GetPeerID()) {
+				goto done
 			}
 		}
 	}
