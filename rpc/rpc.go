@@ -4,9 +4,11 @@ import "fmt"
 import "time"
 import "sort"
 import "encoding/json"
+import "math/big"
 
 import "github.com/fxamacker/cbor/v2"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/holiman/uint256"
 
 // this package defines interfaces and necessary glue code Digital Network, it exposes and provides encrypted RPC calls over DERO chain
 
@@ -49,6 +51,7 @@ const (
 	DataString  DataType = "S"
 	DataInt64            = "I"
 	DataUint64           = "U"
+	DataUint256          = "L"
 	DataFloat64          = "F"
 	DataHash             = "H" // a 256 bit hash (basically sha256 of 32 bytes long)
 	DataAddress          = "A" // dero address represented in 33 bytes
@@ -63,6 +66,8 @@ func (d DataType) String() string {
 		return "int64"
 	case DataUint64:
 		return "uint64"
+	case DataUint256:
+		return "uint256"
 	case DataFloat64:
 		return "float64"
 	case DataHash:
@@ -95,6 +100,8 @@ func (arg Argument) String() string {
 		return fmt.Sprintf("Name:%s Type:%s Value:'%d'", arg.Name, arg.DataType, arg.Value)
 	case DataUint64:
 		return fmt.Sprintf("Name:%s Type:%s Value:'%d'", arg.Name, arg.DataType, arg.Value)
+	case DataUint256:
+		return fmt.Sprintf("Name:%s Type:%s Value:'%s'", arg.Name, arg.DataType, arg.Value.(*uint256.Int).String())
 	case DataFloat64:
 		return fmt.Sprintf("Name:%s Type:%s Value:'%f'", arg.Name, arg.DataType, arg.Value)
 	case DataHash:
@@ -194,6 +201,8 @@ func (args Arguments) MarshalBinary() (data []byte, err error) {
 			localmap[arg.Name+string(arg.DataType)] = v
 		case uint64:
 			localmap[arg.Name+string(arg.DataType)] = v
+		case *uint256.Int:
+			localmap[arg.Name+string(arg.DataType)] = v.Bytes()
 		case float64:
 			localmap[arg.Name+string(arg.DataType)] = v
 		case crypto.Hash:
@@ -240,6 +249,13 @@ func (args *Arguments) UnmarshalBinary(data []byte) (err error) {
 		case DataUint64:
 			if value, ok := v.(uint64); ok {
 				arg.Value = value
+			} else {
+				return fmt.Errorf("%+v has invalid data type %T\n", arg, v)
+			}
+		case DataUint256:
+			if value, ok := v.([]byte); ok {
+				z := uint256.NewInt(0)
+				arg.Value = z.SetBytes(value)
 			} else {
 				return fmt.Errorf("%+v has invalid data type %T\n", arg, v)
 			}
@@ -318,6 +334,10 @@ func (args Arguments) Validate_Arguments() error {
 		case DataUint64:
 			if _, ok := arg.Value.(uint64); !ok {
 				return fmt.Errorf("'%s' value should be of type uint64", arg.Name)
+			}
+		case DataUint256:
+			if _, ok := arg.Value.(*uint256.Int); !ok {
+				return fmt.Errorf("'%s' value should be of type uint256", arg.Name)
 			}
 		case DataFloat64:
 			if _, ok := arg.Value.(float64); !ok {
@@ -399,6 +419,15 @@ func (a *Argument) UnmarshalJSON(b []byte) (err error) {
 		if err = json.Unmarshal(raw.Value, &x); err == nil {
 			a.Value = x
 			return
+		}
+	case DataUint256:
+                t := new(big.Int)
+                var t_valid bool
+                if t, t_valid = t.SetString(string(raw.Value), 0); t_valid {
+                        a.Value, _ = uint256.FromBig(t);
+			return
+		} else {
+			err = fmt.Errorf("cannot convert data type %s", raw.DataType)
 		}
 	case DataFloat64:
 		var x float64

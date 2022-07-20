@@ -19,6 +19,7 @@ package dvm
 import "fmt"
 import "encoding/binary"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/holiman/uint256"
 
 // this package exports an interface which is used by blockchain to persist/query data
 
@@ -194,6 +195,8 @@ func (v Variable) Length() (length int64) {
 		length += int64(done) + 1
 	case String:
 		length = int64(len([]byte(v.ValueString)) + 1)
+	case Uint256:
+		length = 32
 	default:
 		panic("unknown variable type not implemented")
 	}
@@ -211,6 +214,10 @@ func (v Variable) MarshalBinary() (data []byte, err error) {
 		data = append(data, buf[:done]...)
 	case String:
 		data = append(data, ([]byte(v.ValueString))...) // string
+	case Uint256:
+		buf := v.ValueUint256.Bytes32()
+		data = append(data, buf[:32]...)
+
 	default:
 		panic("unknown variable type not implemented2")
 	}
@@ -245,6 +252,9 @@ func (v *Variable) UnmarshalBinary(buf []byte) (err error) {
 		v.Type = String
 		v.ValueString = string(buf[:len(buf)-1])
 		return nil
+	case Uint256:
+		v.Type = Uint256
+		v.ValueUint256 = uint256.NewInt(0).SetBytes(buf)
 
 	default:
 		panic("unknown variable type not implemented3")

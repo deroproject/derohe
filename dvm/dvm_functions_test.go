@@ -33,6 +33,46 @@ var execution_tests_functions = []struct {
 	result     Variable // execution result
 }{
 	{
+		"valid  function  testing  UINT64() ",
+		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
+		 10 dim s1, s2 as Uint64
+		 20 dim s3, s4 as Uint256
+		 30 LET s1 = 987654321
+		 40 LET s3 = 987654321
+		 50 IF s1 == UINT64(s3) THEN GOTO 100
+		 60 return 0
+		 100 LET s2 = UINT64("987654321")
+		 110 IF s2*s2 == s3*UINT64(s3) THEN GOTO 200
+		 120 RETURN 1
+		 200 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  UINT256() ",
+		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
+		 10 dim s1, s2 as Uint64
+		 20 dim s3, s4 as Uint256
+		 30 LET s1 = 123456
+		 40 LET s3 = UINT256("123456")
+		 50 IF s1 == s3 THEN GOTO 100
+		 60 return 0
+		 100 LET s2 = UINT256("0xffffffffffffffff")
+		 110 IF (UINT256(s1)*s2) == (UINT256(123456) * UINT256("0xffffffffffffffff")) THEN GOTO 200
+		 120 RETURN 1
+		 200 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
 		"valid  function  testing  BLOCK_HEIGHT() ",
 		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
 		 10 dim s1, s2 as Uint64

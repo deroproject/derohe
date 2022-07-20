@@ -26,12 +26,18 @@ import "go/ast"
 import "go/parser"
 import "go/token"
 import "math"
+import "math/big"
 
 import "runtime/debug"
 import "github.com/blang/semver/v4"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/holiman/uint256"
 
-//import "github.com/deroproject/derohe/rpc"
+// Jul 2022 - DeroHolic: Added Uint256 support
+// Literals are interperated as uint64
+// Binary operations of mixed type (uint64 / uint256) are first casted to uint256
+//	(use function UINT64() on Uint256 expressions to override this behavior)
+// Auto casting when assigning to or returning from different type
 
 type Vtype int
 
@@ -41,6 +47,7 @@ const (
 	Invalid Vtype = 0x3 // default is  invalid
 	Uint64  Vtype = 0x4 // uint64 data type
 	String  Vtype = 0x5 // string
+	Uint256 Vtype = 0x6
 )
 
 var replacer = strings.NewReplacer("< =", "<=", "> =", ">=", "= =", "==", "! =", "!=", "& &", "&&", "| |", "||", "< <", "<<", "> >", ">>", "< >", "!=")
@@ -52,10 +59,11 @@ var replacer = strings.NewReplacer("< =", "<=", "> =", ">=", "= =", "==", "! =",
 // BL_HEIGHT current height of blockchain
 
 type Variable struct {
-	Name        string `cbor:"N,omitempty" json:"N,omitempty"`
-	Type        Vtype  `cbor:"T,omitempty" json:"T,omitempty"` // we have only 2 data types
-	ValueUint64 uint64 `cbor:"V,omitempty" json:"VI,omitempty"`
-	ValueString string `cbor:"V,omitempty" json:"VS,omitempty"`
+	Name		string		`cbor:"N,omitempty" json:"N,omitempty"`
+	Type		Vtype		`cbor:"T,omitempty" json:"T,omitempty"` // we have only 2 data types
+	ValueUint64	uint64		`cbor:"V,omitempty" json:"VI,omitempty"`
+	ValueString	string		`cbor:"V,omitempty" json:"VS,omitempty"`
+	ValueUint256	*uint256.Int	`cbor:"V,omitempty" json:"VI,omitempty"`
 }
 
 type Function struct {
@@ -163,6 +171,8 @@ func check_valid_type(name string) Vtype {
 		return Uint64
 	case "string":
 		return String
+	case "uint256":
+		return Uint256
 	}
 	return Invalid
 }
@@ -311,6 +321,21 @@ func runSmartContract_internal(SC *SmartContract, EntryPoint string, state *Shar
 		switch p.Type {
 		case Uint64:
 			if variable.ValueUint64, err = strconv.ParseUint(value.(string), 0, 64); err != nil {
+				return
+			}
+		case Uint256:
+			t := new(big.Int)
+			var t_valid bool
+
+			if t, t_valid = t.SetString(value.(string), 0); t_valid {
+				var fb_overflow bool
+
+				if variable.ValueUint256, fb_overflow = uint256.FromBig(t); fb_overflow {
+					err = fmt.Errorf("Argument \"%s\" overflow", p.Name)
+					return
+				}
+			} else {
+				err = fmt.Errorf("Argument \"%s\" cannot be parsed", p.Name)
 				return
 			}
 		case String:
@@ -608,6 +633,8 @@ func (dvm *DVM_Interpreter) interpret_PRINT(args []string) (newIP uint64, err er
 					params = append(params, variable.ValueUint64)
 				case String:
 					params = append(params, variable.ValueString)
+				case Uint256:
+					params = append(params, variable.ValueUint256)
 
 				default:
 					panic("Unhandled data_type")
@@ -655,6 +682,8 @@ func (dvm *DVM_Interpreter) interpret_DIM(line []string) (newIP uint64, err erro
 				dvm.Locals[line[i]] = Variable{Name: line[i], Type: Uint64, ValueUint64: uint64(0)}
 			case String:
 				dvm.Locals[line[i]] = Variable{Name: line[i], Type: String, ValueString: ""}
+			case Uint256:
+				dvm.Locals[line[i]] = Variable{Name: line[i], Type: Uint256, ValueUint256: uint256.NewInt(0)}
 
 			default:
 				panic("Unhandled data_type")
@@ -692,9 +721,17 @@ func (dvm *DVM_Interpreter) interpret_LET(line []string) (newIP uint64, err erro
 	//fmt.Printf(" %+v \n", dvm.Locals[line[0]])
 	switch result.Type {
 	case Uint64:
+		if fmt.Sprintf("%T", expr_result) != "uint64" {
+			expr_result = dvm.castToUint64(expr_result)
+		}
 		result.ValueUint64 = expr_result.(uint64)
 	case String:
 		result.ValueString = expr_result.(string)
+	case Uint256:
+		if fmt.Sprintf("%T", expr_result) == "uint64" {
+			expr_result = dvm.castToUint256(expr_result)
+		}
+		result.ValueUint256 = expr_result.(*uint256.Int)
 
 	default:
 		panic("Unhandled data_type")
@@ -776,7 +813,7 @@ func (dvm *DVM_Interpreter) interpret_IF(line []string) (newIP uint64, err error
 		return
 	}
 
-	expr_result := dvm.eval(expr)
+	expr_result := dvm.castToUint64(dvm.eval(expr))
 	//fmt.Printf("if %d %T expr( %s)\n", expr_result, expr_result, replacer.Replace(strings.Join(line, " ")))
 	if result, ok := expr_result.(uint64); ok {
 		if result != 0 {
@@ -819,13 +856,21 @@ func (dvm *DVM_Interpreter) interpret_RETURN(line []string) (newIP uint64, err e
 	}
 
 	expr_result := dvm.eval(expr)
-	//fmt.Printf("expression %+v %T\n", expr_result, expr_result)
 
 	switch dvm.ReturnValue.Type {
 	case Uint64:
+		if fmt.Sprintf("%T", expr_result) != "uint64" {
+			expr_result = dvm.castToUint64(expr_result)
+		}
 		dvm.ReturnValue.ValueUint64 = expr_result.(uint64)
 	case String:
 		dvm.ReturnValue.ValueString = expr_result.(string)
+	case Uint256:
+		if fmt.Sprintf("%T", expr_result) == "uint64" {
+			expr_result = dvm.castToUint256(expr_result)
+		}
+
+		dvm.ReturnValue.ValueUint256 = expr_result.(*uint256.Int)
 
 	default:
 		panic("unexpected data type")
@@ -848,6 +893,36 @@ func (dvm *DVM_Interpreter) eval_identifier(exp ast.Expr) string {
 	}
 }
 
+func (dvm *DVM_Interpreter) castToUint64(x interface{}) interface{} {
+	switch x := x.(type) {
+		case uint64:
+			return x
+		case *uint256.Int:
+			return x.Uint64()
+		case string:
+			panic("unexpected data type")
+	}
+
+	panic("We should never reach here while evaluating expressions")
+
+	return 0
+}
+
+func (dvm *DVM_Interpreter) castToUint256(x interface{}) interface{} {
+	switch x := x.(type) {
+		case uint64:
+			return uint256.NewInt(x)
+		case *uint256.Int:
+			return x
+		case string:
+			panic("unexpected data type")
+	}
+
+	panic("We should never reach here while evaluating expressions")
+
+	return 0
+}
+
 func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 
 	dvm.State.Monitor_ops++ // maintain counter
@@ -864,12 +939,23 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 	case *ast.UnaryExpr: // there are 2 unary operators, one is binary NOT , second is logical not
 		switch exp.Op {
 		case token.XOR:
-			return ^(dvm.eval(exp.X).(uint64))
+			x := dvm.eval(exp.X)
+			switch x := x.(type) {
+			case uint64:
+				return ^x
+			case *uint256.Int:
+				return x.Not(x)
+			case string:
+				panic("unexpected data type")
+			}
+
 		case token.NOT:
 			x := dvm.eval(exp.X)
 			switch x := x.(type) {
 			case uint64:
 				return ^x
+			case *uint256.Int:
+				return x.Not(x)
 			case string:
 				if IsZero(x) == 1 {
 					return uint64(1)
@@ -893,6 +979,8 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 			return dvm.Locals[exp.Name].ValueUint64
 		case String:
 			return dvm.Locals[exp.Name].ValueString
+		case Uint256:
+			return dvm.Locals[exp.Name].ValueUint256
 		default:
 			panic("unexpected data type")
 		}
@@ -919,11 +1007,21 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 
 		arguments := map[string]interface{}{}
 		for i, p := range function_call.Params {
+			expr_result := dvm.eval(exp.Args[i])
+
 			switch p.Type {
 			case Uint64:
-				arguments[p.Name] = fmt.Sprintf("%d", dvm.eval(exp.Args[i]).(uint64))
+				if fmt.Sprintf("%T", expr_result) != "uint64" {
+					expr_result = dvm.castToUint64(expr_result)
+				}
+				arguments[p.Name] = fmt.Sprintf("%d", expr_result.(uint64))
 			case String:
-				arguments[p.Name] = dvm.eval(exp.Args[i]).(string)
+				arguments[p.Name] = expr_result.(string)
+			case Uint256:
+				if fmt.Sprintf("%T", expr_result) == "uint64" {
+					expr_result = dvm.castToUint256(expr_result)
+				}
+				arguments[p.Name] = expr_result.(*uint256.Int).String()
 			}
 		}
 
@@ -939,6 +1037,8 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 			return result.ValueString
 			//default:
 			//      	panic(fmt.Sprintf("unexpected data type %T", function_call.ReturnValue.Type))
+		case Uint256:
+			return result.ValueUint256
 		}
 		return nil
 
@@ -980,6 +1080,10 @@ func IsZero(value interface{}) uint64 {
 		if v == "" {
 			return 1
 		}
+	case *uint256.Int:
+		if v.IsZero() {
+			return 1
+		}
 
 	default:
 		panic("IsZero not being handled")
@@ -1003,25 +1107,35 @@ func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 		return left.(string) + fmt.Sprintf("%d", right)
 	}
 
+	if fmt.Sprintf("%T", left) == "uint64" && fmt.Sprintf("%T", right) == "*uint256.Int" {
+		left = dvm.castToUint256(left)
+	}
+
+	if fmt.Sprintf("%T", left) == "*uint256.Int" && fmt.Sprintf("%T", right) == "uint64" {
+		right = dvm.castToUint256(right)
+	}
+
 	if fmt.Sprintf("%T", left) != fmt.Sprintf("%T", right) {
 		panic(fmt.Sprintf("Expressions cannot be different type(String/Uint64) left (val %+v %+v)   right (%+v %+v)", left, exp.X, right, exp.Y))
 	}
 
 	// logical ops are handled differently
-	switch exp.Op {
-	case token.LAND:
-		if (IsZero(left) == 0) && (IsZero(right) == 0) { // both sides should be set
-			return uint64(1)
-		}
+	if (fmt.Sprintf("%T", left) != "*uint256.Int") {
+		switch exp.Op {
+		case token.LAND:
+			if (IsZero(left) == 0) && (IsZero(right) == 0) { // both sides should be set
+				return uint64(1)
+			}
 
-		return uint64(0)
-	case token.LOR:
-		//fmt.Printf("left %d   right %d\n", left,right)
-		//fmt.Printf("left %v   right %v\n", (IsZero(left) != 0),(IsZero(right) != 0))
-		if (IsZero(left) == 0) || (IsZero(right) == 0) {
-			return uint64(1)
+			return uint64(0)
+		case token.LOR:
+			//fmt.Printf("left %d   right %d\n", left,right)
+			//fmt.Printf("left %v   right %v\n", (IsZero(left) != 0),(IsZero(right) != 0))
+			if (IsZero(left) == 0) || (IsZero(right) == 0) {
+				return uint64(1)
+			}
+			return uint64(0)
 		}
-		return uint64(0)
 	}
 
 	// handle string operands
@@ -1050,59 +1164,141 @@ func (dvm *DVM_Interpreter) evalBinaryExpr(exp *ast.BinaryExpr) interface{} {
 		}
 	}
 
-	left_uint64 := left.(uint64)
-	right_uint64 := right.(uint64)
+	if (fmt.Sprintf("%T", left) == "uint64") {
+		left_uint64 := left.(uint64)
+		right_uint64 := right.(uint64)
 
-	switch exp.Op {
-	case token.ADD:
-		return left_uint64 + right_uint64 // TODO : can we add rounding case here and raise exception
-	case token.SUB:
-		return left_uint64 - right_uint64 // TODO : can we add rounding case here and raise exception
-	case token.MUL:
-		return left_uint64 * right_uint64
-	case token.QUO:
-		return left_uint64 / right_uint64
-	case token.REM:
-		return left_uint64 % right_uint64
+		switch exp.Op {
+		case token.ADD:
+			return left_uint64 + right_uint64 // TODO : can we add rounding case here and raise exception
+		case token.SUB:
+			return left_uint64 - right_uint64 // TODO : can we add rounding case here and raise exception
+		case token.MUL:
+			return left_uint64 * right_uint64
+		case token.QUO:
+			return left_uint64 / right_uint64
+		case token.REM:
+			return left_uint64 % right_uint64
 
-		//bitwise ops
-	case token.AND:
-		return left_uint64 & right_uint64
-	case token.OR:
-		return left_uint64 | right_uint64
-	case token.XOR:
-		return left_uint64 ^ right_uint64
-	case token.SHL:
-		return left_uint64 << right_uint64
-	case token.SHR:
-		return left_uint64 >> right_uint64
+			//bitwise ops
+		case token.AND:
+			return left_uint64 & right_uint64
+		case token.OR:
+			return left_uint64 | right_uint64
+		case token.XOR:
+			return left_uint64 ^ right_uint64
+		case token.SHL:
+			return left_uint64 << right_uint64
+		case token.SHR:
+			return left_uint64 >> right_uint64
 
-	case token.EQL:
-		if left_uint64 == right_uint64 {
-			return uint64(1)
+		case token.EQL:
+			if left_uint64 == right_uint64 {
+				return uint64(1)
+			}
+		case token.NEQ:
+			if left_uint64 != right_uint64 {
+				return uint64(1)
+			}
+		case token.LEQ:
+			if left_uint64 <= right_uint64 {
+				return uint64(1)
+			}
+		case token.GEQ:
+			if left_uint64 >= right_uint64 {
+				return uint64(1)
+			}
+		case token.LSS:
+			if left_uint64 < right_uint64 {
+				return uint64(1)
+			}
+		case token.GTR:
+			if left_uint64 > right_uint64 {
+				return uint64(1)
+			}
+		default:
+			panic("This operation cannot be handled")
 		}
-	case token.NEQ:
-		if left_uint64 != right_uint64 {
-			return uint64(1)
+		return uint64(0)
+	} else {
+		// Uint256
+		x := left.(*uint256.Int)
+		y := right.(*uint256.Int)
+		z := uint256.NewInt(0)
+
+		switch exp.Op {
+		case token.LAND:
+			if (IsZero(left) == 0) && (IsZero(right) == 0) { // both sides should be set
+				return uint256.NewInt(1)
+			}
+			return z
+		case token.LOR:
+			if (IsZero(left) == 0) || (IsZero(right) == 0) {
+				return uint256.NewInt(1)
+			}
+			return z
+		case token.ADD:
+			z.Add(x, y)
+			return z
+		case token.SUB:
+			z.Sub(x, y)
+			return z
+		case token.MUL:
+			z.Mul(x, y)
+			return z
+		case token.QUO:
+			z.Div(x, y)
+			return z
+		case token.REM:
+			z.Mod(x, y)
+			return z
+
+			//bitwise ops
+		case token.AND:
+			z.And(x, y)
+			return z
+		case token.OR:
+			z.Or(x, y)
+			return z
+		case token.XOR:
+			z.Xor(x, y)
+			return z
+		case token.SHL:
+			y := uint(y.Uint64())
+			z.Lsh(x, y)
+			return z
+		case token.SHR:
+			y := uint(y.Uint64())
+			z.Rsh(x, y)
+			return z
+
+		case token.EQL:
+			if x.Eq(y) {
+				return uint256.NewInt(1)
+			}
+		case token.NEQ:
+			if !x.Eq(y) {
+				return uint256.NewInt(1)
+			}
+		case token.LEQ:
+			if x.Lt(y) || x.Eq(y) {
+				return uint256.NewInt(1)
+			}
+		case token.GEQ:
+			if x.Gt(y) || x.Eq(y) {
+				return uint256.NewInt(1)
+			}
+		case token.LSS:
+			if x.Lt(y) {
+				return uint256.NewInt(1)
+			}
+		case token.GTR:
+			if x.Gt(y) {
+				return uint256.NewInt(1)
+			}
+		default:
+			panic("This operation cannot be handled")
 		}
-	case token.LEQ:
-		if left_uint64 <= right_uint64 {
-			return uint64(1)
-		}
-	case token.GEQ:
-		if left_uint64 >= right_uint64 {
-			return uint64(1)
-		}
-	case token.LSS:
-		if left_uint64 < right_uint64 {
-			return uint64(1)
-		}
-	case token.GTR:
-		if left_uint64 > right_uint64 {
-			return uint64(1)
-		}
-	default:
-		panic("This operation cannot be handled")
+		return uint256.NewInt(0)
 	}
-	return uint64(0)
 }

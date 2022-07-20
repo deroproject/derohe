@@ -22,11 +22,13 @@ import "strconv"
 import "strings"
 import "crypto/sha256"
 import "encoding/hex"
+import "math/big"
 import "golang.org/x/crypto/sha3"
 import "github.com/blang/semver/v4"
 
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/holiman/uint256"
 
 // this files defines  external functions which can be called in DVM
 // for example to load and store data from the blockchain and other basic functions
@@ -40,6 +42,7 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 // also, more investigation is required to enable predetermined external oracles
 
 type DVM_FUNCTION_PTR_UINT64 func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64)
+type DVM_FUNCTION_PTR_UINT256 func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int)
 type DVM_FUNCTION_PTR_STRING func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string)
 type DVM_FUNCTION_PTR_ANY func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{})
 
@@ -50,6 +53,7 @@ type func_data struct {
 	ComputeCost int64
 	StorageCost int64
 	PtrU        DVM_FUNCTION_PTR_UINT64
+	PtrL        DVM_FUNCTION_PTR_UINT256	// long
 	PtrS        DVM_FUNCTION_PTR_STRING
 	Ptr         DVM_FUNCTION_PTR_ANY
 }
@@ -82,6 +86,8 @@ func init() {
 	func_table["send_asset_to_address"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 90000, StorageCost: 0, PtrU: dvm_send_asset_to_address}}
 	func_table["derovalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_derovalue}}
 	func_table["assetvalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_assetvalue}}
+	func_table["uint64"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrU: dvm_uint64}}
+	func_table["uint256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrL: dvm_uint256}}
 	func_table["atoi"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_atoi}}
 	func_table["itoa"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_itoa}}
 	func_table["sha256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha256}}
@@ -108,6 +114,8 @@ func (dvm *DVM_Interpreter) Handle_Internal_Function(expr *ast.CallExpr, func_na
 				dvm.State.ConsumeGas(f.ComputeCost)
 				if f.PtrU != nil {
 					return f.PtrU(dvm, expr)
+				} else if f.PtrL != nil {
+					return f.PtrL(dvm, expr)
 				} else if f.PtrS != nil {
 					return f.PtrS(dvm, expr)
 				} else {
@@ -134,6 +142,8 @@ func (dvm *DVM_Interpreter) SCLoad(scid crypto.Hash, key Variable) interface{} {
 	switch result.Type {
 	case Uint64:
 		return result.ValueUint64
+	case Uint256:
+		return result.ValueUint256
 	case String:
 		return result.ValueString
 
@@ -166,6 +176,8 @@ func convertdatatovariable(datai interface{}) Variable {
 	switch k := datai.(type) {
 	case uint64:
 		return Variable{Type: Uint64, ValueUint64: k}
+	case *uint256.Int:
+		return Variable{Type: Uint256, ValueUint256: k}
 	case string:
 		return Variable{Type: String, ValueString: k}
 	default:
@@ -231,7 +243,6 @@ func dvm_load(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result in
 	checkargscount(1, len(expr.Args)) // check number of arguments
 	key := dvm.eval(expr.Args[0])
 	return true, dvm.Load(convertdatatovariable(key))
-
 }
 
 func dvm_exists(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
@@ -515,6 +526,53 @@ func dvm_itoa(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result st
 
 	return true, fmt.Sprintf("%d", asset_eval.(uint64))
 
+}
+
+func dvm_uint64(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+
+	asset_eval := dvm.eval(expr.Args[0])
+
+	var z uint64
+
+        switch v := asset_eval.(type) {
+        case uint64:
+		z = v
+        case *uint256.Int:
+		z = v.Uint64()
+        case string:
+		i, err := strconv.ParseUint(v, 0, 64)
+		if err != nil {
+			i = 0
+		}
+		z = i
+	}
+
+	return true, z
+}
+
+func dvm_uint256(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+
+	asset_eval := dvm.eval(expr.Args[0])
+
+	z := uint256.NewInt(0)
+
+        switch v := asset_eval.(type) {
+        case uint64:
+		z.SetUint64(v)
+        case *uint256.Int:
+		z.Set(v)
+        case string:
+		t := new(big.Int)
+		var t_valid bool
+
+		if t, t_valid = t.SetString(v, 0); t_valid {
+			z, _ = uint256.FromBig(t);
+		}
+        }
+
+	return true, z
 }
 
 func dvm_atoi(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {

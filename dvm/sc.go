@@ -28,6 +28,7 @@ import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/graviton"
+import "github.com/holiman/uint256"
 
 //import "github.com/deroproject/derohe/transaction"
 
@@ -220,10 +221,16 @@ func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid 
 		switch {
 		case p.Type == Uint64 && p.Name == "value":
 			params[p.Name] = fmt.Sprintf("%d", state.Assets[zerohash]) // overide value
+
 		case p.Type == Uint64 && SCDATA.Has(p.Name, rpc.DataUint64):
 			params[p.Name] = fmt.Sprintf("%d", SCDATA.Value(p.Name, rpc.DataUint64).(uint64))
+
+		case p.Type == Uint256 && SCDATA.Has(p.Name, rpc.DataUint256):
+			params[p.Name] = SCDATA.Value(p.Name, rpc.DataUint256).(*uint256.Int).String()
+
 		case p.Type == String && SCDATA.Has(p.Name, rpc.DataString):
 			params[p.Name] = SCDATA.Value(p.Name, rpc.DataString).(string)
+
 		case p.Type == String && SCDATA.Has(p.Name, rpc.DataHash):
 			h := SCDATA.Value(p.Name, rpc.DataHash).(crypto.Hash)
 			params[p.Name] = string(h[:])
@@ -275,7 +282,7 @@ func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid 
 		return
 	}
 
-	if err == nil && result.Type == Uint64 && result.ValueUint64 == 0 { // confirm the changes
+	if err == nil && ((result.Type == Uint64 && result.ValueUint64 == 0) || (result.Type == Uint256 && result.ValueUint256.IsZero())) { // confirm the changes
 		for k, v := range tx_store.RawKeys {
 			StoreSCValue(data_tree, scid, []byte(k), v)
 
@@ -365,6 +372,8 @@ func ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key interface{}) (va
 	switch k := key.(type) {
 	case uint64:
 		keybytes = DataKey{Key: Variable{Type: Uint64, ValueUint64: k}}.MarshalBinaryPanic()
+	case *uint256.Int:
+		keybytes = DataKey{Key: Variable{Type: Uint64, ValueUint256: k}}.MarshalBinaryPanic()
 	case string:
 		keybytes = DataKey{Key: Variable{Type: String, ValueString: k}}.MarshalBinaryPanic()
 	//case int64:
@@ -379,6 +388,8 @@ func ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key interface{}) (va
 		switch value_var.Type {
 		case Uint64:
 			value = value_var.ValueUint64
+		case Uint256:
+			value = value_var.ValueUint256
 		case String:
 			value = value_var.ValueString
 		default:
