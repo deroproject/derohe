@@ -33,6 +33,47 @@ var execution_tests_functions = []struct {
 	result     Variable // execution result
 }{
 	{
+		"valid  function  testing  MAX() ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 IF MAX(a1, a2) == a1 THEN GOTO 50
+		 20 RETURN 1
+		 50 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  MIN() ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 IF MIN(a1, a2) == a2 THEN GOTO 50
+		 20 RETURN 1
+		 50 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  ITOA() ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 IF ITOA(a1) == "987654321" THEN GOTO 50
+		 20 RETURN 1
+		 50 IF ITOA(a2) == "0x3ade68b1" THEN GOTO 90
+		 60 RETURN 1
+		 90 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654321"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
 		"valid  function  testing  UINT64() ",
 		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
 		 10 dim s1, s2 as Uint64

@@ -95,8 +95,8 @@ func init() {
 	func_table["keccak256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_keccak256}}
 	func_table["hex"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hex}}
 	func_table["hexdecode"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hexdecode}}
-	func_table["min"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_min}}
-	func_table["max"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_max}}
+	func_table["min"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_min}}
+	func_table["max"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_max}}
 	func_table["strlen"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrU: dvm_strlen}}
 	func_table["substr"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrS: dvm_substr}}
 	func_table["tolower"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_tolower}}
@@ -520,11 +520,16 @@ func dvm_itoa(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result st
 
 	asset_eval := dvm.eval(expr.Args[0])
 
-	if _, ok := asset_eval.(uint64); !ok {
+        switch v := asset_eval.(type) {
+        case uint64:
+		result = fmt.Sprintf("%d", v)
+        case *uint256.Int:
+		result = v.String()
+	default:
 		panic("itoa argument must be valid uint64")
 	}
 
-	return true, fmt.Sprintf("%d", asset_eval.(uint64))
+	return true, result
 
 }
 
@@ -736,41 +741,46 @@ func dvm_hexdecode(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, resu
 	}
 }
 
-func dvm_min(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
-	checkargscount(2, len(expr.Args)) // check number of arguments
-
-	a1 := dvm.eval(expr.Args[0])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
-	}
-
-	a2 := dvm.eval(expr.Args[1])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
-	}
-
-	if a1.(uint64) < a2.(uint64) {
-		return true, a1.(uint64)
-	}
-	return true, a2.(uint64)
+func isUint(exp interface{}) (bool) {
+	return (fmt.Sprintf("%T", exp) == "uint64" || fmt.Sprintf("%T", exp) == "*uint256.Int")
 }
 
-func dvm_max(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+func dvm_min(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
 	checkargscount(2, len(expr.Args)) // check number of arguments
+
 	a1 := dvm.eval(expr.Args[0])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
-	}
-
 	a2 := dvm.eval(expr.Args[1])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
+
+	if !isUint(a1) || !isUint(a2) {
+		panic("input arguments must be integers")
 	}
 
-	if a1.(uint64) > a2.(uint64) {
-		return true, a1.(uint64)
+	a1 = dvm.castToUint256(a1)
+	a2 = dvm.castToUint256(a2)
+
+	if a1.(*uint256.Int).Lt(a2.(*uint256.Int)) {
+		return true, a1
 	}
-	return true, a2.(uint64)
+	return true, a2
+}
+
+func dvm_max(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
+	checkargscount(2, len(expr.Args)) // check number of arguments
+
+	a1 := dvm.eval(expr.Args[0])
+	a2 := dvm.eval(expr.Args[1])
+
+	if !isUint(a1) || !isUint(a2) {
+		panic("input arguments must be integers")
+	}
+
+	a1 = dvm.castToUint256(a1)
+	a2 = dvm.castToUint256(a2)
+
+	if a1.(*uint256.Int).Gt(a2.(*uint256.Int)) {
+		return true, a1
+	}
+	return true, a2
 }
 
 func dvm_panic(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
