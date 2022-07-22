@@ -143,7 +143,7 @@ func (dvm *DVM_Interpreter) SCLoad(scid crypto.Hash, key Variable) interface{} {
 	case Uint64:
 		return result.ValueUint64
 	case Uint256:
-		return result.ValueUint256
+		return &result.ValueUint256
 	case String:
 		return result.ValueString
 
@@ -177,7 +177,7 @@ func convertdatatovariable(datai interface{}) Variable {
 	case uint64:
 		return Variable{Type: Uint64, ValueUint64: k}
 	case *uint256.Int:
-		return Variable{Type: Uint256, ValueUint256: k}
+		return Variable{Type: Uint256, ValueUint256: *k}
 	case string:
 		return Variable{Type: String, ValueString: k}
 	default:
@@ -286,6 +286,8 @@ func dvm_mapget(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result 
 
 	if v.Type == Uint64 {
 		return true, v.ValueUint64
+	} else if v.Type == Uint256 {
+		return true, &v.ValueUint256
 	} else if v.Type == String {
 		return true, v.ValueString
 	} else {

@@ -883,7 +883,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "12", "a2": "4"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  multiplication ",
 		`Function TestRun(a1 Uint256, a2 Uint256) Uint256
@@ -895,7 +895,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "4"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  division ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -907,7 +907,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "25", "a2": "3"}, // it is 25 to confirm we are doing integer division
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  modulus ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -919,7 +919,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "35", "a2": "9"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  SHL ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -931,7 +931,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "4", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  SHR ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -943,7 +943,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "32", "a2": "2"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  OR ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -955,7 +955,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "8", "a2": "8"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  AND ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -967,7 +967,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "9", "a2": "10"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(8)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
 	}, {
 		"valid  function  testing  NOT ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -979,7 +979,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "9", "a2": "10"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(0).Not(uint256.NewInt(9))},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0).Not(uint256.NewInt(9))},
 	}, {
 		"valid  function  testing  ^XOR ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -991,7 +991,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "9", "a2": "10"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(0).Not(uint256.NewInt(9))},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0).Not(uint256.NewInt(9))},
 	}, {
 		"valid  function  testing  XOR ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1003,7 +1003,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "60", "a2": "13"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(49)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(49)},
 	}, {
 		"valid  function  testing  ||  ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1015,7 +1015,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "0", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(1)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(1)},
 	}, {
 		"valid  function  testing  &&  1 ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1027,7 +1027,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "0", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(0)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0)},
 	}, {
 		"valid  function  testing  &&  2",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1039,7 +1039,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "1", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(1)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(1)},
 	},
 
 	{
@@ -1053,7 +1053,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "1", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(1)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(1)},
 	},
 	{
 		"valid  function  testing  LET ",
@@ -1066,7 +1066,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "1", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	},
 	{
 		"valid  function  testing  IF THEN form1  fallthrough",
@@ -1080,7 +1080,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "1", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	},
 	{
 		"valid  function  testing  IF THEN form1  THEN case",
@@ -1094,7 +1094,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(0)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0)},
 	},
 	{
 		"valid  function  testing  IF THEN ELSE form1  THEN case",
@@ -1108,7 +1108,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(0)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0)},
 	}, {
 		"valid  function  testing  IF THEN ELSE form1  ELSE case",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1121,7 +1121,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "77", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	},
 	{
 		"valid  function  testing  != success ",
@@ -1136,7 +1136,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 	{
 		"valid  function  testing  !=  failed",
@@ -1151,7 +1151,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "3", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	},
 
 	{
@@ -1167,7 +1167,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"invalid operator testing  = ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1181,7 +1181,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		fmt.Errorf("dummy"),
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 	{
 		"valid  function  testing  > success ",
@@ -1196,7 +1196,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing  > failed ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1210,7 +1210,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	}, {
 		"valid  function  testing  >= success",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1224,7 +1224,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing  >= failed",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1238,7 +1238,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "1", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	}, {
 		"valid  function  testing  < success ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1252,7 +1252,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing  < failed ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1266,7 +1266,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "5", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	}, {
 		"valid  function  testing  <= success ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1280,7 +1280,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "2", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing  <= success ",
 		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
@@ -1294,7 +1294,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "4", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	}, {
 		"valid  function  testing string == success",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1308,7 +1308,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "asdf", "a2": "asdf"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing string == success",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1322,7 +1322,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "asdf", "a2": "asdf"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing string == failed",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1336,7 +1336,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "asdf", "a2": "asdf1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	}, {
 		"valid  function  testing !string  success ",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1350,7 +1350,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "", "a2": "asdf1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing !string  fail ",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1364,7 +1364,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "a1", "a2": "asdf1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	}, {
 		"valid  function  testing string != ",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1378,7 +1378,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "asdf", "a2": "asdfz"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	}, {
 		"valid  function  testing LOR ",
 		`Function TestRun(a1 String,a2 String) Uint256
@@ -1392,7 +1392,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "asdf", "a2": "asdf"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(2)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
 	},
 	{
 		"invalid  function  testing  comparision of uint256 /string ",
@@ -1407,7 +1407,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "asdf", "a2": "asdfz"},
 		fmt.Errorf("dummy"),
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 
 	{
@@ -1427,7 +1427,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "77", "a2": "1"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(3628800)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(3628800)},
 	},
 
 	{
@@ -1458,7 +1458,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "101", "a2": "101"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 	{
 		"invalid  function  testing  addition of uint256 / uint64 ",
@@ -1472,7 +1472,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "101", "a2": "101"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(202)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(202)},
 	},
 	{
 		"invalid  function  return of different type uint256 / uint64 ",
@@ -1486,7 +1486,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "101", "a2": "101"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(202)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(202)},
 	},
 	{
 		"invalid  function  return of different type uint64 / uint256",
@@ -1515,7 +1515,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "101", "a2": "101"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(99)},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 	{
 		"invalid  function  testing trucation of uint256",
@@ -1541,7 +1541,7 @@ var execution_tests_if = []struct {
 		"TestRun",
 		map[string]interface{}{"a1": "0xffffffffffffffff", "a2": "8589934593"},
 		nil,
-		Variable{Type: Uint256, ValueUint256: uint256.NewInt(uint256.NewInt(0).Mul(uint256.NewInt(0xffffffffffffffff), uint256.NewInt(8589934593)).Uint64())},
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(uint256.NewInt(0).Mul(uint256.NewInt(0xffffffffffffffff), uint256.NewInt(8589934593)).Uint64())},
 	},
 	{
 		"invalid  function  testing avoid truncation of intermediate product",

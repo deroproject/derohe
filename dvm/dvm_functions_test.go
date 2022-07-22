@@ -33,6 +33,59 @@ var execution_tests_functions = []struct {
 	result     Variable // execution result
 }{
 	{
+		"valid  function  testing  MAP*() with 256bit key",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 20 DIM v1, v2 AS Uint256
+		 30 MAPSTORE(a2, a1)
+		 40 LET v1 = a2
+		 50 IF MAPEXISTS(v1) THEN GOTO 100
+		 60 RETURN 1
+		 100 IF MAPGET(v1) == a1 THEN GOTO 200
+		 110 RETUN 1
+		 200 DIM str AS String
+		 210 LET str = ITOA(v1)
+		 230 LET v2 = UINT256(str)
+		 240 IF MAPGET(v2) == a1 THEN GOTO 300
+		 250 RETURN 1
+		 300 MAPDELETE(v2)
+		 310 IF !MAPEXISTS(v1) THEN GOTO 500
+		 320 RETURN 1
+		 500 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  MAP*() with 64bit key",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 20 DIM v1, v2 AS Uint64
+		 25 DIM v3 as Uint256
+		 30 MAPSTORE(a1, a2)
+		 40 LET v1 = a1
+		 50 IF MAPEXISTS(v1) THEN GOTO 100
+		 60 RETURN 1
+		 100 IF MAPGET(v1) == a2 THEN GOTO 200
+		 110 RETUN 1
+		 200 DIM str AS String
+		 210 LET str = ITOA(a2)
+		 230 LET v3 = UINT256(str)
+		 240 IF MAPGET(v1) == v3 THEN GOTO 300
+		 250 RETURN 1
+		 300 MAPDELETE(v1)
+		 310 IF !MAPEXISTS(v1) THEN GOTO 500
+		 320 RETURN 1
+		 500 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
 		"valid  function  testing  MAX() ",
 		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
 		 10 IF MAX(a1, a2) == a1 THEN GOTO 50

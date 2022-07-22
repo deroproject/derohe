@@ -282,7 +282,7 @@ func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid 
 		return
 	}
 
-	if err == nil && ((result.Type == Uint64 && result.ValueUint64 == 0) || (result.Type == Uint256 && result.ValueUint256.IsZero())) { // confirm the changes
+	if err == nil && ((result.Type == Uint64 && result.ValueUint64 == 0) || (result.Type == Uint256 && (&result.ValueUint256).IsZero())) { // confirm the changes
 		for k, v := range tx_store.RawKeys {
 			StoreSCValue(data_tree, scid, []byte(k), v)
 
@@ -373,7 +373,7 @@ func ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key interface{}) (va
 	case uint64:
 		keybytes = DataKey{Key: Variable{Type: Uint64, ValueUint64: k}}.MarshalBinaryPanic()
 	case *uint256.Int:
-		keybytes = DataKey{Key: Variable{Type: Uint64, ValueUint256: k}}.MarshalBinaryPanic()
+		keybytes = DataKey{Key: Variable{Type: Uint64, ValueUint256: *k}}.MarshalBinaryPanic()
 	case string:
 		keybytes = DataKey{Key: Variable{Type: String, ValueString: k}}.MarshalBinaryPanic()
 	//case int64:
@@ -389,7 +389,7 @@ func ReadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key interface{}) (va
 		case Uint64:
 			value = value_var.ValueUint64
 		case Uint256:
-			value = value_var.ValueUint256
+			value = &value_var.ValueUint256
 		case String:
 			value = value_var.ValueString
 		default:

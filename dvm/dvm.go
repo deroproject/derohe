@@ -63,7 +63,7 @@ type Variable struct {
 	Type		Vtype		`cbor:"T,omitempty" json:"T,omitempty"` // we have only 2 data types
 	ValueUint64	uint64		`cbor:"V,omitempty" json:"VI,omitempty"`
 	ValueString	string		`cbor:"V,omitempty" json:"VS,omitempty"`
-	ValueUint256	*uint256.Int	`cbor:"V,omitempty" json:"VI,omitempty"`
+	ValueUint256	uint256.Int	`cbor:"V,omitempty" json:"VI,omitempty"`
 }
 
 type Function struct {
@@ -328,12 +328,12 @@ func runSmartContract_internal(SC *SmartContract, EntryPoint string, state *Shar
 			var t_valid bool
 
 			if t, t_valid = t.SetString(value.(string), 0); t_valid {
-				var fb_overflow bool
-
-				if variable.ValueUint256, fb_overflow = uint256.FromBig(t); fb_overflow {
+				fb, fb_overflow := uint256.FromBig(t)
+				if fb_overflow {
 					err = fmt.Errorf("Argument \"%s\" overflow", p.Name)
 					return
 				}
+				variable.ValueUint256 = *fb
 			} else {
 				err = fmt.Errorf("Argument \"%s\" cannot be parsed", p.Name)
 				return
@@ -634,7 +634,7 @@ func (dvm *DVM_Interpreter) interpret_PRINT(args []string) (newIP uint64, err er
 				case String:
 					params = append(params, variable.ValueString)
 				case Uint256:
-					params = append(params, variable.ValueUint256)
+					params = append(params, &variable.ValueUint256)
 
 				default:
 					panic("Unhandled data_type")
@@ -683,7 +683,7 @@ func (dvm *DVM_Interpreter) interpret_DIM(line []string) (newIP uint64, err erro
 			case String:
 				dvm.Locals[line[i]] = Variable{Name: line[i], Type: String, ValueString: ""}
 			case Uint256:
-				dvm.Locals[line[i]] = Variable{Name: line[i], Type: Uint256, ValueUint256: uint256.NewInt(0)}
+				dvm.Locals[line[i]] = Variable{Name: line[i], Type: Uint256, ValueUint256: *uint256.NewInt(0)}
 
 			default:
 				panic("Unhandled data_type")
@@ -731,7 +731,7 @@ func (dvm *DVM_Interpreter) interpret_LET(line []string) (newIP uint64, err erro
 		if fmt.Sprintf("%T", expr_result) == "uint64" {
 			expr_result = dvm.castToUint256(expr_result)
 		}
-		result.ValueUint256 = expr_result.(*uint256.Int)
+		result.ValueUint256 = *expr_result.(*uint256.Int)
 
 	default:
 		panic("Unhandled data_type")
@@ -870,7 +870,7 @@ func (dvm *DVM_Interpreter) interpret_RETURN(line []string) (newIP uint64, err e
 			expr_result = dvm.castToUint256(expr_result)
 		}
 
-		dvm.ReturnValue.ValueUint256 = expr_result.(*uint256.Int)
+		dvm.ReturnValue.ValueUint256 = *expr_result.(*uint256.Int)
 
 	default:
 		panic("unexpected data type")
@@ -980,7 +980,8 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 		case String:
 			return dvm.Locals[exp.Name].ValueString
 		case Uint256:
-			return dvm.Locals[exp.Name].ValueUint256
+			z :=  dvm.Locals[exp.Name].ValueUint256
+			return &z
 		default:
 			panic("unexpected data type")
 		}
@@ -1038,7 +1039,7 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 			//default:
 			//      	panic(fmt.Sprintf("unexpected data type %T", function_call.ReturnValue.Type))
 		case Uint256:
-			return result.ValueUint256
+			return &result.ValueUint256
 		}
 		return nil
 
