@@ -22,6 +22,7 @@ import "testing"
 import "encoding/hex"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/holiman/uint256"
 
 // ensure 100% coverage of functions execution
 var execution_tests_functions = []struct {
@@ -165,6 +166,32 @@ var execution_tests_functions = []struct {
 		map[string]interface{}{"a1": "1", "a2": "1"},
 		nil,
 		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  SQRT(Uint64) ",
+		`Function TestRun(a1 Uint64) Uint64
+		 10 RETURN SQRT(a1)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1046529"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(1023)},
+	},
+	{
+		"valid  function  testing  SQRT(Uint256) ",
+		`Function TestRun(a1 Uint256) Uint256
+		 10 DIM square AS Uint256
+		 20 LET square = a1 * a1
+		 30 IF SQRT(square) == a1 THEN GOTO 100
+		 40 RETURN 1
+		 100 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "109876543210"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 	{
 		"valid  function  testing  BLOCK_HEIGHT() ",
