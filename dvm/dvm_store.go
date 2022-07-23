@@ -196,7 +196,8 @@ func (v Variable) Length() (length int64) {
 	case String:
 		length = int64(len([]byte(v.ValueString)) + 1)
 	case Uint256:
-		length = int64(32) + 1
+		buf := (&v.ValueUint256).Bytes()
+		length = int64(len(buf)) + 1
 	default:
 		panic("unknown variable type not implemented")
 	}
