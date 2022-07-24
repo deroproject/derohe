@@ -282,7 +282,22 @@ func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid 
 		return
 	}
 
-	if err == nil && ((result.Type == Uint64 && result.ValueUint64 == 0) || (result.Type == Uint256 && (&result.ValueUint256).IsZero())) { // confirm the changes
+	var result_code string
+	var result_valid bool = false
+
+	switch result.Type {
+		case Uint64:
+			result_valid = (result.ValueUint64 == 0)
+			result_code = fmt.Sprintf("%d", result.ValueUint64)
+		case Uint256:
+			result_valid = (result.ValueUint256.IsZero())
+			result_code = fmt.Sprintf("%d", result.ValueUint256)
+		case String:
+			result_valid = (result.ValueString == "")
+			result_code = result.ValueString
+	}
+
+	if (result_valid) {
 		for k, v := range tx_store.RawKeys {
 			StoreSCValue(data_tree, scid, []byte(k), v)
 
@@ -290,7 +305,7 @@ func Execute_sc_function(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid 
 		}
 		data_tree.Transfere = append(data_tree.Transfere, tx_store.Transfers[scid].TransferE...)
 	} else { // discard all changes, since we never write to store immediately, they are purged, however we need to  return any value associated
-		err = fmt.Errorf("Discarded knowingly")
+		err = fmt.Errorf("Discarded knowingly [" + result_code + "]")
 		return
 	}
 
