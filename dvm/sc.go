@@ -89,6 +89,11 @@ type Tree_Wrapper struct {
 	Tree      *graviton.Tree
 	Entries   map[string][]byte
 	Transfere []TransferExternal
+	// save for external r/o reference
+	Id	  crypto.Hash
+	CacheL1	  map[crypto.Hash]*graviton.Tree
+	CacheL2	  map[crypto.Hash]*graviton.Tree
+	Ss	  *graviton.Snapshot
 }
 
 func (t *Tree_Wrapper) Get(key []byte) ([]byte, error) {
@@ -99,6 +104,26 @@ func (t *Tree_Wrapper) Get(key []byte) ([]byte, error) {
 	}
 }
 
+func (t *Tree_Wrapper) GetExternal(scid crypto.Hash, key []byte) (result []byte, err error) {
+	// check local cache
+	scTree, ok := t.CacheL1[scid]
+
+	if !ok {
+		// check prior transactions
+		if scTree, ok = t.CacheL2[scid]; !ok {
+			// finally, load from snapshot
+			if scTree, err = t.Ss.GetTree(string(scid[:])); err == nil {
+				// store in local cache
+				t.CacheL1[scid] = scTree
+			} else {
+				return
+			}
+		}
+	}
+
+	return scTree.Get(key)
+}
+
 func (t *Tree_Wrapper) Put(key []byte, value []byte) error {
 	t.Entries[string(key)] = append([]byte{}, value...)
 	return nil
@@ -107,13 +132,13 @@ func (t *Tree_Wrapper) Put(key []byte, value []byte) error {
 // checks cache and returns a wrapped tree if possible
 func Wrapped_tree(cache map[crypto.Hash]*graviton.Tree, ss *graviton.Snapshot, id crypto.Hash) *Tree_Wrapper {
 	if cached_tree, ok := cache[id]; ok { // tree is in cache return it
-		return &Tree_Wrapper{Tree: cached_tree, Entries: map[string][]byte{}}
+		return &Tree_Wrapper{Tree: cached_tree, Entries: map[string][]byte{}, Id: id, CacheL1: map[crypto.Hash]*graviton.Tree{}, CacheL2: cache, Ss: ss}
 	}
 
 	if tree, err := ss.GetTree(string(id[:])); err != nil {
 		panic(err)
 	} else {
-		return &Tree_Wrapper{Tree: tree, Entries: map[string][]byte{}}
+		return &Tree_Wrapper{Tree: tree, Entries: map[string][]byte{}, Id: id, CacheL1: map[crypto.Hash]*graviton.Tree{}, CacheL2: cache, Ss: ss}
 	}
 }
 
@@ -342,8 +367,15 @@ func ReadSC(w_sc_tree *Tree_Wrapper, data_tree *Tree_Wrapper, scid crypto.Hash) 
 
 func LoadSCValue(data_tree *Tree_Wrapper, scid crypto.Hash, key []byte) (v Variable, found bool) {
 	//fmt.Printf("loading fromdb %s %s \n", scid, key)
+	var object_data []byte
+	var err error
 
-	object_data, err := data_tree.Get(key[:])
+	if scid == data_tree.Id {
+		object_data, err = data_tree.Get(key[:])
+	} else {
+		object_data, err = data_tree.GetExternal(scid, key[:])
+	}
+
 	if err != nil {
 		return v, false
 	}
