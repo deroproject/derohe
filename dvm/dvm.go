@@ -567,6 +567,8 @@ func (i *DVM_Interpreter) interpret_SmartContract() (err error) {
 			newIP, err = i.interpret_DIM(line[1:])
 		case strings.EqualFold(line[0], "LET"):
 			newIP, err = i.interpret_LET(line[1:])
+		case strings.EqualFold(line[0], "IMPORT"):
+			newIP, err = i.interpret_IMPORT(line[1:])
 		case strings.EqualFold(line[0], "GOTO"):
 			newIP, err = i.interpret_GOTO(line[1:])
 		case strings.EqualFold(line[0], "IF"):
@@ -691,6 +693,49 @@ func (dvm *DVM_Interpreter) interpret_DIM(line []string) (newIP uint64, err erro
 			// fmt.Printf("Initialising variable %s %+v\n",line[i],dvm.Locals[line[i]])
 
 		}
+	}
+
+	return
+}
+
+// process IMPORT line
+func (dvm *DVM_Interpreter) interpret_IMPORT(line []string) (newIP uint64, err error) {
+	if len(line) <= 2 || !strings.EqualFold(line[1], "from") {
+		return 0, fmt.Errorf("Invalid IMPORT syntax")
+	}
+
+	expr, err := parser.ParseExpr(strings.Join(line[2:], " "))
+	if err != nil {
+		return
+	}
+
+	scid := dvm.eval(expr)
+
+        if _, ok := scid.(string); !ok {
+                panic("asset must be valid string")
+        }
+        if len(scid.(string)) != 32 {
+                panic("asset must be valid string of 32 byte length")
+        }
+
+        var asset crypto.Hash
+        copy(asset[:], ([]byte(scid.(string))))
+
+        code := dvm.SCLoad(asset, convertdatatovariable("C"))
+
+	if len(code.(string)) < 1 {
+                panic("cannot load asseet's code")
+	}
+
+	sc, _, err := ParseSmartContract(code.(string))
+
+	if err != nil {
+                panic("cannot parse asseet's code")
+	}
+
+	for k, v := range sc.Functions {
+		v.Name = line[0] + "." + k
+		dvm.SC.Functions[line[0] + "." + k] = v
 	}
 
 	return
@@ -885,9 +930,11 @@ func (dvm *DVM_Interpreter) interpret_RETURN(line []string) (newIP uint64, err e
 
 // only returns identifiers
 func (dvm *DVM_Interpreter) eval_identifier(exp ast.Expr) string {
-	switch exp := exp.(type) {
+	switch e2 := exp.(type) {
+	case *ast.SelectorExpr:
+		return dvm.eval_identifier(e2.X) + "." + e2.Sel.Name
 	case *ast.Ident: // it's a variable,
-		return exp.Name
+		return e2.Name
 	default:
 		panic("expecting identifier")
 	}
@@ -990,7 +1037,6 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 	// other one crosses smart contract boundaries
 	case *ast.CallExpr:
 		func_name := dvm.eval_identifier(exp.Fun)
-		//fmt.Printf("Call expression %+v %s \"%s\" \n",exp,exp.Fun, func_name)
 		// if call is internal
 		//
 
@@ -1002,6 +1048,7 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 		if !ok {
 			panic(fmt.Sprintf("Unknown function called \"%s\"", exp.Fun))
 		}
+
 		if len(function_call.Params) != len(exp.Args) {
 			panic(fmt.Sprintf("function \"%s\" called with incorrect number of arguments , expected %d , actual %d", func_name, len(function_call.Params), len(exp.Args)))
 		}
