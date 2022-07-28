@@ -91,6 +91,7 @@ func init() {
 	func_table["atoi"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_atoi}}
 	func_table["itoa"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_itoa}}
 	func_table["sqrt"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrL: dvm_sqrt}}
+	func_table["pow"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrL: dvm_pow}}
 	func_table["sha256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha256}}
 	func_table["sha3256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha3256}}
 	func_table["keccak256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_keccak256}}
@@ -622,6 +623,32 @@ func dvm_sqrt(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *u
 	}
 
 	return true, z
+}
+
+func dvm_pow(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int) {
+	checkargscount(2, len(expr.Args)) // check number of arguments
+
+	e1 := dvm.eval(expr.Args[0])
+	e2 := dvm.eval(expr.Args[1])
+
+        switch v1 := e1.(type) {
+        case uint64:
+		e1 = dvm.castToUint256(v1)
+        case string:
+		panic("pow arguments must be valid int")
+        }
+
+        switch v2 := e2.(type) {
+        case uint64:
+		e2 = dvm.castToUint256(v2)
+        case string:
+		panic("pow arguments must be valid int")
+        }
+
+	x := e1.(*uint256.Int)
+	y := e2.(*uint256.Int)
+
+	return true, x.Exp(x, y)
 }
 
 func dvm_atoi(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {

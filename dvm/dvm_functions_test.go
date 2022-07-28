@@ -194,6 +194,28 @@ var execution_tests_functions = []struct {
 		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
 	},
 	{
+		"valid  function  testing  POW(Uint64) ",
+		`Function TestRun(a1 Uint64, a2 Uint64) Uint64
+		 10 RETURN POW(a1, a2)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "33"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(8589934592)},
+	},
+	{
+		"valid  function  testing  POW(Uint256) ",
+		`Function TestRun(a1 Uint256, a2 Uint256) Uint256
+		 10 RETURN POW(a1, a2)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "255"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *(uint256.NewInt(0).Exp(uint256.NewInt(2), uint256.NewInt(255)))},
+	},
+	{
 		"valid  function  testing  BLOCK_HEIGHT() ",
 		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
 		 10 dim s1, s2 as Uint64
