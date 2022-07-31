@@ -27,6 +27,7 @@ import "go/parser"
 import "go/token"
 import "math"
 import "math/big"
+import "regexp"
 
 import "runtime/debug"
 import "github.com/blang/semver/v4"
@@ -306,6 +307,9 @@ func runSmartContract_internal(SC *SmartContract, EntryPoint string, state *Shar
 	dvm.f = function_call
 	dvm.Locals = map[string]Variable{}
 
+        re := regexp.MustCompile(`^.*\.`)
+        dvm.Prefix = re.FindString(EntryPoint)
+
 	dvm.State = state // set state to execute current function
 
 	// parse parameters, rename them, make them available as local variables
@@ -489,6 +493,7 @@ type DVM_Interpreter struct {
 	IP          uint64              // current line number
 	ReturnValue Variable            // Result of current function call
 	Locals      map[string]Variable // all local variables
+	Prefix      string		// current recursive imported contract prefix
 
 	Chain_inputs *Blockchain_Input // all blockchain info is available here
 
@@ -712,10 +717,10 @@ func (dvm *DVM_Interpreter) interpret_IMPORT(line []string) (newIP uint64, err e
 	scid := dvm.eval(expr)
 
         if _, ok := scid.(string); !ok {
-                panic("asset must be valid string")
+                panic("asset must be type string")
         }
         if len(scid.(string)) != 32 {
-                panic("asset must be valid string of 32 byte length")
+                panic("asset must be 32 byte length")
         }
 
         var asset crypto.Hash
@@ -734,8 +739,8 @@ func (dvm *DVM_Interpreter) interpret_IMPORT(line []string) (newIP uint64, err e
 	}
 
 	for k, v := range sc.Functions {
-		v.Name = line[0] + "." + k
-		dvm.SC.Functions[line[0] + "." + k] = v
+		v.Name = dvm.Prefix + line[0] + "." + k
+		dvm.SC.Functions[v.Name] = v
 	}
 
 	return
@@ -1036,7 +1041,7 @@ func (dvm *DVM_Interpreter) eval(exp ast.Expr) interface{} {
 	// there are 2 types of calls, one within the smartcontract
 	// other one crosses smart contract boundaries
 	case *ast.CallExpr:
-		func_name := dvm.eval_identifier(exp.Fun)
+		func_name := dvm.Prefix + dvm.eval_identifier(exp.Fun)
 		// if call is internal
 		//
 
