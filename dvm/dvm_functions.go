@@ -28,6 +28,7 @@ import "github.com/blang/semver/v4"
 
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/globals"
 import "github.com/holiman/uint256"
 
 // this files defines  external functions which can be called in DVM
@@ -88,6 +89,7 @@ func init() {
 	func_table["assetvalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_assetvalue}}
 	func_table["uint64"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrU: dvm_uint64}}
 	func_table["uint256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrL: dvm_uint256}}
+	func_table["ismainnet"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrU: dvm_ismainnet}}
 	func_table["atoi"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_atoi}}
 	func_table["itoa"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_itoa}}
 	func_table["sqrt"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrL: dvm_sqrt}}
@@ -582,6 +584,18 @@ func dvm_uint256(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result
         }
 
 	return true, z
+}
+
+func dvm_ismainnet(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+	checkargscount(0, len(expr.Args)) // check number of arguments
+
+	mainnet := uint64(0)
+
+	if globals.IsMainnet() {
+		mainnet = uint64(1)
+	}
+
+	return true, mainnet
 }
 
 func dvm_sqrt(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int) {
