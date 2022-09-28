@@ -313,6 +313,7 @@ func Connection_Print() {
 
 		fmt.Print(color_normal)
 	}
+	logger.Info("Connection info for peers", "count", len(clist), "our Statehash", StateHash)
 
 }
 
