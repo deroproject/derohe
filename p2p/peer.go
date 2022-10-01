@@ -45,7 +45,7 @@ func GetPeerID() uint64 {
 	if peerid == 0 {
 		var buf [8]byte
 		rand.Read(buf[:])
-		peerid = binary.LittleEndian.Uint64(buf[:])
+		peerid = binary.LittleEndian.Uint64(buf[:])   &  0x7FFFFFFFFFFFFFFF
 	}
 	return peerid
 }

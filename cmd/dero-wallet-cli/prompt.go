@@ -146,6 +146,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		filename, err := ReadString(l, "Enter file to sign", "")
 		if err != nil {
 			logger.Error(err, "Cannot read input file name")
+			break
 		}
 
 		outputfile := filename + ".sign"
@@ -162,6 +163,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		filename, err := ReadString(l, "Enter file to verify signature", "")
 		if err != nil {
 			logger.Error(err, "Cannot read input file name")
+			break
 		}
 
 		outputfile := strings.TrimSuffix(filename, ".sign")
@@ -182,6 +184,40 @@ func handle_prompt_command(l *readline.Instance, line string) {
 			}
 			logger.Info("successfully wrote message to file. please check", "file", outputfile)
 
+		}
+
+	case "filesign_huge": // sign a hugefile contents
+		if !ValidateCurrentPassword(l, wallet) {
+			logger.Error(err, "Invalid password")
+			PressAnyKey(l, wallet)
+			break
+		}
+
+		filename, err := ReadString(l, "Enter file to sign", "")
+		if err != nil {
+			logger.Error(err, "Cannot read input file name")
+			break
+		}
+
+		if err := wallet.SignFile(filename); err != nil {
+			logger.Error(err, "Cannot sign", "file", filename)
+		} else {
+			logger.Info("successfully signed file. please check", "file", filename, "signature", filename+".signed")
+		}
+
+	case "fileverify_huge": // verify a file contents
+		filename, err := ReadString(l, "Enter file to verify signature", "")
+		if err != nil {
+			logger.Error(err, "Cannot read input file name")
+			break
+		}
+
+		if signer, err := wallet.CheckFileSignature(filename); err != nil {
+			logger.Error(err, "Signature verify failed", "file", filename)
+		} else {
+			logger.Info("Signed by", "address", signer.String())
+
+			logger.Info("Signature verified successfully.", "file", filename)
 		}
 
 	case "password": // change wallet password
@@ -435,6 +471,9 @@ func handle_set_command(l *readline.Instance, line string) {
 		fmt.Fprintf(l.Stderr(), color_extra_white+"Current settings"+color_extra_white+"\n")
 		fmt.Fprintf(l.Stderr(), color_normal+"Seed Language: "+color_extra_white+"%s\t"+color_normal+"eg. "+color_extra_white+"set seed language\n"+color_normal, wallet.GetSeedLanguage())
 		fmt.Fprintf(l.Stderr(), color_normal+"Ringsize: "+color_extra_white+"%d\t"+color_normal+"eg. "+color_extra_white+"set ringsize 16\n"+color_normal, wallet.GetRingSize())
+		fmt.Fprintf(l.Stderr(), color_normal+"Save Every : "+color_extra_white+"%s \t"+color_normal+"eg. "+color_extra_white+"default value:0 (set using command line)\n"+color_normal, wallet.SetSaveDuration(-1))
+		fmt.Fprintf(l.Stderr(), color_normal+"Track Recent Blocks : "+color_extra_white+"%d \t"+color_normal+"eg. "+color_extra_white+"default value:0 means track all blocks (set using command line)\n"+color_normal, wallet.SetTrackRecentBlocks(-1))
+
 		fmt.Fprintf(l.Stderr(), color_normal+"Priority: "+color_extra_white+"%0.2f\t"+color_normal+"eg. "+color_extra_white+"set priority 4.0\t"+color_normal+"Transaction priority on DERO network \n", wallet.GetFeeMultiplier())
 		fmt.Fprintf(l.Stderr(), "\t\tMinimum priority is 1.00. High priority = high fees\n")
 
@@ -867,6 +906,8 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("get_tx_key"),
 	readline.PcItem("filesign"),
 	readline.PcItem("fileverify"),
+	readline.PcItem("filesign_huge"),
+	readline.PcItem("fileverify_huge"),
 	readline.PcItem("menu"),
 	readline.PcItem("rescan_bc"),
 	readline.PcItem("payment_id"),

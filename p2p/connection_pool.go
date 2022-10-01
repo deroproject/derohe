@@ -174,7 +174,7 @@ func IsAddressConnected(address string) bool {
 // add connection to  map, only if we are not connected already
 // we also check for limits for incoming connections
 // same ip max 8 ip ( considering NAT)
-//same Peer ID   4
+// same Peer ID   4
 func Connection_Add(c *Connection) bool {
 	if dup, ok := connection_map.LoadOrStore(Address(c), c); !ok {
 		c.Created = time.Now()
@@ -396,6 +396,7 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 
 	our_height := chain.Get_Height()
 	// build the request once and dispatch it to all possible peers
+	tries := 0
 	count := 0
 	unique_map := UniqueConnections()
 
@@ -425,6 +426,11 @@ func broadcast_Block_Coded(cbl *block.Complete_Block, PeerID uint64, first_seen 
 				return
 			default:
 			}
+
+			if tries > 1024 {
+				return
+			}
+			tries++
 			if atomic.LoadUint32(&v.State) != HANDSHAKE_PENDING && PeerID != v.Peer_ID && v.Peer_ID != GetPeerID() { // skip pre-handshake connections
 
 				// if the other end is > 2 blocks behind, do not broadcast block to him

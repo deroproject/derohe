@@ -19,6 +19,7 @@ package main
 import "io"
 import "fmt"
 import "time"
+import "strconv"
 import "strings"
 import "encoding/hex"
 
@@ -220,6 +221,30 @@ func common_processing(wallet *walletapi.Wallet_Disk) {
 		//offline_mode = true
 	} else {
 		wallet.SetOnlineMode()
+	}
+
+	if globals.Arguments["--scan-top-n-blocks"] != nil && globals.Arguments["--scan-top-n-blocks"].(string) != "" {
+		s, err := strconv.ParseInt(globals.Arguments["--scan-top-n-blocks"].(string), 10, 64)
+		if err != nil {
+			logger.Error(err, "Error parsing number(in numeric form)")
+		} else {
+			wallet.SetTrackRecentBlocks(s)
+			if wallet.SetTrackRecentBlocks(-1) == 0 {
+				logger.Info("Wallet will track entire history")
+			} else {
+				logger.Info("Wallet will track recent blocks", "blocks", wallet.SetTrackRecentBlocks(-1))
+			}
+		}
+	}
+
+	if globals.Arguments["--save-every-x-seconds"] != nil && globals.Arguments["--save-every-x-seconds"].(string) != "" {
+		s, err := strconv.ParseUint(globals.Arguments["--save-every-x-seconds"].(string), 10, 64)
+		if err != nil {
+			logger.Error(err, "Error parsing seconds(in numeric form)")
+		} else {
+			wallet.SetSaveDuration(time.Duration(s) * time.Second)
+			logger.Info("Wallet changes will be saved every", "duration (seconds)", wallet.SetSaveDuration(-1))
+		}
 	}
 
 	wallet.SetNetwork(!globals.Arguments["--testnet"].(bool))
