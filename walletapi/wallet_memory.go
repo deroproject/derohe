@@ -83,6 +83,8 @@ type Wallet_Memory struct {
 	transfer_mutex sync.Mutex // to avoid races within the transfer
 	//sync.Mutex  // used to syncronise access
 	sync.RWMutex
+
+	sync_in_progress sync.Mutex // whether sync is in progress
 }
 
 // when smart contracts are implemented, each will have it's own universe to track and maintain transactions

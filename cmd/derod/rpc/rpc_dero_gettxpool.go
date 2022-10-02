@@ -27,5 +27,10 @@ func GetTxPool(ctx context.Context) (result rpc.GetTxPool_Result) {
 	for i := range pool_list {
 		result.Tx_list = append(result.Tx_list, fmt.Sprintf("%s", pool_list[i]))
 	}
+
+	reg_list := chain.Regpool.Regpool_List_TX()
+	for i := range reg_list {
+		result.Tx_list = append(result.Tx_list, fmt.Sprintf("%s", reg_list[i]))
+	}
 	return result
 }

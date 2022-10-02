@@ -16,9 +16,11 @@
 
 package walletapi
 
+import "os"
 import "fmt"
 import "sort"
 import "sync"
+import "time"
 import "strings"
 import "math/big"
 import "crypto/rand"
@@ -68,6 +70,12 @@ type Account struct {
 	EntriesNative map[crypto.Hash][]rpc.Entry // all subtokens are stored here
 
 	RingMembers map[string]int64 `json:"ring_members"` // ring members
+
+	SaveChangesEvery time.Duration `json:"-"` // default is zero
+	lastsaved        time.Time
+
+	// do not build entire history from 0, only maintain top history
+	TrackRecentBlocks int64 `json:"-"` // only scan top blocks, default is zero, means everything
 
 	sync.Mutex // syncronise modifications to this structure
 }
@@ -219,7 +227,7 @@ func (w *Wallet_Memory) Get_Balance() (mature_balance uint64, locked_balance uin
 // TODO this code can be easily parallelised and need to be parallelised
 // if only the availble is requested, then the wallet is very fast
 // the spent tracking may make it slow ( in case of large probably million  txs )
-//TODO currently we do not track POOL at all any where ( except while building tx)
+// TODO currently we do not track POOL at all any where ( except while building tx)
 // if payment_id is true, only entries with payment ids are returned
 // min_height/max height represent topoheight
 func (w *Wallet_Memory) Show_Transfers(scid crypto.Hash, coinbase bool, in bool, out bool, min_height, max_height uint64, sender, receiver string, dstport, srcport uint64) []rpc.Entry {
@@ -269,7 +277,8 @@ func (w *Wallet_Memory) Get_Payments_Payment_ID(scid crypto.Hash, dst_port uint6
 // gets all the payments  done to specific payment ID and filtered by specific block height
 // we do need better rpc
 func (w *Wallet_Memory) Get_Payments_DestinationPort(scid crypto.Hash, port uint64, min_height uint64) (entries []rpc.Entry) {
-
+	w.Lock()
+	defer w.Unlock()
 	all_entries := w.account.EntriesNative[scid]
 	if all_entries == nil || len(all_entries) < 1 {
 		return
@@ -288,6 +297,9 @@ func (w *Wallet_Memory) Get_Payments_DestinationPort(scid crypto.Hash, port uint
 // return all payments within a tx there can be only 1 entry
 // NOTE: what about multiple payments
 func (w *Wallet_Memory) Get_Payments_TXID(txid string) (entry rpc.Entry) {
+	w.Lock()
+	defer w.Unlock()
+
 	var zerohash crypto.Hash
 	all_entries := w.account.EntriesNative[zerohash]
 	if all_entries == nil || len(all_entries) < 1 {
@@ -306,6 +318,8 @@ func (w *Wallet_Memory) Get_Payments_TXID(txid string) (entry rpc.Entry) {
 // delete most of the data and prepare for rescan
 // TODO we must save tokens list and reuse, them, but will be created on-demand when using shows transfers/or rpc apis
 func (w *Wallet_Memory) Clean() {
+	w.Lock()
+	defer w.Unlock()
 	//w.account.Entries = w.account.Entries[:0]
 
 	for k := range w.account.EntriesNative {
@@ -466,6 +480,35 @@ func (w *Wallet_Memory) GetSeedLanguage() string {
 	return w.account.SeedLanguage
 }
 
+// Ability to set save frequency to lower disc write frequency
+// a negative set value, will return existing value,
+// 0 is a valid value and is set to default
+// this is supposed to be used in very specific/special conditions and generally need not be changed
+func (w *Wallet_Memory) SetSaveDuration(saveevery time.Duration) (old time.Duration) {
+	old = w.account.SaveChangesEvery
+	if saveevery >= 0 {
+		if saveevery.Seconds() > 3600 {
+			saveevery = 3600 * time.Second
+		}
+		w.account.SaveChangesEvery = saveevery
+		defer w.save_if_disk() // save wallet now so as settting become permanent
+	}
+	return
+}
+
+// Ability to set wallet scanning
+// a negative set value, will return existing value,
+// 0 is a valid value and is set to default and will scan entire history
+// this is supposed to be used in very specific/special conditions and generally need not be changed
+func (w *Wallet_Memory) SetTrackRecentBlocks(recency int64) (old int64) {
+	old = w.account.TrackRecentBlocks
+	if recency >= 0 {
+		w.account.TrackRecentBlocks = recency
+		defer w.save_if_disk() // save wallet now so as settting become permanent
+	}
+	return
+}
+
 // retrieve  secret key for any tx we may have created
 func (w *Wallet_Memory) GetRegistrationTX() *transaction.Transaction {
 	var tx transaction.Transaction
@@ -515,7 +558,6 @@ func (w *Wallet_Memory) GetTXKey(txhash string) string {
 
 // never do any division operation on money due to floating point issues
 // newbies, see type the next in python interpretor "3.33-3.13"
-//
 func FormatMoney(amount uint64) string {
 	return FormatMoneyPrecision(amount, 5) // default is 5 precision after floating point
 }
@@ -593,5 +635,89 @@ func (w *Wallet_Memory) CheckSignature(input []byte) (signer *rpc.Address, messa
 
 	signer = addr
 	message = p.Bytes
+	return
+}
+
+// this basically does a  Schnorr Signature on random information for registration
+// NOTE: this function brings entire file to RAM 2 times, this could be removed by refactoring this function
+// NOTE: a similar function which wraps data already exists in wallet.go just above this function
+func (w *Wallet_Memory) SignFile(filename string) error {
+	var tmppoint bn256.G1
+
+	tmpsecret := crypto.RandomScalar()
+	tmppoint.ScalarMult(crypto.G, tmpsecret)
+
+	input, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
+	serialize := []byte(fmt.Sprintf("%s%s%x", w.account.Keys.Public.G1().String(), tmppoint.String(), input))
+
+	c := crypto.ReducedHash(serialize)
+	s := new(big.Int).Mul(c, w.account.Keys.Secret.BigInt()) // basicaly scalar mul add
+	s = s.Mod(s, bn256.Order)
+	s = s.Add(s, tmpsecret)
+	s = s.Mod(s, bn256.Order)
+
+	p := &pem.Block{Type: "DERO SIGNED MESSAGE"}
+	p.Headers = map[string]string{}
+	p.Headers["Address"] = w.GetAddress().String()
+	p.Headers["C"] = fmt.Sprintf("%x", c)
+	p.Headers["S"] = fmt.Sprintf("%x", s)
+
+	return os.WriteFile(filename+".signed", pem.EncodeToMemory(p), 0600)
+}
+
+func (w *Wallet_Memory) CheckFileSignature(filename string) (signer *rpc.Address, err error) {
+
+	input, err := os.ReadFile(filename + ".signed")
+	if err != nil {
+		return
+	}
+
+	p, _ := pem.Decode(input)
+	if p == nil {
+		err = fmt.Errorf("Unknown format")
+		return
+	}
+
+	astr := p.Headers["Address"]
+	cstr := p.Headers["C"]
+	sstr := p.Headers["S"]
+
+	addr, err := rpc.NewAddress(astr)
+	if err != nil {
+		return
+	}
+
+	c, ok := new(big.Int).SetString(cstr, 16)
+	if !ok {
+		err = fmt.Errorf("Unknown C format")
+		return
+	}
+
+	s, ok := new(big.Int).SetString(sstr, 16)
+	if !ok {
+		err = fmt.Errorf("Unknown S format")
+		return
+	}
+
+	tmppoint := new(bn256.G1).Add(new(bn256.G1).ScalarMult(crypto.G, s), new(bn256.G1).ScalarMult(addr.PublicKey.G1(), new(big.Int).Neg(c)))
+
+	input_data, err := os.ReadFile(filename)
+	if err != nil {
+		return
+	}
+
+	serialize := []byte(fmt.Sprintf("%s%s%x", addr.PublicKey.G1().String(), tmppoint.String(), input_data))
+
+	c_calculated := crypto.ReducedHash(serialize)
+	if c.String() != c_calculated.String() {
+		err = fmt.Errorf("signature mismatch")
+		return
+	}
+
+	signer = addr
 	return
 }
