@@ -81,13 +81,15 @@ Usage:
   --rpc-bind=<127.0.0.1:20209>  Wallet binds on this ip address and port
   --rpc-login=<username:password>  RPC server will grant access based on these credentials
   --allow-rpc-password-change   RPC server will change password if you send "Pass" header with new password
+  --scan-top-n-blocks=<100000>  Only scan top N blocks
+  --save-every-x-seconds=<300>  Save wallet every x seconds
   `
 var menu_mode bool = true // default display menu mode
-//var account_valid bool = false                        // if an account has been opened, do not allow to create new account in this session
+// var account_valid bool = false                        // if an account has been opened, do not allow to create new account in this session
 var offline_mode bool             // whether we are in offline mode
 var sync_in_progress int          //  whether sync is in progress with daemon
 var wallet *walletapi.Wallet_Disk //= &walletapi.Account{} // all account  data is available here
-//var address string
+// var address string
 var sync_time time.Time // used to suitable update  prompt
 
 var default_offline_datafile string = "getoutputs.bin"

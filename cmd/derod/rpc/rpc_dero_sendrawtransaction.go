@@ -24,7 +24,7 @@ import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/p2p"
 import "github.com/deroproject/derohe/transaction"
 
-//NOTE: finally we have shifted to json api
+// NOTE: finally we have shifted to json api
 func SendRawTransaction(ctx context.Context, p rpc.SendRawTransaction_Params) (result rpc.SendRawTransaction_Result, err error) {
 
 	defer func() { // safety so if anything wrong happens, we return error
@@ -61,6 +61,7 @@ func SendRawTransaction(ctx context.Context, p rpc.SendRawTransaction_Params) (r
 	if err = chain.Add_TX_To_Pool(&tx); err == nil {
 		p2p.Broadcast_Tx(&tx, 0) // broadcast tx
 		result.Status = "OK"
+		result.TXID = fmt.Sprintf("%s", tx.GetHash())
 	} else {
 		err = fmt.Errorf("Transaction %s rejected by daemon err '%s'", tx.GetHash(), err)
 	}

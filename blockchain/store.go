@@ -42,6 +42,7 @@ func (s *storage) Initialize(params map[string]interface{}) (err error) {
 	if s.Balance_store, err = graviton.NewDiskStore(filepath.Join(current_path, "balances")); err == nil {
 		if err = s.Topo_store.Open(current_path); err == nil {
 			s.Block_tx_store.basedir = current_path
+			s.Block_tx_store.migrate_old_tx()
 		}
 	}
 
@@ -292,7 +293,7 @@ func (chain *Blockchain) Load_Block_Topological_order_at_index(index_pos int64) 
 
 }
 
-//load store hash from 2 tree
+// load store hash from 2 tree
 func (chain *Blockchain) Load_Merkle_Hash(version uint64) (hash crypto.Hash, err error) {
 
 	if hashi, ok := chain.cache_VersionMerkle.Get(version); ok {
