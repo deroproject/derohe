@@ -1,10 +1,10 @@
-### Welcome to the DEROHE Testnet
+### Welcome to the DERO HE Testnet
 
 [Explorer](https://testnetexplorer.dero.io) [Source](https://github.com/deroproject/derohe) [Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Wiki](https://wiki.dero.io) [Github](https://github.com/deroproject/derohe) [DERO CryptoNote Mainnet Stats](http://network.dero.io) [Mainnet WebWallet](https://wallet.dero.io/) 
 
-### DERO HE [ DERO Homomorphic Encryption]
+### DERO HE [DERO Homomorphic Encryption]
 
-[From Wikipedia: ](https://en.wikipedia.org/wiki/Homomorphic_encryption) 
+[From Wikipedia:](https://en.wikipedia.org/wiki/Homomorphic_encryption) 
 
 **Homomorphic encryption is a form of encryption allowing one to perform calculations on encrypted data without decrypting it first. The result of the computation is in an encrypted form, when decrypted the output is the same as if the operations had been performed on the unencrypted data.**
 
@@ -42,8 +42,8 @@ DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphi
 
 #### ABOUT DERO PROJECT
 
-&nbsp; &nbsp; &nbsp; &nbsp; [DERO](https://github.com/deroproject/derosuite) is decentralized DAG(Directed Acyclic Graph) based blockchain with enhanced reliability, privacy, security, and usability. Consensus algorithm is PoW based on [DERO AstroBWT: ASIC/FPGA/GPU resistant CPU mining algorithm ](https://github.com/deroproject/astrobwt). DERO is industry leading and the first blockchain to have bulletproofs, TLS encrypted Network.  
-&nbsp; &nbsp; &nbsp; &nbsp; DERO is the first crypto project to combine a Proof of Work blockchain with a DAG block structure and fully anonymous transactions based on [Homomorphic Encryption](https://en.wikipedia.org/wiki/Homomorphic_encryption). The fully distributed ledger processes transactions with a sixty-seconds average block time and is secure against majority hashrate attacks. DERO will be the first Homomorphic Encryption based blockchain to have smart contracts on its native chain without any extra layers or secondary blockchains. At present DERO has Smart Contracts on old CryptoNote protocol [testnet](https://github.com/deroproject/documentation/blob/master/testnet/stargate.md).
+&nbsp; &nbsp; &nbsp; &nbsp; [DERO](https://github.com/deroproject/derohe) is decentralized DAG (Directed Acyclic Graph) based blockchain with enhanced reliability, privacy, security, and usability. The consensus algorithm is PoW based on [DERO AstroBWT: ASIC/FPGA/GPU resistant CPU mining algorithm ](https://github.com/deroproject/astrobwt). DERO is industry leading and the first blockchain to have bulletproofs, TLS encrypted Network.  
+&nbsp; &nbsp; &nbsp; &nbsp; DERO is the first crypto project to combine a Proof of Work blockchain with a DAG block structure and fully anonymous transactions based on [Homomorphic Encryption](https://en.wikipedia.org/wiki/Homomorphic_encryption). The fully distributed ledger processes transactions with a sixty second average block time and is secure against the majority of hashrate attacks. DERO will be the first Homomorphic Encryption based blockchain to have smart contracts on its native chain without any extra layers or secondary blockchains. At present DERO has Smart Contracts on the old CryptoNote protocol [testnet](https://github.com/deroproject/documentation/blob/master/testnet/stargate.md).
 
 #### DERO HE Features
 
