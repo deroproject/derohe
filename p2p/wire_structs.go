@@ -99,7 +99,7 @@ type Objects struct {
 	Chunks     []Block_Chunk    `cbor:"CHUNKS,omitempty"` // all requested chunks are here
 }
 
-//  used to request what all changes are done by the block to the chain
+// used to request what all changes are done by the block to the chain
 type ChangeList struct {
 	Common      Common_Struct `cbor:"COMMON"` // add all fields of Common
 	TopoHeights []int64       `cbor:"TOPO"`
@@ -129,6 +129,7 @@ type Response_Tree_Section_Struct struct {
 	StateHash     [32]byte      `cbor:"STATE"`
 	Keys          [][]byte      `cbor:"KEYS,omitempty"`   // changes to state tree
 	Values        [][]byte      `cbor:"VALUES,omitempty"` // changes to state tree
+	KeyCount      int64         `cbor:"KEYCOUNT"`         // estimated keys in this tree
 }
 
 type Tree_Changes struct {

@@ -58,7 +58,7 @@ type RPCServer struct {
 	sync.RWMutex
 }
 
-//var Exit_In_Progress bool
+// var Exit_In_Progress bool
 var chain *blockchain.Blockchain
 var logger logr.Logger
 
@@ -296,7 +296,6 @@ func Echo(ctx context.Context, args []string) string {
 var internal_server = server.NewLocal(historical_apis, nil) // uses traditional "getinfo" for compatibility reasons
 // Bridge HTTP to the JSON-RPC server.
 var bridge = jhttp.NewBridge(internal_server.Client)
-
 */
 var historical_apis = handler.Map{"getinfo": handler.New(GetInfo),
 	"get_info":                   handler.New(GetInfo), // this is just an alias to above

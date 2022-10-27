@@ -263,11 +263,11 @@ func P2P_engine() {
 			// trigger connection to all seed nodes hoping some will be up
 			if globals.IsMainnet() { // initial boot strap should be quick
 				for i := range config.Mainnet_seed_nodes {
-					go connect_with_endpoint(config.Mainnet_seed_nodes[i], true)
+					go connect_with_endpoint(config.Mainnet_seed_nodes[i], sync_node)
 				}
 			} else { // initial bootstrap
 				for i := range config.Testnet_seed_nodes {
-					go connect_with_endpoint(config.Testnet_seed_nodes[i], true)
+					go connect_with_endpoint(config.Testnet_seed_nodes[i], sync_node)
 				}
 			}
 
@@ -434,8 +434,8 @@ func maintain_seed_node_connection() {
 			endpoint = config.Testnet_seed_nodes[r.Int64()%int64(len(config.Testnet_seed_nodes))]
 		}
 		if endpoint != "" {
-			//connect_with_endpoint(endpoint, sync_node)
-			connect_with_endpoint(endpoint, true) // seed nodes always have sync mode
+			connect_with_endpoint(endpoint, sync_node)
+			//connect_with_endpoint(endpoint, true) // seed nodes always have sync mode
 		}
 	}
 }

@@ -39,6 +39,7 @@ func (c *Connection) TreeSection(request Request_Tree_Section_Struct, response *
 		if topo_ss, err = chain.Store.Balance_store.LoadSnapshot(topo_sr.State_Version); err == nil {
 			if topo_balance_tree, err = topo_ss.GetTree(string(request.TreeName)); err == nil {
 				cursor := topo_balance_tree.Cursor()
+				response.KeyCount = topo_balance_tree.KeyCountEstimate()
 				for k, v, err := cursor.SpecialFirst(request.Section, uint(request.SectionLength)); err == nil; k, v, err = cursor.Next() {
 					response.Keys = append(response.Keys, k)
 					response.Values = append(response.Values, v)
