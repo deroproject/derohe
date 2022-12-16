@@ -73,7 +73,7 @@ var miners_count int
 var mini_found_time []int64 // this array contains a epoch timestamp in int64
 var rate_lock sync.Mutex
 
-//this function will return wrong result if too wide time glitches happen to system clock
+// this function will return wrong result if too wide time glitches happen to system clock
 func Counter(seconds int64) (r int) { // we need atleast 1 mini to find a rate
 	rate_lock.Lock()
 	defer rate_lock.Unlock()

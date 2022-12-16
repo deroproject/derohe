@@ -55,7 +55,7 @@ func (fv *FieldVector) Slice(start, end int) *FieldVector {
 	return &result
 }
 
-//copy and return
+// copy and return
 func (fv *FieldVector) Clone() *FieldVector {
 	return fv.Slice(0, len(fv.vector))
 }

@@ -4,11 +4,10 @@ package p2p
 // yes, this project contains a local averaging distributed clock syncronisation algorithm
 import "time"
 
-//
-//   org = Origin Timestamp (client send time)
-//   rec = Receive Timestamp (server receive time)
-//   xmt = Transmit Timestamp (server reply time)
-//   dst = Destination Timestamp (client receive time)
+// org = Origin Timestamp (client send time)
+// rec = Receive Timestamp (server receive time)
+// xmt = Transmit Timestamp (server reply time)
+// dst = Destination Timestamp (client receive time)
 func rtt(org, rec, xmt, dst time.Time) time.Duration {
 	// round trip delay time rtt = (dst-org) - (xmt-rec)
 	a := dst.Sub(org)

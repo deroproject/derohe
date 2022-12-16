@@ -52,7 +52,7 @@ for PLATFORM in $PLATFORMS; do
   BIN_FILENAME="${OUTPUT}-${GOOS}-${GOARCH}"
   echo  mkdir -p $OUTPUT_DIR
   if [[ "${GOOS}" == "windows" ]]; then BIN_FILENAME="${BIN_FILENAME}.exe"; fi
-  CMD="GOOS=${GOOS} GOARCH=${GOARCH} go build -gcflags=${GCFLAGS} -o $OUTPUT_DIR/${BIN_FILENAME} $package"
+  CMD="GOOS=${GOOS} GOARCH=${GOARCH} go build -trimpath -ldflags=-buildid= -gcflags=${GCFLAGS} -o $OUTPUT_DIR/${BIN_FILENAME} $package"
   echo "${CMD}"
   eval $CMD || FAILURES="${FAILURES} ${PLATFORM}"
 
@@ -75,7 +75,7 @@ for GOOS in $PLATFORMS_ARM; do
    for GOARM in 7; do
     OUTPUT_DIR="${ABSDIR}/build/dero_${GOOS}_${GOARCH}${GOARM}"
     BIN_FILENAME="${OUTPUT}-${GOOS}-${GOARCH}${GOARM}"
-    CMD="GOARM=${GOARM} GOOS=${GOOS} GOARCH=${GOARCH} go build -gcflags=${GCFLAGS} -o $OUTPUT_DIR/${BIN_FILENAME} $package"
+    CMD="GOARM=${GOARM} GOOS=${GOOS} GOARCH=${GOARCH} go build -trimpath -ldflags=-buildid= -gcflags=${GCFLAGS} -o $OUTPUT_DIR/${BIN_FILENAME} $package"
     echo "${CMD}"
     eval "${CMD}" || FAILURES="${FAILURES} ${GOOS}/${GOARCH}${GOARM}" 
   done

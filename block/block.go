@@ -185,7 +185,7 @@ func (bl *Block) GetTXSHash() (result crypto.Hash) {
 	return
 }
 
-//parse entire block completely
+// parse entire block completely
 func (bl *Block) Deserialize(buf []byte) (err error) {
 	done := 0
 

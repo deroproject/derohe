@@ -78,7 +78,7 @@ func (d DataType) String() string {
 
 }
 
-//type  DataType byte
+// type  DataType byte
 type Argument struct {
 	Name     string      `json:"name"`     // string name must be atleast 1 byte
 	DataType DataType    `json:"datatype"` // Type must one of the known data types

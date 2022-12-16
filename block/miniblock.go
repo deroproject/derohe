@@ -172,7 +172,7 @@ func (mbl *MiniBlock) Serialize() (result []byte) {
 	return b.Bytes()
 }
 
-//parse entire block completely
+// parse entire block completely
 func (mbl *MiniBlock) Deserialize(buf []byte) (err error) {
 	if len(buf) < MINIBLOCK_SIZE {
 		return fmt.Errorf("Expected %d bytes. Actual %d", MINIBLOCK_SIZE, len(buf))

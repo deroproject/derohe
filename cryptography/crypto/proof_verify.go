@@ -469,53 +469,53 @@ func (proof *Proof) Verify(scid Hash, scid_index int, s *Statement, txid Hash, e
 }
 
 /*
-func (proof *Proof) String() string {
-	klog.V(1).Infof("proof BA %s\n", proof.BA.String())
-	klog.V(1).Infof("proof BS %s\n", proof.BS.String())
-	klog.V(1).Infof("proof A %s\n", proof.A.String())
-	klog.V(1).Infof("proof B %s\n", proof.B.String())
+	func (proof *Proof) String() string {
+		klog.V(1).Infof("proof BA %s\n", proof.BA.String())
+		klog.V(1).Infof("proof BS %s\n", proof.BS.String())
+		klog.V(1).Infof("proof A %s\n", proof.A.String())
+		klog.V(1).Infof("proof B %s\n", proof.B.String())
 
-	for i := range proof.CLnG {
-		klog.V(1).Infof("CLnG %d %s \n", i, proof.CLnG[i].String())
-	}
-	for i := range proof.CRnG {
-		klog.V(1).Infof("CRnG %d %s \n", i, proof.CRnG[i].String())
-	}
+		for i := range proof.CLnG {
+			klog.V(1).Infof("CLnG %d %s \n", i, proof.CLnG[i].String())
+		}
+		for i := range proof.CRnG {
+			klog.V(1).Infof("CRnG %d %s \n", i, proof.CRnG[i].String())
+		}
 
-	for i := range proof.C_0G {
-		klog.V(1).Infof("C_0G %d %s \n", i, proof.C_0G[i].String())
-	}
-	for i := range proof.DG {
-		klog.V(1).Infof("DG %d %s \n", i, proof.DG[i].String())
-	}
-	for i := range proof.y_0G {
-		klog.V(1).Infof("y_0G %d %s \n", i, proof.y_0G[i].String())
-	}
-	for i := range proof.gG {
-		klog.V(1).Infof("gG %d %s \n", i, proof.gG[i].String())
-	}
+		for i := range proof.C_0G {
+			klog.V(1).Infof("C_0G %d %s \n", i, proof.C_0G[i].String())
+		}
+		for i := range proof.DG {
+			klog.V(1).Infof("DG %d %s \n", i, proof.DG[i].String())
+		}
+		for i := range proof.y_0G {
+			klog.V(1).Infof("y_0G %d %s \n", i, proof.y_0G[i].String())
+		}
+		for i := range proof.gG {
+			klog.V(1).Infof("gG %d %s \n", i, proof.gG[i].String())
+		}
 
-	for i := range proof.C_XG {
-		klog.V(1).Infof("C_XG %d %s \n", i, proof.C_XG[i].String())
-	}
-	for i := range proof.y_XG {
-		klog.V(1).Infof("y_XG %d %s \n", i, proof.y_XG[i].String())
-	}
+		for i := range proof.C_XG {
+			klog.V(1).Infof("C_XG %d %s \n", i, proof.C_XG[i].String())
+		}
+		for i := range proof.y_XG {
+			klog.V(1).Infof("y_XG %d %s \n", i, proof.y_XG[i].String())
+		}
 
-	//for i := range proof.tCommits.vector {
-	//	klog.V(1).Infof("tCommits %d %s \n", i, proof.tCommits.vector[i].String())
-	//}
+		//for i := range proof.tCommits.vector {
+		//	klog.V(1).Infof("tCommits %d %s \n", i, proof.tCommits.vector[i].String())
+		//}
 
-	klog.V(1).Infof("proof z_A %s\n", proof.z_A.Text(16))
-	klog.V(1).Infof("proof that %s\n", proof.that.Text(16))
-	klog.V(1).Infof("proof mu %s\n", proof.mu.Text(16))
-	klog.V(1).Infof("proof C %s\n", proof.c.Text(16))
-	klog.V(1).Infof("proof s_sk %s\n", proof.s_sk.Text(16))
-	klog.V(1).Infof("proof s_r %s\n", proof.s_r.Text(16))
-	klog.V(1).Infof("proof s_b %s\n", proof.s_b.Text(16))
-	klog.V(1).Infof("proof s_tau %s\n", proof.s_tau.Text(16))
+		klog.V(1).Infof("proof z_A %s\n", proof.z_A.Text(16))
+		klog.V(1).Infof("proof that %s\n", proof.that.Text(16))
+		klog.V(1).Infof("proof mu %s\n", proof.mu.Text(16))
+		klog.V(1).Infof("proof C %s\n", proof.c.Text(16))
+		klog.V(1).Infof("proof s_sk %s\n", proof.s_sk.Text(16))
+		klog.V(1).Infof("proof s_r %s\n", proof.s_r.Text(16))
+		klog.V(1).Infof("proof s_b %s\n", proof.s_b.Text(16))
+		klog.V(1).Infof("proof s_tau %s\n", proof.s_tau.Text(16))
 
-	return ""
+		return ""
 
 }
 */

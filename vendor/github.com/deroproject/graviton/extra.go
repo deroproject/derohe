@@ -72,8 +72,8 @@ func (t *Tree) KeyCountEstimate() (count int64) {
 			break
 		}
 	}
-	if len(depth_array) <= 4 {
-		return int64(count)
+	if len(depth_array) <= 19 {
+		return int64(len(depth_array))
 	}
 	avg := floatsum / float64(len(depth_array)+1)
 	return int64(math.Exp2(avg))
