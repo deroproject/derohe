@@ -123,11 +123,17 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 
 	var mbls []block.MiniBlock
 
+	height := chain.Get_Height()
 	for i := range request.MiniBlocks {
 		var mbl block.MiniBlock
 		if err = mbl.Deserialize(request.MiniBlocks[i]); err != nil {
 			return err
 		}
+		if height > 4 { // activate check a bit after genesis, thanks Slixe
+		if  height-2 <= int64(mbl.Height)  && int64(mbl.Height) <= (height+1){		
+		} else{
+			return fmt.Errorf("Stale Miniblock")
+		}}
 		mbls = append(mbls, mbl)
 	}
 

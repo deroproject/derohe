@@ -1,12 +1,15 @@
-### Welcome to the DEROHE Testnet
-
-[Explorer](https://testnetexplorer.dero.io) [Source](https://github.com/deroproject/derohe) [Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Wiki](https://wiki.dero.io) [Github](https://github.com/deroproject/derohe) [DERO CryptoNote Mainnet Stats](http://network.dero.io) [Mainnet WebWallet](https://wallet.dero.io/) 
-
 ### DERO HE Changelog
 
-[From Wikipedia: ](https://en.wikipedia.org/wiki/Homomorphic_encryption) 
 
-###At this point in time, DERO blockchain has the first mover advantage in the following 
+### Release 116
+ * Added miniblock spam fix(Bug reported by Slixe)
+ * Pruned chain can be rewinded till its pruned height only(Bug reported by Slixe)
+ * Added a wallet crash fix
+ * Fixed github issue 112
+ * Fixed github issue 98
+
+
+### At this point in time, DERO blockchain has the first mover advantage in the following 
 
 * Private SCs ( no one knows who owns what tokens and who is transferring to whom and how much is being transferred.)
 * Homomorphic protocol
@@ -22,11 +25,10 @@
 - Multi-send is now possible. sending to multiple destination per tx
 - DERO Simulator for faster development/testing
 - Few more ideas implemented and will be tested for review in upcoming technology preview.
-- 
 
 
 
-###3.4
+### 3.4
 
 - DAG/MINIDAG with blocks flowing every second
 - Mining Decentralization.No more mining pools, daily 100000 reward blocks, no need for pools and thus no attacks
@@ -36,21 +38,21 @@
 - Implemented gas estimation
 - DVM simulator to test all edge cases for SC dev, see dvm/simulator_test.go to see it in action for lotter SC. 
 
-###3.3 
+### 3.3 
 
 * Private SCs are now supported. (90% completed).
 * Sample Token contract is available with guide.
 * Multi-send is now possible. sending to multiple destination per tx
 * Few more ideas implemented and will be tested for review in upcoming technology preview.
 
-###3.2
+### 3.2
 
 * Open SCs are now supported
 * Private SCs which have their balance encrypted at all times (under implementation)
 * SCs can now update themselves. however, new code will only run on next invocation
 * Multi Send is under implementation.
 
-###3.1
+### 3.1
 
 * TX now have significant savings of around 31 * ringsize bytes for every tx
 * Daemon now supports pruned chains.
@@ -69,3 +71,5 @@
 ###3.0
 
 * DERO HE implemented
+
+
