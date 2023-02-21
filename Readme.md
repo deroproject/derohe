@@ -11,7 +11,7 @@
 Homomorphic encryption can be used for privacy-preserving outsourced storage and computation. This allows data to be encrypted and out-sourced to commercial cloud environments for processing, all while encrypted. In highly regulated industries, such as health care, homomorphic encryption can be used to enable new services by removing privacy barriers inhibiting data sharing. For example, predictive analytics in health care can be hard to apply via a third party service provider due to medical data privacy concerns, but if the predictive analytics service provider can operate on encrypted data instead, these privacy concerns are diminished.  
 
 **DERO is pleased to announce release of DERO Homomorphic Encryption Protocol testnet.** 
-DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphic Encryption Blockchain Protocol(DHEBP).
+DERO will migrate from existing CryptoNote Protocol to its own DERO Homomorphic Encryption Blockchain Protocol(DHEBP).
 
 ### Table of Contents [DEROHE]
 
@@ -85,11 +85,11 @@ DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphi
 
 19. Pruning chain/history for immense scalibility[while still secured using merkle proofs].
 
-20. Example disk  requirements of 1 billion accounts ( assumming it does not want to keep history of transactions, but keeps proofs to prove that the node is in sync with all other nodes)
+20. Example disk  requirements of 1 billion accounts ( assuming it does not want to keep history of transactions, but keeps proofs to prove that the node is in sync with all other nodes)
     
     ```
     Requirement of 1 account = 66 bytes
-    Assumming storage overhead per account of 128 bytes ( constant )
+    Assuming storage overhead per account of 128 bytes ( constant )
     Total requirements = (66 + 128)GB ~ 200GB
     Assuming we are off by factor of 4 = 800GB
     ```
@@ -122,7 +122,7 @@ DERO will migrate from exisiting CryptoNote Protocol to it's own DERO Homomorphi
 
 #### DERO Crypto
 
-&nbsp; &nbsp; &nbsp; &nbsp; Secure and fast crypto is the basic necessity of this project and adequate amount of time has been devoted to develop/study/implement/audit it. Most of the crypto such as ring signatures have been studied by various researchers and are in production by number of projects. As far as the Bulletproofs are considered, since DERO is the first one to implement/deploy, they have been given a more detailed look. First, a bare bones bulletproofs was implemented, then implementations in development were studied (Benedict Bunz,XMR, Dalek Bulletproofs) and thus improving our own implementation.  
+&nbsp; &nbsp; &nbsp; &nbsp; Secure and fast crypto is the basic necessity of this project and adequate amount of time has been devoted to develop/study/implement/audit it. Most of the crypto such as ring signatures have been studied by various researchers and are in production by number of projects. As far as the Bulletproofs are considered, since DERO is the first one to implement/deploy, they have been given a more detailed look. First, a bare bones bulletproofs was implemented, then implementations in development were studied (Benedict Bunz, XMR, Dalek Bulletproofs) and thus improving our own implementation.  
 &nbsp; &nbsp; &nbsp; &nbsp; Some new improvements were discovered and implemented (There are number of other improvements which are not explained here). Major improvements are in the Double-Base Double-Scalar Multiplication while validating bulletproofs. A typical bulletproof takes ~15-17 ms to verify. Optimised bulletproofs takes ~1 to ~2 ms(simple bulletproof, no aggregate/batching). Since, in the case of bulletproofs the bases are fixed, we can use precompute table to convert 64*2 Base Scalar multiplication into doublings and additions (NOTE: We do not use Bos-Coster/Pippienger methods). This time can be again easily decreased to .5 ms with some more optimizations. With batching and aggregation, 5000 range-proofs (~2500 TX) can be easily verified on even a laptop. The implementation for bulletproofs is in github.com/deroproject/derosuite/crypto/ringct/bulletproof.go , optimized version is in github.com/deroproject/derosuite/crypto/ringct/bulletproof_ultrafast.go
 
 &nbsp; &nbsp; &nbsp; &nbsp; There are other optimizations such as base-scalar multiplication could be done in less than a microsecond. Some of these optimizations are not yet deployed and may be deployed at a later stage.  
@@ -146,23 +146,23 @@ Wallet RPC Default Port: 40403
 1. **DAG:** No orphan blocks, No soft-forks.
 2. **BulletProofs:** Zero Knowledge range-proofs(NIZK)
 3. **AstroBWT:** This is memory-bound algorithm. This provides assurance that all miners are equal. ( No miner has any advantage over common miners).
-4. **P2P Protocol:** This layers controls exchange of blocks, transactions and blockchain itself.
+4. **P2P Protocol:** This layer controls exchange of blocks, transactions and blockchain itself.
 5. **Pederson Commitment:** (Part of ring confidential transactions): Pederson commitment algorithm is a cryptographic primitive that allows user to commit to a chosen value  while keeping it hidden to others. Pederson commitment  is used to hide all amounts without revealing the actual amount. It is a homomorphic commitment scheme.
-6. **Homomorphic Encryption:** Homomorphic Encryption is used to to do operations such as addition/substraction to settle balances with data being always encrypted (Balances are never decrypted before/during/after operations in any form.).
+6. **Homomorphic Encryption:** Homomorphic Encryption is used to do operations such as addition/substraction to settle balances with data being always encrypted (Balances are never decrypted before/during/after operations in any form.).
 7. **Homomorphic Ring Confidential Transactions:** Gives untraceability , privacy and fungibility while making sure that the system is stable and secure.
-8. **Core-Consensus Protocol implemented:** Consensus protocol serves 2 major purpose
+8. **Core-Consensus Protocol implemented:** Consensus protocol serves 2 major purposes
    1. Protects the system from adversaries and protects it from forking and tampering.
    2. Next block in the chain is the one and only correct version of truth ( balances).
 9. **Proof-of-Work(PoW) algorithm:**  PoW part of core consensus protocol which is used to cryptographically prove that X amount of work has been done to successfully find a block.
 10. **Difficulty algorithm**: Difficulty algorithm controls the system so as blocks are found roughly at the same speed, irrespective of the number and amount of mining power deployed.
 11. **Serialization/De-serialization of blocks**: Capability to encode/decode/process blocks .
 12. **Serialization/De-serialization of transactions**: Capability to encode/decode/process transactions.
-13. **Transaction validity and verification**: Any transactions flowing within the DERO network are validated,verified.
+13. **Transaction validity and verification**: Any transactions flowing within the DERO network are validated, verified.
 14. **Socks proxy:** Socks proxy has been implemented and integrated within the daemon to decrease user identifiability and improve user anonymity.
 15. **Interactive daemon** can print blocks, txs, even entire blockchain from within the daemon 
 16. **status, diff, print_bc, print_block, print_tx** and several other commands implemented
 17. GO DERO Daemon has both mainnet, testnet support.
-18. **Enhanced Reliability, Privacy, Security, Useability, Portabilty assured.**
+18. **Enhanced Reliability, Privacy, Security, Useability, Portability assured.**
 
 #### DERO blockchain salient features
 
@@ -194,7 +194,7 @@ Wallet RPC Default Port: 40403
 
 #### **Erasure Coded Blocks**
 
-        Traditional Blockchains process blocks as single unit of computation(if a double-spend tx occurs within the block, entire block is rejected). As soon as a block is found, it is sent to all its peers.DERO blockchain erasure codes the block into 48 chunks, dispersing and chunks are dispersed to peers randomly.Any peer receiving any 16 chunks( from 48 chunks) can regerate the block and thus lower overheads and lower propagation time.
+        Traditional Blockchains process blocks as single unit of computation(if a double-spend tx occurs within the block, entire block is rejected). As soon as a block is found, it is sent to all its peers.DERO blockchain erasure codes the block into 48 chunks, dispersing and chunks are dispersed to peers randomly.Any peer receiving any 16 chunks( from 48 chunks) can regenerate the block and thus lower overheads and lower propagation time.
 
 #### Client Protocol
 
@@ -208,11 +208,11 @@ Wallet RPC Default Port: 40403
 
 - DERO rocket bulletproof transactions structures are not compatible with other implementations.
 
-&nbsp; &nbsp; &nbsp; &nbsp; Also there are several optimizations planned in near future in Dero rocket bulletproofs which will lead to several times performance boost. Presently they are under study for bugs, verifications, compatibilty etc.
+&nbsp; &nbsp; &nbsp; &nbsp; Also there are several optimizations planned in near future in Dero rocket bulletproofs which will lead to several times performance boost. Presently they are under study for bugs, verifications, compatibility etc.
 
 #### 51% Attack Resistant
 
-&nbsp; &nbsp; &nbsp; &nbsp; DERO DAG implementation builds outs a main chain from the DAG network of blocks which refers to main blocks (100% reward) and side blocks (8% rewards). Side blocks contribute to chain PoW security and thus traditional 51% attacks are not possible on DERO network. If DERO network finds another block at the same height, instead of choosing one, DERO include both blocks. Thus, rendering the 51% attack futile.
+&nbsp; &nbsp; &nbsp; &nbsp; DERO DAG implementation builds outs a main chain from the DAG network of blocks which refers to main blocks (100% reward) and side blocks (8% rewards). Side blocks contribute to chain PoW security and thus traditional 51% attacks are not possible on DERO network. If DERO network finds another block at the same height, instead of choosing one, DERO includes both blocks. Thus, rendering the 51% attack futile.
 
 #### DERO Mining
 
@@ -230,7 +230,7 @@ Wallet RPC Default Port: 40403
 4. For example on Linux machine following binaries will be created:
    1. derod-linux-amd64 -> DERO daemon.  
    2. dero-wallet-cli-linux-amd64 -> DERO cmdline wallet.  
-   3. explorer-linux-amd64 -> DERO Explorer. Yes, DERO has prebuilt personal explorer also for advance privacy users.
+   3. explorer-linux-amd64 -> DERO Explorer. Yes, DERO has prebuilt personal explorer also for advanced privacy users.
 
 #### Installation From Binary
 
