@@ -1408,7 +1408,7 @@ func (chain *Blockchain) Rewind_Chain(rewind_count int) (result bool) {
 	}
 
 	// a pruned chain can only be rewinded upto it pruned height only
-	if chain.Load_TOPO_HEIGHT() - int64(rewind_count) <=  pruned_till {
+	if chain.Load_TOPO_HEIGHT()-int64(rewind_count) <= pruned_till {
 		return false
 	}
 

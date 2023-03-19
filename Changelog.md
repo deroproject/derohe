@@ -1,5 +1,7 @@
 ### DERO HE Changelog
 
+### Release 117
+ * Out of memory bug fix(Reported by Slixe)
 
 ### Release 116
  * Added miniblock spam fix(Bug reported by Slixe)
