@@ -130,7 +130,6 @@ func (e *Entry) ProcessPayload() (args Arguments, err error) {
 
 // never do any division operation on money due to floating point issues
 // newbies, see type the next in python interpretor "3.33-3.13"
-//
 func FormatMoney(amount uint64) string {
 	return FormatMoneyPrecision(amount, 5) // default is 5 precision after floating point
 }
@@ -140,12 +139,12 @@ func FormatMoney0(amount uint64) string {
 	return FormatMoneyPrecision(amount, 0)
 }
 
-//5 precision
+// 5 precision
 func FormatMoney5(amount uint64) string {
 	return FormatMoneyPrecision(amount, 5)
 }
 
-//8 precision
+// 8 precision
 func FormatMoney8(amount uint64) string {
 	return FormatMoneyPrecision(amount, 8)
 }

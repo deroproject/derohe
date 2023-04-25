@@ -50,7 +50,9 @@ type BlockScore struct {
 }
 
 // Heighest height is ordered first,  the condition is reverted see eg. at https://golang.org/pkg/sort/#Slice
-//  if heights are equal, nodes are sorted by their block ids which will never collide , hopefullly
+//
+//	if heights are equal, nodes are sorted by their block ids which will never collide , hopefullly
+//
 // block ids are sorted by lowest byte first diff
 func sort_descending_by_height_blid(tips_scores []BlockScore) {
 	sort.Slice(tips_scores, func(i, j int) bool {
@@ -101,7 +103,7 @@ func convert_uint32_to_crypto_hash(i uint32) crypto.Hash {
 	return h
 }
 
-//NOTE: this function is quite big since we do a lot of things in preparation of next blocks
+// NOTE: this function is quite big since we do a lot of things in preparation of next blocks
 func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl *block.Complete_Block, bl block.Block, err error) {
 	//chain.Lock()
 	//defer chain.Unlock()
@@ -343,7 +345,6 @@ func (chain *Blockchain) Create_new_miner_block(miner_address rpc.Address) (cbl 
 	return
 }
 
-//
 func ConvertBlockToMiniblock(bl block.Block, miniblock_miner_address rpc.Address) (mbl block.MiniBlock) {
 	mbl.Version = 1
 
@@ -480,7 +481,7 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 	// lets try to check pow to detect whether the miner is cheating
 
 	if !chain.simulator && !chain.VerifyMiniblockPoW(&bl, mbl) {
-		logger.V(1).Error(err, "Error ErrInvalidPoW")
+		//logger.V(1).Error(err, "Error ErrInvalidPoW")
 		err = errormsg.ErrInvalidPoW
 		return
 	}

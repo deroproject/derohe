@@ -435,7 +435,7 @@ type Shared_State struct {
 
 }
 
-//consumr and check compute gas
+// consumr and check compute gas
 func (state *Shared_State) ConsumeGas(c int64) {
 	if state != nil {
 		state.GasComputeUsed += c

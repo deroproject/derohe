@@ -292,12 +292,12 @@ func dvm_block_height(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, r
 }
 
 /*
-func dvm_block_topoheight(dvm *DVM_Interpreter, expr *ast.CallExpr)(handled bool, result interface{}){
-	if len(expr.Args) != 0 {
-			panic("BLOCK_HEIGHT function expects 0 parameters")
-		}
-		return true, dvm.State.Chain_inputs.BL_TOPOHEIGHT
-}
+	func dvm_block_topoheight(dvm *DVM_Interpreter, expr *ast.CallExpr)(handled bool, result interface{}){
+		if len(expr.Args) != 0 {
+				panic("BLOCK_HEIGHT function expects 0 parameters")
+			}
+			return true, dvm.State.Chain_inputs.BL_TOPOHEIGHT
+	}
 */
 func dvm_block_timestamp(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
 	checkargscount(0, len(expr.Args)) // check number of arguments

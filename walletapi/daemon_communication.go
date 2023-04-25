@@ -503,7 +503,11 @@ func (w *Wallet_Memory) Random_ring_members(scid crypto.Hash) (alist []string) {
 }
 
 // sync history of wallet from blockchain
+var sync_multilock sync.Mutex // make sync history single threaded
 func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
+	sync_multilock.Lock()
+	defer sync_multilock.Unlock()
+
 	defer func() {
 		if r := recover(); r != nil {
 			logger.V(1).Error(nil, "Recovered while syncing connecting", "r", r, "stack", debug.Stack())

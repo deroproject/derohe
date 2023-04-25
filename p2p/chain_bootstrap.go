@@ -104,7 +104,7 @@ func (connection *Connection) bootstrap_chain() {
 			binary.BigEndian.PutUint64(section[:], bits.Reverse64(uint64(i))) // place reverse path
 			ts_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: []byte(config.BALANCE_TREE), Section: section[:], SectionLength: uint64(path_length)}
 			var ts_response Response_Tree_Section_Struct
-			fill_common(&ts_response.Common)
+			fill_common(&ts_request.Common)
 			if err := connection.Client.Call("Peer.TreeSection", ts_request, &ts_response); err != nil {
 				connection.logger.V(1).Error(err, "Call failed TreeSection")
 				return
@@ -168,7 +168,7 @@ func (connection *Connection) bootstrap_chain() {
 			binary.BigEndian.PutUint64(section[:], bits.Reverse64(uint64(i))) // place reverse path
 			ts_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: []byte(config.SC_META), Section: section[:], SectionLength: uint64(path_length)}
 			var ts_response Response_Tree_Section_Struct
-			fill_common(&ts_response.Common)
+			fill_common(&ts_request.Common)
 			if err := connection.Client.Call("Peer.TreeSection", ts_request, &ts_response); err != nil {
 				connection.logger.V(1).Error(err, "Call failed TreeSection")
 				return
@@ -198,21 +198,58 @@ func (connection *Connection) bootstrap_chain() {
 
 					sc_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: ts_response.Keys[j], Section: section[:], SectionLength: uint64(0)}
 					var sc_response Response_Tree_Section_Struct
-					fill_common(&sc_response.Common)
+					fill_common(&sc_request.Common)
 					if err := connection.Client.Call("Peer.TreeSection", sc_request, &sc_response); err != nil {
 						connection.logger.V(1).Error(err, "Call failed TreeSection")
 						return
 					} else {
+
 						var sc_data_tree *graviton.Tree
 						if sc_data_tree, err = ss.GetTree(string(ts_response.Keys[j])); err != nil {
 							panic(err)
-						} else {
-							for j := range sc_response.Keys {
-								sc_data_tree.Put(sc_response.Keys[j], sc_response.Values[j])
+						} else if sc_response.KeyCount < 4096 {
+							for k := range sc_response.Keys {
+								sc_data_tree.Put(sc_response.Keys[k], sc_response.Values[k])
 							}
-							changed_trees = append(changed_trees, sc_data_tree)
+						} else { // tree is a huge tree, get it in chunks
+							sc_chunks_estm := sc_response.KeyCount / chunksize
+							sc_chunks := int64(1) // chunks need to be in power of 2
+							sc_path_length := 0
+							for sc_chunks < sc_chunks_estm {
+								sc_chunks = sc_chunks * 2
+								sc_path_length++
+							}
 
+							if sc_chunks < 2 {
+								sc_chunks = 2
+								sc_path_length = 1
+							}
+
+							var sc_section [8]byte
+							for k := int64(0); k < sc_chunks; k++ {
+								binary.BigEndian.PutUint64(sc_section[:], bits.Reverse64(uint64(k))) // place reverse path
+								sc_ts_request := Request_Tree_Section_Struct{Topo: request.TopoHeights[0], TreeName: ts_response.Keys[j], Section: sc_section[:], SectionLength: uint64(sc_path_length)}
+								var sc_ts_response Response_Tree_Section_Struct
+								fill_common(&sc_ts_request.Common)
+								if err := connection.Client.Call("Peer.TreeSection", sc_ts_request, &sc_ts_response); err != nil {
+									connection.logger.V(1).Error(err, "Call failed TreeSection")
+									return
+								} else { // request was successfull
+
+									if len(sc_ts_response.Keys) != len(sc_ts_response.Values) {
+										connection.logger.V(1).Error(nil, "Wrong key/values", "Keycount", len(sc_ts_response.Keys), "valuecount", len(sc_ts_response.Values))
+										connection.exit()
+										return
+									}
+									//fmt.Printf("writing SC chunk %d/%d (%d)  writing %d keys %x\n", k, sc_chunks, sc_response.KeyCount, len(sc_ts_response.Keys), ts_response.Keys[j])
+									for l := range sc_ts_response.Keys {
+										sc_data_tree.Put(sc_ts_response.Keys[l], sc_ts_response.Values[l])
+									}
+								}
+
+							}
 						}
+						changed_trees = append(changed_trees, sc_data_tree)
 
 					}
 
@@ -237,6 +274,7 @@ func (connection *Connection) bootstrap_chain() {
 	for i := int64(0); i <= request.TopoHeights[0]; i++ {
 		chain.Store.Topo_store.Write(i, zerohash, commit_version, 0) // commit everything
 	}
+	chain.Store.Topo_store.Sync()
 
 	for i := range response.CBlocks { // we must store the blocks
 

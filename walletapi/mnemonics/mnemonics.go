@@ -69,7 +69,7 @@ func Language_List() (list []string) {
 	return
 }
 
-//this function converts a list of words to a key
+// this function converts a list of words to a key
 func Words_To_Key(words_line string) (language_name string, keybig *big.Int, err error) {
 
 	var key [32]byte

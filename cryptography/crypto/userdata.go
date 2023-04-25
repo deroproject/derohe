@@ -26,7 +26,6 @@ var Logger logr.Logger = logr.Discard() // default discard all logs, someone nee
 
 // this function is used to encrypt/decrypt payment id,srcid and other userdata
 // as the operation is symmetric XOR, is the same in both direction
-//
 func EncryptDecryptUserData(key [32]byte, inputs ...[]byte) {
 	var nonce [24]byte // nonce is 24 bytes, we will use xchacha20
 

@@ -29,6 +29,13 @@ func (connection *Connection) GetObject(request ObjectList, response *Objects) e
 		connection.exit()
 		return nil
 	}
+
+	if len(request.Block_list) > 4096 || len(request.Tx_list) > 4096 || len(request.Chunk_list) > 128 || len(request.Block_list)+len(request.Tx_list)+len(request.Chunk_list) > 4096 { // we are expecting max 4096 items
+		connection.logger.V(2).Info("malformed object request  received, banning peer", "request", request)
+		connection.exit()
+		return nil
+	}
+
 	connection.update(&request.Common) // update common information
 
 	for i := range request.Block_list { // find the block

@@ -22,9 +22,9 @@ package config
 // only version 2
 var Mainnet_seed_nodes = []string{
 	"89.38.99.117:8443",
-	"45.82.66.54:8080",
+	"109.236.81.137:8080",
 	"89.38.97.110:11011",
-	"45.82.66.55:11011",
+	"190.2.136.120:11011",
 }
 
 // some seed node for testnet

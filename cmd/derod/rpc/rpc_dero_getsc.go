@@ -171,7 +171,7 @@ func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, er
 					}
 					switch v.Type {
 					case dvm.Uint64:
-						result.ValuesString = append(result.ValuesUint64, fmt.Sprintf("%d", v.ValueUint64))
+						result.ValuesString = append(result.ValuesString, fmt.Sprintf("%d", v.ValueUint64))
 					case dvm.String:
 						result.ValuesString = append(result.ValuesString, fmt.Sprintf("%x", []byte(v.ValueString)))
 					default:

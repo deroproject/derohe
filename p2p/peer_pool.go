@@ -92,7 +92,7 @@ func load_peer_list() {
 
 }
 
-//save peer list to disk
+// save peer list to disk
 func save_peer_list() {
 
 	clean_up()
