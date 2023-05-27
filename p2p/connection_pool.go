@@ -20,30 +20,29 @@ package p2p
  * this will also ensure that a single IP is connected only once
  *
  */
-import "os"
-import "fmt"
-import "net"
-import "math"
-import "sync"
-import "sort"
-import "time"
-import "strings"
-import "strconv"
-import "context"
-import "sync/atomic"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"math"
+	"net"
+	"os"
+	"runtime/debug"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "github.com/go-logr/logr"
-
-import "github.com/dustin/go-humanize"
-
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/metrics"
-import "github.com/deroproject/derohe/transaction"
-
-import "github.com/cenkalti/rpc2"
+	"github.com/cenkalti/rpc2"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/dustin/go-humanize"
+	"github.com/go-logr/logr"
+)
 
 // any connection incoming/outgoing can only be in this state
 //type Conn_State uint32
@@ -70,9 +69,12 @@ type Connection struct {
 	BytesOut              uint64 // total bytes out
 	Top_Version           uint64 // current hard fork version supported by peer
 	Peer_ID               uint64 // Remote peer id
-	Port                  uint32 // port advertised by other end as its server,if it's 0 server cannot accept connections
-	State                 uint32 // state of the connection
-	Syncing               int32  // denotes whether we are syncing and thus stop pinging
+	ping_count            int64
+	clock_offset          int64 // duration updated on every miniblock
+
+	Port    uint32 // port advertised by other end as its server,if it's 0 server cannot accept connections
+	State   uint32 // state of the connection
+	Syncing int32  // denotes whether we are syncing and thus stop pinging
 
 	Client  *rpc2.Client
 	Conn    net.Conn // actual object to talk
@@ -98,12 +100,9 @@ type Connection struct {
 	update_received  time.Time // last time when upated was received
 	ping_in_progress int32     // contains ping pending against this connection
 
-	ping_count int64
-
 	clock_index   int
 	clock_offsets [MAX_CLOCK_DATA_SET]time.Duration
 	delays        [MAX_CLOCK_DATA_SET]time.Duration
-	clock_offset  int64 // duration updated on every miniblock
 	onceexit      sync.Once
 
 	Mutex sync.Mutex // used only by connection go routine
