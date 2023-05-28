@@ -16,25 +16,26 @@
 
 package walletapi
 
-import (
-	"crypto/rand"
-	"encoding/binary"
-	"encoding/pem"
-	"fmt"
-	"math/big"
-	"os"
-	"sort"
-	"strings"
-	"sync"
-	"time"
+import "os"
+import "fmt"
+import "sort"
+import "sync"
+import "time"
+import "strings"
+import "math/big"
+import "crypto/rand"
 
-	"github.com/deroproject/derohe/cryptography/bn256"
-	"github.com/deroproject/derohe/cryptography/crypto"
-	"github.com/deroproject/derohe/rpc"
-	"github.com/deroproject/derohe/transaction"
-	"github.com/deroproject/derohe/walletapi/mnemonics"
-	"github.com/go-logr/logr"
-)
+import "encoding/pem"
+import "encoding/binary"
+
+import "github.com/go-logr/logr"
+
+import "github.com/deroproject/derohe/rpc"
+import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
+
+import "github.com/deroproject/derohe/walletapi/mnemonics"
+import "github.com/deroproject/derohe/transaction"
 
 //import "github.com/deroproject/derohe/blockchain/inputmaturity"
 
@@ -543,18 +544,14 @@ func (w *Wallet_Memory) sign() (c, s *big.Int) {
 	return
 }
 
-// retrieve secret key for any tx we may have created
+// retrieve  secret key for any tx we may have created
 func (w *Wallet_Memory) GetTXKey(txhash string) string {
-	w.Lock()
-	defer w.Unlock()
 
-	for _, entries := range w.account.EntriesNative {
-		for _, e := range entries {
-			if e.TXID == txhash {
-				return e.Proof
-			}
+	/*for _, e := range w.account.Entries {
+		if !e.Coinbase && !e.Incoming && e.TXID == txhash {
+			return e.Proof
 		}
-	}
+	}*/
 
 	return ""
 }
