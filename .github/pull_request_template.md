@@ -1,6 +1,6 @@
 ## Description
 
-Please include a summary of the changes and the related issue.
+Please include a summary of the changes and the related issue. (Your PR should be directed to `dev` branch)
 
 Fixes # (issue)
 
@@ -12,6 +12,7 @@ Please select the right one.
 - [ ] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] This change requires a documentation update
+- [ ] This will require a HardFork to be enabled
 
 ## Which part is impacted ?
 
@@ -27,4 +28,4 @@ Please select the right one.
 
 ## License
 
-Im am contributing & releasing the code under DERO Research License (which can be found [here](https://raw.githubusercontent.com/deroproject/derohe/main/license.txt)). 
+Im am contributing & releasing the code under DERO Research License (which can be found [here](https://raw.githubusercontent.com/deroproject/derohe/main/license.txt)).
