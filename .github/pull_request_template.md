@@ -19,6 +19,9 @@ Please select the right one.
   - [ ] Wallet
   - [ ] Daemon
   - [ ] Miner
+  - [ ] Explorer
+  - [ ] Simulator
+  - [ ] Misc (documentation, comments, text...)
 
 ## Checklist:
 
