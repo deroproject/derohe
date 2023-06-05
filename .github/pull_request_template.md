@@ -1,6 +1,10 @@
 ## Description
 
-Please include a summary of the changes and the related issue. (Your PR should be directed to `dev` branch)
+Please include a summary of the changes and the related issue.
+
+**NOTE**: The process is the following:
+- Your pull request should be directed to `dev` branch. 
+- When it will be merged in `dev`, we will merge it to `testnet` for tests, and then into `main` for final release.
 
 Fixes # (issue)
 
