@@ -128,6 +128,19 @@ func (w *Wallet_Memory) InsertReplace(scid crypto.Hash, e rpc.Entry) {
 	w.account.EntriesNative[scid] = entries
 }
 
+func (w *Wallet_Memory) TokenAdd(scid crypto.Hash) (err error) {
+	w.Lock()
+	defer w.Unlock()
+
+	if _, ok := w.account.EntriesNative[scid]; !ok {
+		w.account.EntriesNative[scid] = []rpc.Entry{}
+	} else {
+		return fmt.Errorf("token already added")
+	}
+
+	return nil
+}
+
 // generate keys from using random numbers
 func Generate_Keys_From_Random() (user *Account, err error) {
 	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
