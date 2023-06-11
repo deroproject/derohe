@@ -16,27 +16,27 @@
 
 package main
 
-import "os"
-import "io"
-import "fmt"
-import "bytes"
-import "time"
+import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi"
+)
 
 //import "io/ioutil"
 //import "path/filepath"
-import "strings"
-import "unicode"
-import "strconv"
-import "encoding/hex"
-
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
 
 var account walletapi.Account
 
@@ -116,6 +116,24 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		case 2: // scid balance at topoheight
 			logger.Error(err, "not implemented")
 			break
+		}
+
+	case "token_add":
+		line_parts := line_parts[1:] // remove first part
+
+		switch len(line_parts) {
+		case 0:
+			break
+		case 1:
+			scid := crypto.HashHexToHash(line_parts[0])
+			if err := wallet.TokenAdd(scid); err != nil {
+				logger.Error(err, "Token")
+			} else {
+				wallet.Save_Wallet()
+				fmt.Fprintf(l.Stderr(), "SCID "+color_green+"%s"+color_white+" added\n\n", scid.String())
+			}
+		default:
+			logger.Error(err, "not implemented")
 		}
 
 	case "rescan_bc", "rescan_spent": // rescan from 0
@@ -902,6 +920,7 @@ var completer = readline.NewPrefixCompleter(
 	readline.PcItem("help"),
 	readline.PcItem("address"),
 	readline.PcItem("balance"),
+	readline.PcItem("token_add"),
 	readline.PcItem("integrated_address"),
 	readline.PcItem("get_tx_key"),
 	readline.PcItem("filesign"),
@@ -936,6 +955,7 @@ func usage(w io.Writer) {
 	io.WriteString(w, "\t\033[1mhelp\033[0m\t\tthis help\n")
 	io.WriteString(w, "\t\033[1maddress\033[0m\t\tDisplay user address\n")
 	io.WriteString(w, "\t\033[1mbalance\033[0m\t\tDisplay user balance\n")
+	io.WriteString(w, "\t\033[1mtoken_add\033[0m\t\tAdd token\n")
 	io.WriteString(w, "\t\033[1mintegrated_address\033[0m\tDisplay random integrated address (with encrypted payment ID)\n")
 	io.WriteString(w, "\t\033[1mmenu\033[0m\t\tEnable menu mode\n")
 	io.WriteString(w, "\t\033[1mrescan_bc\033[0m\tRescan blockchain to re-obtain transaction history \n")
