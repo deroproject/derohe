@@ -16,29 +16,28 @@
 
 package blockchain
 
-import "fmt"
-import "bytes"
-import "sort"
-import "sync"
-import "runtime/debug"
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"runtime/debug"
+	"sort"
+	"sync"
 
-import "golang.org/x/xerrors"
-import "golang.org/x/time/rate"
-import "golang.org/x/crypto/sha3"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/time/rate"
+	"golang.org/x/xerrors"
+)
 
 // this file creates the blobs which can be used to mine new blocks
-
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
-
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/transaction"
-
-import "github.com/deroproject/graviton"
 
 const TX_VALIDITY_HEIGHT = 11
 
@@ -476,6 +475,17 @@ func (chain *Blockchain) Accept_new_block(tstamp uint64, miniblock_blob []byte) 
 		logger.V(1).Error(nil, "Job not found in cache", "jobid", fmt.Sprintf("%d", tstamp), "tstamp", uint64(globals.Time().UTC().UnixMilli()))
 		err = fmt.Errorf("job not found in cache")
 		return
+	}
+
+	// verify that the miner don't cheat us by overwriting the integrator address
+	if mbl.Final {
+		integrator_addr_raw := chain.integrator_address.PublicKey.EncodeCompressed()
+		sum_integrator_addr := graviton.Sum(integrator_addr_raw)
+		if !bytes.Equal(mbl.KeyHash[:], sum_integrator_addr[:]) {
+			logger.Error(nil, "Miner address mismatch for final mini block", "submitted", mbl.KeyHash, "integrator address", sum_integrator_addr)
+			err = fmt.Errorf("miner address mismatch for final mini block")
+			return
+		}
 	}
 
 	// lets try to check pow to detect whether the miner is cheating
