@@ -16,11 +16,15 @@
 
 package crypto
 
-import "bytes"
-import "encoding/binary"
-import "math/big"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/graviton"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math/big"
+
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/graviton"
+)
 
 type Statement struct {
 	RingSize                 uint64
@@ -98,6 +102,9 @@ func (s *Statement) Deserialize(r *bytes.Reader) error {
 		return err
 	}
 	s.RingSize = 1 << length
+	if s.RingSize > 128 {
+		return fmt.Errorf("ring size is too large")
+	}
 
 	s.Bytes_per_publickey, err = r.ReadByte()
 	if err != nil {
@@ -223,3 +230,4 @@ type Proof struct {
 	//ip *InnerProduct
 }
 */
+
