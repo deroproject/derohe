@@ -16,8 +16,10 @@
 
 package dvm
 
-import "testing"
-import "fmt"
+import (
+	"fmt"
+	"testing"
+)
 
 var evalList = []struct {
 	Name string

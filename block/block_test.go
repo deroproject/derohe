@@ -17,10 +17,12 @@
 package block
 
 //import "bytes"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"testing"
 
-import "github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/config"
+)
 
 //import "github.com/deroproject/derohe/crypto"
 

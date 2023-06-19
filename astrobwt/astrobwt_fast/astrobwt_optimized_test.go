@@ -1,13 +1,13 @@
 package astrobwt_fast
 
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"testing"
 
-//import "strings"
-import "testing"
+	"github.com/deroproject/derohe/astrobwt"
+) //import "strings"
 
 //import "encoding/hex"
-
-import "github.com/deroproject/derohe/astrobwt"
 
 func TestPOW_optimized_v1(t *testing.T) {
 	scratch := Pool.Get().(*ScratchData)

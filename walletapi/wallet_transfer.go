@@ -16,33 +16,35 @@
 
 package walletapi
 
-import "fmt"
+import (
+	"encoding/hex"
+	"fmt"
+
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "sort"
 //import "math/rand"
 //import cryptorand "crypto/rand"
 
 //import "encoding/binary"
-import "encoding/hex"
 
 //import "encoding/json"
 
 //import "github.com/vmihailenco/msgpack"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-
 //import "github.com/deroproject/derohe/crypto/ringct"
-import "github.com/deroproject/derohe/transaction"
 
 //import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
 
 //import "github.com/deroproject/derohe/ddn"
 
 //import "github.com/deroproject/derohe/structures"
 //import "github.com/deroproject/derohe/blockchain/inputmaturity"
-import "github.com/deroproject/derohe/cryptography/bn256"
 
 /*
 func (w *Wallet_Memory) Transfer_Simplified(addr string, value uint64, data []byte, scdata rpc.Arguments) (tx *transaction.Transaction, err error) {

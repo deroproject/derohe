@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+
 	//"io/ioutil"
 	//"log"
 	//"net/http"
@@ -16,19 +17,20 @@ import (
 	"strconv"
 	"syscall/js"
 	"time"
+
 	// "bytes"
 	"runtime"
 	"runtime/debug"
 	"strings"
-)
-import "github.com/go-logr/logr"
 
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/go-logr/logr"
+)
 
 var miner_tx bool = false
 

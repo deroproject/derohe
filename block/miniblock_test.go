@@ -16,9 +16,11 @@
 
 package block
 
-import "bytes"
-import "testing"
-import "crypto/rand"
+import (
+	"bytes"
+	"crypto/rand"
+	"testing"
+)
 
 func Test_blockmini_serde(t *testing.T) {
 

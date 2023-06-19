@@ -16,10 +16,13 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 func GetBalance(ctx context.Context, p rpc.GetBalance_Params) (result rpc.GetBalance_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

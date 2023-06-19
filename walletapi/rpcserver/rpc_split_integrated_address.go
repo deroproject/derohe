@@ -16,14 +16,16 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
-
-import "github.com/deroproject/derohe/rpc"
 
 //import "github.com/deroproject/derohe/rpc"
 

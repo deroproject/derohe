@@ -3,8 +3,10 @@ package astrobwtv3
 //import "os"
 //import "fmt"
 
-import "sync"
-import _ "encoding/binary"
+import (
+	_ "encoding/binary"
+	"sync"
+)
 
 // see here to improve the algorithms more https://github.com/y-256/libdivsufsort/blob/wiki/SACA_Benchmarks.md
 

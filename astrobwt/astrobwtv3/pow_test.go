@@ -1,10 +1,12 @@
 package astrobwtv3
 
-import "os"
-import "fmt"
-import "math/rand"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"fmt"
+	"math/rand"
+	"os"
+	"testing"
+)
 
 var cases [][]byte
 

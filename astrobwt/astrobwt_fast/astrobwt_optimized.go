@@ -1,12 +1,15 @@
 package astrobwt_fast
 
-import "unsafe"
-import "hash"
-import "sync"
-import "crypto/rand"
-import "encoding/binary"
-import "golang.org/x/crypto/sha3"
-import "golang.org/x/crypto/salsa20/salsa"
+import (
+	"crypto/rand"
+	"encoding/binary"
+	"hash"
+	"sync"
+	"unsafe"
+
+	"golang.org/x/crypto/salsa20/salsa"
+	"golang.org/x/crypto/sha3"
+)
 
 const stage1_length uint32 = 9973 // it is a prime
 

@@ -17,12 +17,13 @@
 package p2p
 
 //import "fmt"
-import "time"
-import "math/rand"
+import (
+	"math/rand"
+	"time"
 
-import "github.com/beevik/ntp"
-
-import "github.com/deroproject/derohe/globals"
+	"github.com/beevik/ntp"
+	"github.com/deroproject/derohe/globals"
+)
 
 // these servers automatically rotate every hour as per documentation
 // we also rotate them randomly

@@ -18,15 +18,18 @@ package blockchain
 
 // this file implements a filesystem store which is used to store blocks/transactions directly in the file system
 
-import "io"
-import "os"
-import "fmt"
-import "strings"
-import "io/ioutil"
-import "math/big"
-import "path/filepath"
-import "encoding/hex"
-import "github.com/deroproject/derohe/globals"
+import (
+	"encoding/hex"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"math/big"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/deroproject/derohe/globals"
+)
 
 type storefs struct {
 	basedir string

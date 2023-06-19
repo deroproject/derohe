@@ -16,8 +16,10 @@
 
 package crypto
 
-import "fmt"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"fmt"
+)
 
 const KeyLength = 32
 

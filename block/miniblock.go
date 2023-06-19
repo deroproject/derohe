@@ -16,19 +16,20 @@
 
 package block
 
-import "fmt"
-import "hash"
-import "sync"
-import "bytes"
-import "strings"
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"hash"
+	"strings"
+	"sync"
 
-import "golang.org/x/crypto/sha3"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/astrobwt"
-import "github.com/deroproject/derohe/astrobwt/astrobwtv3"
-import "github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/astrobwt"
+	"github.com/deroproject/derohe/astrobwt/astrobwtv3"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"golang.org/x/crypto/sha3"
+)
 
 const MINIBLOCK_SIZE = 48
 

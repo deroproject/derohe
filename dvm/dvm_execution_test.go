@@ -16,9 +16,11 @@
 
 package dvm
 
-import "fmt"
-import "reflect"
-import "testing"
+import (
+	"fmt"
+	"reflect"
+	"testing"
+)
 
 //import "github.com/deroproject/derosuite/crypto"
 

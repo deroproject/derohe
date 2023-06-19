@@ -16,12 +16,14 @@
 
 package rpcserver
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
 
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+)
 
 func ScInvoke(ctx context.Context, p rpc.SC_Invoke_Params) (result rpc.Transfer_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

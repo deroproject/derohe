@@ -16,14 +16,16 @@
 
 package walletapi
 
-import "os"
-import "fmt"
-import "time"
-import "sync"
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"sync"
+	"time"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/walletapi/mnemonics"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/walletapi/mnemonics"
+)
 
 // this is stored in disk in encrypted form
 type Wallet_Disk struct {

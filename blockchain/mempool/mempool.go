@@ -16,18 +16,19 @@
 
 package mempool
 
-import "fmt"
-import "sync"
-import "sort"
-import "time"
-import "sync/atomic"
+import (
+	"fmt"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "github.com/go-logr/logr"
-
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/metrics"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/go-logr/logr"
+)
 
 // this is only used for sorting and nothing else
 type TX_Sorting_struct struct {

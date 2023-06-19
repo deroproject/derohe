@@ -16,27 +16,28 @@
 
 package globals
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "math"
-import "net/url"
-import "strings"
-import "strconv"
-import "math/big"
-import "path/filepath"
-import "runtime/debug"
-import "golang.org/x/net/proxy"
+import (
+	"fmt"
+	"io"
+	"math"
+	"math/big"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"time"
 
-import "go.uber.org/zap"
-import "go.uber.org/zap/zapcore"
-import "github.com/go-logr/logr"
-import "github.com/go-logr/zapr"
-import "github.com/robfig/cron/v3"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
+	"github.com/robfig/cron/v3"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"golang.org/x/net/proxy"
+)
 
 // all the the global variables used by the program are stored here
 // since the entire logic is designed around a state machine driven by external events

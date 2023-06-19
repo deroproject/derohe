@@ -16,9 +16,11 @@
 
 package block
 
-import "fmt"
-import "sort"
-import "sync"
+import (
+	"fmt"
+	"sort"
+	"sync"
+)
 
 type MiniBlocksCollection struct {
 	Collection map[MiniBlockKey][]MiniBlock

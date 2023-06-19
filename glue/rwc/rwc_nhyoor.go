@@ -3,6 +3,7 @@ package rwc
 import (
 	"context"
 	"io"
+
 	"nhooyr.io/websocket"
 )
 

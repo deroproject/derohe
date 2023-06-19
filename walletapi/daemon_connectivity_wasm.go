@@ -24,19 +24,19 @@ package walletapi
  */
 //import "io"
 //import "os"
-import "fmt"
-import "net"
-import "time"
+import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"strings"
+	"time"
 
-import "context"
-import "net/http"
-
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "nhooyr.io/websocket"
-import "strings"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/deroproject/derohe/glue/rwc"
+	"nhooyr.io/websocket"
+)
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
 

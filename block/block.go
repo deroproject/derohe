@@ -16,21 +16,21 @@
 
 package block
 
-import "fmt"
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"runtime/debug"
+	"strings"
+	"time"
 
-import "time"
-import "bytes"
-import "strings"
-import "runtime/debug"
-import "encoding/hex"
-import "encoding/binary"
-
-import "golang.org/x/crypto/sha3"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/transaction"
+	"golang.org/x/crypto/sha3"
+)
 
 //import "github.com/deroproject/derosuite/config"
-import "github.com/deroproject/derohe/transaction"
 
 type Block struct {
 	Major_Version uint64                  `json:"major_version"`

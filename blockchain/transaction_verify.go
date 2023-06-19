@@ -16,8 +16,22 @@
 
 package blockchain
 
-import "fmt"
-import "time"
+import (
+	"fmt"
+	"runtime/debug"
+	"sync"
+	"time"
+
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	"golang.org/x/xerrors"
+)
 
 /*import "bytes"
 import "encoding/binary"
@@ -25,19 +39,6 @@ import "encoding/binary"
 import "github.com/romana/rlog"
 
 */
-
-import "sync"
-import "runtime/debug"
-import "golang.org/x/xerrors"
-import "github.com/deroproject/graviton"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/bn256"
 
 // caches x of transactions validity
 // it is always atomic

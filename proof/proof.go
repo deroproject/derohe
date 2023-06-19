@@ -16,15 +16,17 @@
 
 package proof
 
-import "fmt"
-import "math/big"
-import "strings"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"strings"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "github.com/deroproject/derosuite/walletapi" // to decode encrypted payment ID
 

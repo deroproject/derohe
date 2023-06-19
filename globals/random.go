@@ -16,9 +16,11 @@
 
 package globals
 
-import mathrand "math/rand"
-import "crypto/rand"
-import "encoding/binary"
+import (
+	"crypto/rand"
+	"encoding/binary"
+	mathrand "math/rand"
+)
 
 // random source which is cryptographically secure
 // this is to be used in random sorting and selections where necessary

@@ -16,8 +16,10 @@
 
 package crypto
 
-import "fmt"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+)
 
 //import "encoding/binary"
 

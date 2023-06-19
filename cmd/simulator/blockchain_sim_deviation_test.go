@@ -16,18 +16,19 @@
 
 package main
 
-import "os"
-import "fmt"
-import "time"
-import "testing"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
 
-import "path/filepath"
-
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi"
+)
 
 //import "github.com/deroproject/derohe/cryptography/crypto"
 

@@ -16,8 +16,10 @@
 
 package p2p
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/graviton"
+import (
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/graviton"
+)
 
 const max_request_topoheights = 50
 

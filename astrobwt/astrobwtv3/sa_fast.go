@@ -1,12 +1,15 @@
 package astrobwtv3
 
-import "unsafe"
-import "hash"
-import "sync"
+import (
+	"encoding/binary"
+	"hash"
+	"sync"
+	"unsafe"
+
+	"github.com/minio/sha256-simd"
+)
 
 //import "fmt"
-import "encoding/binary"
-import "github.com/minio/sha256-simd"
 
 const MAX_LENGTH uint32 = (256 * 384) - 1 // this is the maximum
 

@@ -16,13 +16,16 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "encoding/hex"
-import "encoding/json"
-import "runtime/debug"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+)
 
 //import "github.com/deroproject/derosuite/blockchain"
 

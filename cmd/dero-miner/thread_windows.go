@@ -16,11 +16,13 @@
 
 package main
 
-import "runtime"
-import "sync/atomic"
-import "syscall"
-import "unsafe"
-import "math/bits"
+import (
+	"math/bits"
+	"runtime"
+	"sync/atomic"
+	"syscall"
+	"unsafe"
+)
 
 var libkernel32 uintptr
 var setThreadAffinityMask uintptr

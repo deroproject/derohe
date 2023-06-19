@@ -16,8 +16,10 @@
 
 package blockchain
 
-import "bytes"
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 //import "github.com/deroproject/derohe/block"
 

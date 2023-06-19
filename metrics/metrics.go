@@ -18,18 +18,21 @@
 
 package metrics
 
-import "fmt"
-import "io"
-import "os"
-import "time"
-import "bytes"
-import "net"
-import "net/url"
-import "net/http"
-import "path/filepath"
-import "github.com/go-logr/logr"
-import "github.com/VictoriaMetrics/metrics"
-import "github.com/xtaci/kcp-go/v5"
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/VictoriaMetrics/metrics"
+	"github.com/go-logr/logr"
+	"github.com/xtaci/kcp-go/v5"
+)
 
 // these are exported by the daemon for various analysis
 var Version string //this is later converted to metrics format

@@ -3,8 +3,10 @@
 
 package astrobwtv3
 
-import "unsafe"
-import "math/bits"
+import (
+	"math/bits"
+	"unsafe"
+)
 
 const LittleEndian = true
 const BigEndian = false

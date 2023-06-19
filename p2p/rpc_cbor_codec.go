@@ -1,17 +1,21 @@
 package p2p
 
 // this file implements CBOR codec to prevent from certain attacks
-import "fmt"
-import "bytes"
-import "io"
-import "net"
-import "sync"
-import "time"
-import "github.com/cenkalti/rpc2"
-import "encoding/binary"
-import "github.com/fxamacker/cbor/v2"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"net"
+	"sync"
+	"time"
 
-import "github.com/deroproject/derohe/config" // only used get constants such as max data per frame
+	"github.com/cenkalti/rpc2"
+	"github.com/deroproject/derohe/config"
+	"github.com/fxamacker/cbor/v2"
+)
+
+// only used get constants such as max data per frame
 
 // it processes both
 type RequestResponse struct {

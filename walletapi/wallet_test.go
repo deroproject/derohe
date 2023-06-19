@@ -16,9 +16,11 @@
 
 package walletapi
 
-import "fmt"
-import "testing"
-import "strings"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 // we are covering atleast one test case each for all supported languages
 
