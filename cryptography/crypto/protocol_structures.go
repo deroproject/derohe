@@ -230,4 +230,3 @@ type Proof struct {
 	//ip *InnerProduct
 }
 */
-

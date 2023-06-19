@@ -38,7 +38,7 @@ func (c *MiniBlocksCollection) PurgeHeight(height int64) (purge_count int) {
 	c.Lock()
 	defer c.Unlock()
 
-	for k, _ := range c.Collection {
+	for k := range c.Collection {
 		if k.Height <= uint64(height) {
 			purge_count++
 			delete(c.Collection, k)

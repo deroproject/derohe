@@ -145,7 +145,7 @@ func main() {
 	if _, ok := globals.Arguments["--log-dir"]; ok && globals.Arguments["--log-dir"] != nil {
 		logdir = globals.Arguments["--log-dir"].(string)
 		filename = filepath.Base(exename) + ".log"
-		filename = filepath.Join(logdir,filename)
+		filename = filepath.Join(logdir, filename)
 	}
 
 	globals.InitializeLog(l.Stdout(), &lumberjack.Logger{

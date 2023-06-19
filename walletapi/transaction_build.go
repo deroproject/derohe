@@ -56,7 +56,7 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
-	for t, _ := range transfers {
+	for t := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
 		var D bn256.G1

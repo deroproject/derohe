@@ -189,7 +189,7 @@ func IsAddressInBanList(address string) bool {
 	if ip != nil {
 
 		// parse and check the subnets
-		for k, _ := range ban_map {
+		for k := range ban_map {
 			ipnet, _, err := ParseAddress(k)
 
 			//  fmt.Printf("parsing address %s err %s  checking ip %s",k,err,address)

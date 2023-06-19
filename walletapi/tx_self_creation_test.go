@@ -121,7 +121,7 @@ func Test_Creation_TX_morecheck(t *testing.T) {
 
 		t.Logf("Chain height %d\n", chain.Get_Height())
 
-		tx, err := wsrc.TransferPayload0([]rpc.Transfer{rpc.Transfer{Destination: wdst.GetAddress().String(), Amount: 700000}}, 0, false, rpc.Arguments{}, 100000, false)
+		tx, err := wsrc.TransferPayload0([]rpc.Transfer{{Destination: wdst.GetAddress().String(), Amount: 700000}}, 0, false, rpc.Arguments{}, 100000, false)
 		if err != nil {
 			t.Fatalf("Cannot create transaction, err %s", err)
 		} else {
