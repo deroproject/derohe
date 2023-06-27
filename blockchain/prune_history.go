@@ -22,15 +22,17 @@ package blockchain
 // the entire thing works cryptographically and thus everything is cryptographically verified
 // this function is the only one which does not work in append-only
 
-import "os"
-import "fmt"
-import "math/big"
-import "path/filepath"
+import (
+	"fmt"
+	"math/big"
+	"os"
+	"path/filepath"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/graviton"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/graviton"
+)
 
 const CHUNK_SIZE = 100000 // write 100000 account chunks, actually we should be writing atleast 100,000 accounts
 

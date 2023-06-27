@@ -16,14 +16,16 @@
 
 package transaction
 
-import "fmt"
-import "bytes"
-import "math/big"
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"math/big"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+)
 
 type TransactionType uint64
 

@@ -16,17 +16,19 @@
 
 package rpc
 
-import "fmt"
-import "math"
-import "context"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"math"
+	"runtime/debug"
 
-import "golang.org/x/xerrors"
-import "github.com/deroproject/graviton"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/graviton"
+	"golang.org/x/xerrors"
+)
 
 //import "github.com/deroproject/derohe/dvm"
 //import "github.com/deroproject/derohe/cryptography/crypto"

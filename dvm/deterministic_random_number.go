@@ -16,10 +16,12 @@
 
 package dvm
 
-import "encoding/binary"
-import "golang.org/x/crypto/salsa20/salsa"
+import (
+	"encoding/binary"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"golang.org/x/crypto/salsa20/salsa"
+)
 
 /* this file implements a deterministic random number generator
    the random number space is quite large but still unattackable, since the seeds are random

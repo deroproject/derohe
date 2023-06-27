@@ -19,8 +19,10 @@ package p2p
 //import "net"
 //import "sync"
 //import "time"
-import "crypto/rand"
-import "encoding/binary"
+import (
+	"crypto/rand"
+	"encoding/binary"
+)
 
 //import "path/filepath"
 //import "container/list"

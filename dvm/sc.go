@@ -18,16 +18,18 @@ package dvm
 
 // this file implements necessary structure to  SC handling
 
-import "fmt"
-import "bytes"
-import "runtime/debug"
-import "encoding/binary"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"runtime/debug"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/graviton"
+)
 
 //import "github.com/deroproject/derohe/transaction"
 

@@ -18,9 +18,11 @@ package dvm
 
 //import "fmt"
 //import "reflect"
-import "testing"
+import (
+	"testing"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
 
 // run the test
 func Test_RND_execution(t *testing.T) {

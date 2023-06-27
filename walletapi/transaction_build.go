@@ -1,17 +1,20 @@
 package walletapi
 
-import "fmt"
-import "strconv"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+	"strconv"
 
-//import "encoding/binary"
-import mathrand "math/rand"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
+	//import "encoding/binary"
+	mathrand "math/rand"
+
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 // this is run some tests and benchmarks
 type GenerateProofFunc func(scid crypto.Hash, scid_index int, s *crypto.Statement, witness *crypto.Witness, u *bn256.G1, txid crypto.Hash, burn_value uint64) *crypto.Proof
@@ -56,7 +59,7 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
-	for t, _ := range transfers {
+	for t := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
 		var D bn256.G1

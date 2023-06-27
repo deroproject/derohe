@@ -16,13 +16,15 @@
 
 package crypto
 
-import "fmt"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+
+	"github.com/deroproject/derohe/cryptography/bn256"
+)
 
 //import "crypto/rand"
 //import "encoding/hex"
-
-import "github.com/deroproject/derohe/cryptography/bn256"
 
 func NewGeneratorParams(count int) *GeneratorParams {
 	GP := &GeneratorParams{}

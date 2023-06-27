@@ -6,10 +6,12 @@
 
 package main
 
-import "fmt"
-import "math/rand"
-import "os"
-import "regexp"
+import (
+	"fmt"
+	"math/rand"
+	"os"
+	"regexp"
+)
 
 var random_lines = []string{
 	"step_3[i] += step_3[i] // +",

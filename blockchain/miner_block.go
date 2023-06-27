@@ -16,29 +16,28 @@
 
 package blockchain
 
-import "fmt"
-import "bytes"
-import "sort"
-import "sync"
-import "runtime/debug"
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"runtime/debug"
+	"sort"
+	"sync"
 
-import "golang.org/x/xerrors"
-import "golang.org/x/time/rate"
-import "golang.org/x/crypto/sha3"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/time/rate"
+	"golang.org/x/xerrors"
+)
 
 // this file creates the blobs which can be used to mine new blocks
-
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
-
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/transaction"
-
-import "github.com/deroproject/graviton"
 
 const TX_VALIDITY_HEIGHT = 11
 

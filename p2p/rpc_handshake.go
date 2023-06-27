@@ -16,17 +16,18 @@
 
 package p2p
 
-import "fmt"
-import "net"
-import "bytes"
-import "context"
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"net"
+	"sync/atomic"
+	"time"
 
-import "sync/atomic"
-import "time"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/blang/semver/v4"
+	"github.com/blang/semver/v4"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+)
 
 // verify incoming handshake for number of checks such as mainnet/testnet etc etc
 func Verify_Handshake(handshake *Handshake_Struct) bool {

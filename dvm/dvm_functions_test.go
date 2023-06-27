@@ -17,11 +17,13 @@
 package dvm
 
 //import "fmt"
-import "reflect"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"reflect"
+	"testing"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
 
 // ensure 100% coverage of functions execution
 var execution_tests_functions = []struct {

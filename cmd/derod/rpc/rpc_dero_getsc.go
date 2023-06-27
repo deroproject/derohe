@@ -16,22 +16,23 @@
 
 package rpc
 
-import "fmt"
-import "context"
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"runtime/debug"
 
-import "encoding/binary"
-import "runtime/debug"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/graviton"
+)
 
 //import "github.com/romana/rlog"
-import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/dvm"
 
 //import "github.com/deroproject/derohe/transaction"
-
-import "github.com/deroproject/graviton"
 
 func GetSC(ctx context.Context, p rpc.GetSC_Params) (result rpc.GetSC_Result, err error) {
 

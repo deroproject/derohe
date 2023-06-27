@@ -17,8 +17,10 @@
 package transaction
 
 //import "fmt"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"testing"
+)
 
 //import "github.com/deroproject/derohe/crypto"
 

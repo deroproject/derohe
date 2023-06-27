@@ -18,10 +18,12 @@ package mempool
 
 //import "fmt"
 //import "bytes"
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"testing"
 
-import "github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/transaction"
+)
 
 // test the mempool interface with valid TX
 func Test_mempool(t *testing.T) {

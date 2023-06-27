@@ -16,16 +16,16 @@
 
 package mnemonics
 
-import "fmt"
-import "strings"
-import "encoding/binary"
-import "unicode/utf8"
+import (
+	"encoding/binary"
+	"fmt"
+	"hash/crc32"
+	"math/big"
+	"strings"
+	"unicode/utf8"
+)
 
 //import "github.com/romana/rlog"
-
-import "hash/crc32"
-
-import "math/big"
 
 type Language struct {
 	Name                 string   // Name of the language

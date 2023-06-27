@@ -16,8 +16,11 @@
 
 package rpc
 
-import "testing"
-import "github.com/deroproject/derohe/config"
+import (
+	"testing"
+
+	"github.com/deroproject/derohe/config"
+)
 
 func Test_Address(t *testing.T) {
 

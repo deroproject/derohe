@@ -16,21 +16,24 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "encoding/hex"
-import "encoding/binary"
-import "runtime/debug"
+import (
+	"context"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "github.com/romana/rlog"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/blockchain"
 
 func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rpc.GetTransaction_Result, err error) {
 

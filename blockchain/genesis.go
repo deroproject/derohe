@@ -16,12 +16,14 @@
 
 package blockchain
 
-import "fmt"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"fmt"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+)
 
 // generates a genesis block
 func Generate_Genesis_Block() (bl block.Block) {

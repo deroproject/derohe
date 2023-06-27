@@ -16,17 +16,18 @@
 
 package blockchain
 
-import "fmt"
-import "math/big"
-import "path/filepath"
+import (
+	"fmt"
+	"math/big"
+	"path/filepath"
 
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+)
 
 // though these can be done within a single DB, these are separated for completely clarity purposes
 type storage struct {

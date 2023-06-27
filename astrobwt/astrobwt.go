@@ -1,11 +1,14 @@
 package astrobwt
 
-import "fmt"
-import "unsafe"
-import "crypto/rand"
-import "encoding/binary"
-import "golang.org/x/crypto/sha3"
-import "golang.org/x/crypto/salsa20/salsa"
+import (
+	"crypto/rand"
+	"encoding/binary"
+	"fmt"
+	"unsafe"
+
+	"golang.org/x/crypto/salsa20/salsa"
+	"golang.org/x/crypto/sha3"
+)
 
 // see here to improve the algorithms more https://github.com/y-256/libdivsufsort/blob/wiki/SACA_Benchmarks.md
 

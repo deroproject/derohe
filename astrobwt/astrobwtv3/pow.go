@@ -1,19 +1,19 @@
 package astrobwtv3
 
-import "fmt"
+import (
+	"crypto/rand"
+	"encoding/binary"
+	"fmt"
+	"math/bits"
 
-//import "os"
-import "math/bits"
-import "encoding/binary"
-import "crypto/rand"
-
-import "github.com/dchest/siphash"
-import "github.com/cespare/xxhash"
+	"github.com/cespare/xxhash"
+	"github.com/dchest/siphash"
+	"github.com/minio/sha256-simd"
+	"github.com/segmentio/fasthash/fnv1a"
+	"golang.org/x/crypto/salsa20/salsa"
+) //import "os"
 
 //import "github.com/minio/highwayhash"
-import "github.com/minio/sha256-simd"
-import "github.com/segmentio/fasthash/fnv1a"
-import "golang.org/x/crypto/salsa20/salsa"
 
 var _ = fmt.Sprintf
 var __ = rand.Read

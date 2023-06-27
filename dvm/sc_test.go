@@ -1,8 +1,10 @@
 package dvm
 
-import "time"
-import "testing"
-import "math/rand"
+import (
+	"math/rand"
+	"testing"
+	"time"
+)
 
 func TestSC_META_DATA(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())

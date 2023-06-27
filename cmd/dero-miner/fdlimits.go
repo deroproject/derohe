@@ -3,8 +3,11 @@
 
 package main
 
-import "runtime"
-import "golang.org/x/sys/unix"
+import (
+	"runtime"
+
+	"golang.org/x/sys/unix"
+)
 
 // we skip type as go will automatically identify type
 const (

@@ -16,8 +16,10 @@
 
 package crypto
 
-import "testing"
-import "encoding/hex"
+import (
+	"encoding/hex"
+	"testing"
+)
 
 func TestKeccak256(t *testing.T) {
 	tests := []struct {

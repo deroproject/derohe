@@ -16,8 +16,11 @@
 
 package rpc
 
-import "context"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 func GetHeight(ctx context.Context) rpc.Daemon_GetHeight_Result {
 	return rpc.Daemon_GetHeight_Result{

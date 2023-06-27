@@ -10,20 +10,22 @@
 
 package main
 
-import "os"
-import "fmt"
-import "time"
-import "crypto/sha1"
+import (
+	"crypto/sha1"
+	"fmt"
+	"os"
+	"time"
 
-import "go.etcd.io/bbolt"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/go-logr/logr"
+	"github.com/ybbus/jsonrpc"
+	"go.etcd.io/bbolt"
+	"gopkg.in/natefinch/lumberjack.v2"
+)
 
-import "github.com/go-logr/logr"
-import "gopkg.in/natefinch/lumberjack.v2"
-import "github.com/deroproject/derohe/globals" // needed for logs
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/ybbus/jsonrpc"
+// needed for logs
 
 var logger logr.Logger = logr.Discard() // default discard all logs
 

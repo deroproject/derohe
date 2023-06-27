@@ -16,25 +16,25 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "strings"
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"runtime/debug"
+	"strings"
+
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/graviton"
+)
 
 //import "encoding/binary"
-import "encoding/base64"
-import "runtime/debug"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-
-import "github.com/deroproject/derohe/dvm"
 
 //import "github.com/deroproject/derohe/transaction"
 //import "github.com/deroproject/derohe/blockchain"
-
-import "github.com/deroproject/graviton"
 
 func GetGasEstimate(ctx context.Context, p rpc.GasEstimate_Params) (result rpc.GasEstimate_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error

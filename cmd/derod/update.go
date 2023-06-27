@@ -16,28 +16,29 @@
 
 package main
 
-import "fmt"
-import "net"
-import "time"
-import "io"
+import (
+	"context"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math/rand"
+	"net"
+	"runtime/debug"
+	"strings"
+	"time"
+
+	"github.com/blang/semver/v4"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/miekg/dns"
+)
 
 //import "io/ioutil"
 //import "net/http"
-import "context"
-import "strings"
-import "math/rand"
-import "encoding/base64"
-import "encoding/json"
-import "runtime/debug"
-import "encoding/binary"
 
 //import "crypto/tls"
-
-import "github.com/blang/semver/v4"
-import "github.com/miekg/dns"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
 
 /* this needs to be set on update.dero.io. as TXT record,  in encoded form as base64
  *

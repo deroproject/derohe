@@ -4,8 +4,9 @@
 package rwc
 
 import (
-	"github.com/gorilla/websocket"
 	"io"
+
+	"github.com/gorilla/websocket"
 )
 
 type ReadWriteCloser struct {

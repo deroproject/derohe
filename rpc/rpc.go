@@ -1,12 +1,14 @@
 package rpc
 
-import "fmt"
-import "time"
-import "sort"
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+	"time"
 
-import "github.com/fxamacker/cbor/v2"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/fxamacker/cbor/v2"
+)
 
 // this package defines interfaces and necessary glue code Digital Network, it exposes and provides encrypted RPC calls over DERO chain
 

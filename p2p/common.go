@@ -1,10 +1,12 @@
 package p2p
 
-import "time"
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
 
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+)
 
 // fill the common part from our chain
 func fill_common(common *Common_Struct) {

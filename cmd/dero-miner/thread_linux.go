@@ -16,9 +16,12 @@
 
 package main
 
-import "runtime"
-import "sync/atomic"
-import "golang.org/x/sys/unix"
+import (
+	"runtime"
+	"sync/atomic"
+
+	"golang.org/x/sys/unix"
+)
 
 var processor int32
 

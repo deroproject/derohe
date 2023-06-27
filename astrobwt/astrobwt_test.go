@@ -1,8 +1,10 @@
 package astrobwt
 
-import "time"
-import "math/rand"
-import "testing"
+import (
+	"math/rand"
+	"testing"
+	"time"
+)
 
 // see https://www.geeksforgeeks.org/burrows-wheeler-data-transform-algorithm/
 // see https://www.geeksforgeeks.org/suffix-tree-application-4-build-linear-time-suffix-array/

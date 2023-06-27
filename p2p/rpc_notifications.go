@@ -16,17 +16,19 @@
 
 package p2p
 
-import "fmt"
-import "sync/atomic"
-import "encoding/binary"
-import "time"
+import (
+	"encoding/binary"
+	"fmt"
+	"sync/atomic"
+	"time"
 
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/metrics"
-import "github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/deroproject/derohe/transaction"
+)
 
 // handles notifications of inventory
 func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) {
@@ -130,10 +132,11 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 			return err
 		}
 		if height > 4 { // activate check a bit after genesis, thanks Slixe
-		if  height-2 <= int64(mbl.Height)  && int64(mbl.Height) <= (height+1){		
-		} else{
-			return fmt.Errorf("Stale Miniblock")
-		}}
+			if height-2 <= int64(mbl.Height) && int64(mbl.Height) <= (height+1) {
+			} else {
+				return fmt.Errorf("Stale Miniblock")
+			}
+		}
 		mbls = append(mbls, mbl)
 	}
 

@@ -19,23 +19,25 @@ package p2p
 /* this file implements the peer manager, keeping a list of peers which can be tried for connection etc
  *
  */
-import "os"
-import "fmt"
-import "net"
-import "sync"
-import "time"
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/deroproject/derohe/globals"
+)
 
 //import "sort"
-import "path/filepath"
-import "encoding/json"
 
 //import "encoding/binary"
 //import "container/list"
 
 //import log "github.com/sirupsen/logrus"
-
-import "github.com/deroproject/derohe/globals"
 
 //import "github.com/deroproject/derosuite/crypto"
 
@@ -189,7 +191,7 @@ func IsAddressInBanList(address string) bool {
 	if ip != nil {
 
 		// parse and check the subnets
-		for k, _ := range ban_map {
+		for k := range ban_map {
 			ipnet, _, err := ParseAddress(k)
 
 			//  fmt.Printf("parsing address %s err %s  checking ip %s",k,err,address)

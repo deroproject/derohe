@@ -16,17 +16,19 @@
 
 package dvm
 
-import "fmt"
-import "go/ast"
-import "strconv"
-import "strings"
-import "crypto/sha256"
-import "encoding/hex"
-import "golang.org/x/crypto/sha3"
-import "github.com/blang/semver/v4"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"go/ast"
+	"strconv"
+	"strings"
 
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/blang/semver/v4"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+	"golang.org/x/crypto/sha3"
+)
 
 // this files defines  external functions which can be called in DVM
 // for example to load and store data from the blockchain and other basic functions
@@ -55,43 +57,43 @@ type func_data struct {
 }
 
 func init() {
-	func_table["version"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_version}}
-	func_table["load"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_load}}
-	func_table["exists"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_exists}}
-	func_table["store"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_store}}
-	func_table["delete"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 3000, StorageCost: 0, PtrU: dvm_delete}}
-	func_table["mapexists"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_mapexists}}
-	func_table["mapget"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, Ptr: dvm_mapget}}
-	func_table["mapstore"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_mapstore}}
-	func_table["mapdelete"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_mapdelete}}
-	func_table["random"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2500, StorageCost: 0, PtrU: dvm_random}}
-	func_table["scid"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrS: dvm_scid}}
-	func_table["blid"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrS: dvm_blid}}
-	func_table["txid"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrS: dvm_txid}}
-	func_table["dero"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_dero}}
-	func_table["block_height"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrU: dvm_block_height}}
-	func_table["block_timestamp"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2500, StorageCost: 0, PtrU: dvm_block_timestamp}}
-	func_table["signer"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_signer}}
-	func_table["update_sc_code"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_update_sc_code}}
-	func_table["is_address_valid"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 50000, StorageCost: 0, PtrU: dvm_is_address_valid}}
-	func_table["address_raw"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 60000, StorageCost: 0, PtrS: dvm_address_raw}}
-	func_table["address_string"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 50000, StorageCost: 0, PtrS: dvm_address_string}}
-	func_table["send_dero_to_address"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 70000, StorageCost: 0, PtrU: dvm_send_dero_to_address}}
-	func_table["send_asset_to_address"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 90000, StorageCost: 0, PtrU: dvm_send_asset_to_address}}
-	func_table["derovalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_derovalue}}
-	func_table["assetvalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_assetvalue}}
-	func_table["atoi"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_atoi}}
-	func_table["itoa"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_itoa}}
-	func_table["sha256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha256}}
-	func_table["sha3256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha3256}}
-	func_table["keccak256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_keccak256}}
-	func_table["hex"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hex}}
-	func_table["hexdecode"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hexdecode}}
-	func_table["min"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_min}}
-	func_table["max"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_max}}
-	func_table["strlen"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrU: dvm_strlen}}
-	func_table["substr"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrS: dvm_substr}}
-	func_table["panic"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_panic}}
+	func_table["version"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_version}}
+	func_table["load"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_load}}
+	func_table["exists"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_exists}}
+	func_table["store"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_store}}
+	func_table["delete"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 3000, StorageCost: 0, PtrU: dvm_delete}}
+	func_table["mapexists"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_mapexists}}
+	func_table["mapget"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, Ptr: dvm_mapget}}
+	func_table["mapstore"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_mapstore}}
+	func_table["mapdelete"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_mapdelete}}
+	func_table["random"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2500, StorageCost: 0, PtrU: dvm_random}}
+	func_table["scid"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrS: dvm_scid}}
+	func_table["blid"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrS: dvm_blid}}
+	func_table["txid"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrS: dvm_txid}}
+	func_table["dero"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_dero}}
+	func_table["block_height"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2000, StorageCost: 0, PtrU: dvm_block_height}}
+	func_table["block_timestamp"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 2500, StorageCost: 0, PtrU: dvm_block_timestamp}}
+	func_table["signer"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_signer}}
+	func_table["update_sc_code"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_update_sc_code}}
+	func_table["is_address_valid"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 50000, StorageCost: 0, PtrU: dvm_is_address_valid}}
+	func_table["address_raw"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 60000, StorageCost: 0, PtrS: dvm_address_raw}}
+	func_table["address_string"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 50000, StorageCost: 0, PtrS: dvm_address_string}}
+	func_table["send_dero_to_address"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 70000, StorageCost: 0, PtrU: dvm_send_dero_to_address}}
+	func_table["send_asset_to_address"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 90000, StorageCost: 0, PtrU: dvm_send_asset_to_address}}
+	func_table["derovalue"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_derovalue}}
+	func_table["assetvalue"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_assetvalue}}
+	func_table["atoi"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_atoi}}
+	func_table["itoa"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_itoa}}
+	func_table["sha256"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha256}}
+	func_table["sha3256"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha3256}}
+	func_table["keccak256"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_keccak256}}
+	func_table["hex"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hex}}
+	func_table["hexdecode"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hexdecode}}
+	func_table["min"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_min}}
+	func_table["max"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_max}}
+	func_table["strlen"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrU: dvm_strlen}}
+	func_table["substr"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrS: dvm_substr}}
+	func_table["panic"] = []func_data{{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_panic}}
 }
 
 // this will handle all internal functions which may be required/necessary to expand DVM functionality
