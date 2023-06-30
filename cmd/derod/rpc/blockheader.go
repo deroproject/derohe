@@ -17,11 +17,13 @@
 package rpc
 
 //import "fmt"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
+import (
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+)
 
 // this function is only used by the RPC and is not used by the core and should be moved to RPC interface
 
@@ -49,6 +51,7 @@ func GetBlockHeader(chain *blockchain.Blockchain, hash crypto.Hash) (result rpc.
 	result.SideBlock = chain.Isblock_SideBlock(hash)
 	result.Reward = blockchain.CalcBlockReward(uint64(result.Height))
 	result.TXCount = int64(len(bl.Tx_hashes))
+	result.Size = len(bl.Serialize())
 
 	for i := range bl.Tips {
 		result.Tips = append(result.Tips, bl.Tips[i].String())

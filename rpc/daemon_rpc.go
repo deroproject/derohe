@@ -39,6 +39,7 @@ type BlockHeader_Print struct {
 	Reward    uint64   `json:"reward"`
 	Tips      []string `json:"tips"`
 	Timestamp uint64   `json:"timestamp"`
+	Size      int      `json:"size"` // block header size in bytes
 }
 
 type (
@@ -224,7 +225,8 @@ type (
 		Code           string     `json:"code"`          // smart contract code at start
 		BalanceNow     uint64     `json:"balancenow"`    // if tx is SC, give SC balance at current topo height
 		CodeNow        string     `json:"codenow"`       // smart contract code at current topo
-
+		Fees           uint64     `json:"fees"`          // fees paid by this tx
+		Size           int        `json:"size"`          // size of the tx in bytes
 	}
 )
 
