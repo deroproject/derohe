@@ -161,13 +161,13 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 }
 
 func (x *XSWD) handleMessage(app ApplicationData, request jrpc2.Request) interface{} {
+	methodName := request.Method()
+	handler := rpcserver.WalletHandler[methodName]
+	if handler == nil {
+		x.logger.Info("RPC Method not found", "method", methodName)
+		return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
+	}
 	if x.requestPermission(app, request) {
-		methodName := request.Method()
-		handler := rpcserver.WalletHandler[methodName]
-		if handler == nil {
-			return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
-		}
-
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
 		response, err := handler.Handle(ctx, &request)
 		if err != nil {
@@ -176,7 +176,8 @@ func (x *XSWD) handleMessage(app ApplicationData, request jrpc2.Request) interfa
 
 		return response
 	} else {
-		return jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", request.Method())
+		x.logger.Info("Permission not granted for method", "method", methodName)
+		return jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", methodName)
 	}
 }
 
@@ -200,6 +201,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 
 	var request jrpc2.Request
 	for {
+		// TODO read requets
 		if err := conn.ReadJSON(&request); err != nil {
 			x.logger.Error(err, "Error while reading message from session")
 			return
