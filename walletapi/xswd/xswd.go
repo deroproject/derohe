@@ -47,7 +47,7 @@ type XSWD struct {
 	// function to request access of a dApp to wallet
 	appHandler func(*ApplicationData) Permission
 	// function to request the permission
-	requestHandler func(*ApplicationData, jrpc2.Request) Permission
+	requestHandler func(*ApplicationData, *jrpc2.Request) Permission
 	server         *http.Server
 	logger         logr.Logger
 	context        *rpcserver.WalletContext
@@ -57,7 +57,7 @@ type XSWD struct {
 	sync.Mutex
 }
 
-func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) Permission, requestHandler func(*ApplicationData, jrpc2.Request) Permission) *XSWD {
+func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) Permission, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("XSWD server"))
@@ -160,7 +160,7 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
-func (x *XSWD) handleMessage(app ApplicationData, request jrpc2.Request) interface{} {
+func (x *XSWD) handleMessage(app ApplicationData, request *jrpc2.Request) interface{} {
 	methodName := request.Method()
 	handler := rpcserver.WalletHandler[methodName]
 	if handler == nil {
@@ -169,7 +169,7 @@ func (x *XSWD) handleMessage(app ApplicationData, request jrpc2.Request) interfa
 	}
 	if x.requestPermission(app, request) {
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
-		response, err := handler.Handle(ctx, &request)
+		response, err := handler.Handle(ctx, request)
 		if err != nil {
 			return jrpc2.Errorf(code.InternalError, "Error while handling request method %q: %v", methodName, err)
 		}
@@ -181,7 +181,7 @@ func (x *XSWD) handleMessage(app ApplicationData, request jrpc2.Request) interfa
 	}
 }
 
-func (x *XSWD) requestPermission(app ApplicationData, request jrpc2.Request) bool {
+func (x *XSWD) requestPermission(app ApplicationData, request *jrpc2.Request) bool {
 	x.Lock()
 	defer x.Unlock()
 
@@ -199,11 +199,23 @@ func (x *XSWD) requestPermission(app ApplicationData, request jrpc2.Request) boo
 func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 	defer x.removeApplication(conn)
 
-	var request jrpc2.Request
 	for {
-		// TODO read requets
-		if err := conn.ReadJSON(&request); err != nil {
+		_, buff, err := conn.ReadMessage()
+		if err != nil {
 			x.logger.Error(err, "Error while reading message from session")
+			return
+		}
+
+		requests, err := jrpc2.ParseRequests(buff)
+		request := requests[0]
+		// We only support one request at a time for permission request
+		if len(requests) != 1 {
+			x.logger.Error(nil, "Invalid number of requests")
+			return
+		}
+
+		if err != nil {
+			x.logger.Error(err, "Error while parsing request")
 			return
 		}
 
