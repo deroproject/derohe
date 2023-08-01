@@ -94,6 +94,31 @@ func (x *XSWD) Stop() {
 	x.server.Shutdown(context.Background())
 }
 
+func (x *XSWD) GetApplications() []ApplicationData {
+	x.Lock()
+	defer x.Unlock()
+
+	apps := make([]ApplicationData, 0, len(x.applications))
+	for _, app := range x.applications {
+		apps = append(apps, app)
+	}
+
+	return apps
+}
+
+func (x *XSWD) RemoveApplication(app *ApplicationData) {
+	x.Lock()
+	defer x.Unlock()
+
+	for conn, a := range x.applications {
+		if a.Id == app.Id {
+			conn.Close()
+			delete(x.applications, conn)
+			break
+		}
+	}
+}
+
 func (x *XSWD) addApplication(conn *websocket.Conn, app ApplicationData) bool {
 	x.Lock()
 	defer x.Unlock()
@@ -163,10 +188,12 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 func (x *XSWD) handleMessage(app ApplicationData, request *jrpc2.Request) interface{} {
 	methodName := request.Method()
 	handler := rpcserver.WalletHandler[methodName]
+
 	if handler == nil {
 		x.logger.Info("RPC Method not found", "method", methodName)
 		return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
 	}
+
 	if x.requestPermission(app, request) {
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
 		response, err := handler.Handle(ctx, request)
@@ -250,14 +277,6 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if x.addApplication(conn, app_data) {
-		// Application was successfully accepted, send response
-		// if err := conn.WriteJSON(response); err != nil {
-		// 	log.Println("Error while writing JSON:", err)
-		// 	return
-		// }
 		x.readMessageFromSession(conn)
-	} else {
-		// TODO Application was rejected, send error
-		conn.Close()
 	}
 }
