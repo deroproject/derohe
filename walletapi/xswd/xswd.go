@@ -2,26 +2,29 @@ package xswd
 
 import (
 	"context"
+	"encoding/hex"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/code"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/walletapi"
+	"github.com/deroproject/derohe/walletapi/rpcserver"
 	"github.com/go-logr/logr"
 	"github.com/gorilla/websocket"
-
-	rpcserver "github.com/deroproject/derohe/walletapi/rpcserver"
 )
 
 type ApplicationData struct {
-	id          []byte
-	name        string
-	description string
-	url         string
-	permissions map[string]Permission
-	signature   []byte
+	Id          string                `json:"id"`
+	Name        string                `json:"name"`
+	Description string                `json:"description"`
+	Url         string                `json:"url"`
+	Permissions map[string]Permission `json:"permissions"`
+	Signature   []byte                `json:"signature"`
 }
 
 type Permission int
@@ -38,35 +41,31 @@ func (perm Permission) IsPositive() bool {
 	return perm == Allow || perm == AlwaysAllow
 }
 
-type RPCRequest struct {
-	// Method to be called
-	Method string
-	// its parameters
-	Params interface{}
-}
-
 type XSWD struct {
 	// The websocket connected to and its app data
 	applications map[*websocket.Conn]ApplicationData
 	// function to request access of a dApp to wallet
 	appHandler func(*ApplicationData) Permission
 	// function to request the permission
-	requestHandler func(*ApplicationData, RPCRequest) Permission
+	requestHandler func(*ApplicationData, jrpc2.Request) Permission
 	server         *http.Server
 	logger         logr.Logger
-	ctx            rpcserver.WalletContext
+	context        *rpcserver.WalletContext
+	wallet         *walletapi.Wallet_Disk
 	rpcHandler     handler.Map
 	// mutex for applications map
 	sync.Mutex
 }
 
-func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) Permission, requestHandler func(*ApplicationData, RPCRequest) Permission) *XSWD {
+func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) Permission, requestHandler func(*ApplicationData, jrpc2.Request) Permission) *XSWD {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("XSWD server"))
+	})
+
 	server := &http.Server{Addr: ":44326", Handler: mux}
-	server.Shutdown(context.Background())
 
 	logger := globals.Logger.WithName("XSWD")
-	ctx := rpcserver.NewWalletContext(logger, wallet)
 	var rpcHandler handler.Map
 	xswd := &XSWD{
 		applications:   make(map[*websocket.Conn]ApplicationData),
@@ -74,12 +73,19 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		requestHandler: requestHandler,
 		logger:         logger,
 		server:         server,
-		ctx:            ctx,
+		context:        rpcserver.NewWalletContext(logger, wallet),
+		wallet:         wallet,
 		rpcHandler:     rpcHandler,
 	}
 
 	mux.HandleFunc("/xswd", xswd.handleWebSocket)
-	xswd.server.ListenAndServe()
+	logger.Info("Starting XSWD server", "addr", server.Addr)
+
+	go func() {
+		if err := xswd.server.ListenAndServe(); err != nil {
+			logger.Error(err, "Error while starting XSWD server")
+		}
+	}()
 
 	return xswd
 }
@@ -98,32 +104,37 @@ func (x *XSWD) addApplication(conn *websocket.Conn, app ApplicationData) bool {
 
 	// Sanity check
 	{
-		if app.id == nil || len(app.id) != 32 {
+		id := strings.TrimSpace(app.Id)
+		if len(id) != 64 {
 			return false
 		}
 
-		if len(app.name) == 0 || len(app.name) > 255 {
+		if _, err := hex.DecodeString(id); err != nil {
 			return false
 		}
 
-		if len(app.description) == 0 || len(app.description) > 255 {
+		if len(app.Name) == 0 || len(app.Name) > 255 {
+			return false
+		}
+
+		if len(app.Description) == 0 || len(app.Description) > 255 {
 			return false
 		}
 
 		// URL can be optional
-		if len(app.url) > 255 {
+		if len(app.Url) > 255 {
 			return false
 		}
 
 		// Signature can be optional but permissions can't exist without signature
-		if app.permissions != nil {
-			if (len(app.permissions) > 0 && len(app.signature) != 64) || len(app.permissions) > 255 {
+		if app.Permissions != nil {
+			if (len(app.Permissions) > 0 && len(app.Signature) != 64) || len(app.Permissions) > 255 {
 				return false
 			}
 		}
 
 		// Signature can be optional but verify its len
-		if len(app.signature) > 0 && len(app.signature) != 64 {
+		if len(app.Signature) > 0 && len(app.Signature) != 64 {
 			return false
 		}
 
@@ -131,6 +142,7 @@ func (x *XSWD) addApplication(conn *websocket.Conn, app ApplicationData) bool {
 	}
 
 	x.applications[conn] = app
+	x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 
 	return true
 }
@@ -139,26 +151,44 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 	x.Lock()
 	defer x.Unlock()
 
+	app, found := x.applications[conn]
+	if !found {
+		return
+	}
+
 	delete(x.applications, conn)
+	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
-func (x *XSWD) handleMessage(app ApplicationData, request RPCRequest) {
+func (x *XSWD) handleMessage(app ApplicationData, request jrpc2.Request) interface{} {
 	if x.requestPermission(app, request) {
+		methodName := request.Method()
+		handler := rpcserver.WalletHandler[methodName]
+		if handler == nil {
+			return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
+		}
 
+		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
+		response, err := handler.Handle(ctx, &request)
+		if err != nil {
+			return jrpc2.Errorf(code.InternalError, "Error while handling request method %q: %v", methodName, err)
+		}
+
+		return response
 	} else {
-		// TODO send error
+		return jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", request.Method())
 	}
 }
 
-func (x *XSWD) requestPermission(app ApplicationData, request RPCRequest) bool {
+func (x *XSWD) requestPermission(app ApplicationData, request jrpc2.Request) bool {
 	x.Lock()
 	defer x.Unlock()
 
-	perm, found := app.permissions[request.Method]
+	perm, found := app.Permissions[request.Method()]
 	if !found {
 		perm = x.requestHandler(&app, request)
 		if perm == AlwaysDeny || perm == AlwaysAllow {
-			app.permissions[request.Method] = perm
+			app.Permissions[request.Method()] = perm
 		}
 	}
 
@@ -168,20 +198,24 @@ func (x *XSWD) requestPermission(app ApplicationData, request RPCRequest) bool {
 func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 	defer x.removeApplication(conn)
 
-	var request RPCRequest
+	var request jrpc2.Request
 	for {
 		if err := conn.ReadJSON(&request); err != nil {
-			log.Println("Error while reading JSON:", err)
+			x.logger.Error(err, "Error while reading message from session")
 			return
 		}
 
 		app, found := x.applications[conn]
 		if !found {
-			log.Println("Application not found")
+			x.logger.Error(nil, "Application not found")
 			return
 		}
 
-		x.handleMessage(app, request)
+		response := x.handleMessage(app, request)
+		if err := conn.WriteJSON(response); err != nil {
+			x.logger.Error(err, "Error while writing JSON")
+			return
+		}
 	}
 }
 
@@ -207,7 +241,7 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		// 	log.Println("Error while writing JSON:", err)
 		// 	return
 		// }
-		go x.readMessageFromSession(conn)
+		x.readMessageFromSession(conn)
 	} else {
 		// TODO Application was rejected, send error
 		conn.Close()

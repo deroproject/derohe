@@ -162,7 +162,7 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 	rpcserver.Unlock()
 
 	// Bridge HTTP to the JSON-RPC server.
-	var bridge = jhttp.NewBridge(wallet_handler, &jhttp.BridgeOptions{Server: options})
+	var bridge = jhttp.NewBridge(WalletHandler, &jhttp.BridgeOptions{Server: options})
 
 	translate_http_to_jsonrpc_and_vice_versa := func(w http.ResponseWriter, r *http.Request) {
 
@@ -293,7 +293,7 @@ func Echo(ctx context.Context, args []string) string {
 	return "DERO " + strings.Join(args, " ")
 }
 
-var wallet_handler = handler.Map{
+var WalletHandler = handler.Map{
 	"Echo":                     handler.New(WalletEcho),
 	"getaddress":               handler.New(GetAddress),
 	"GetAddress":               handler.New(GetAddress),
@@ -322,7 +322,7 @@ var servicemux = handler.ServiceMap{
 		"Echo": handler.New(Echo),
 		"Ping": handler.New(Ping),
 	},
-	"WALLET": wallet_handler,
+	"WALLET": WalletHandler,
 }
 
 func fromContext(ctx context.Context) *WalletContext {
@@ -333,8 +333,8 @@ func fromContext(ctx context.Context) *WalletContext {
 	return u
 }
 
-func NewWalletContext(logger logr.Logger, wallet *walletapi.Wallet_Disk) WalletContext {
-	return WalletContext{
+func NewWalletContext(logger logr.Logger, wallet *walletapi.Wallet_Disk) *WalletContext {
+	return &WalletContext{
 		logger: logger,
 		wallet: wallet,
 	}
