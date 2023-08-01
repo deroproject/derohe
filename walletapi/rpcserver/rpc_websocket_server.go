@@ -16,37 +16,34 @@
 
 package rpcserver
 
-import "io"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "io/ioutil"
-import "net"
-import "fmt"
-import "net/http"
-import "time"
-import "sync"
-import "sync/atomic"
-import "context"
-import "strings"
-import "runtime/debug"
-import "encoding/json"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/gorilla/websocket"
-
-import "github.com/go-logr/logr"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/handler"
-import "github.com/creachadair/jrpc2/channel"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/creachadair/jrpc2/handler"
+	"github.com/creachadair/jrpc2/jhttp"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/glue/rwc"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/go-logr/logr"
+	"github.com/gorilla/websocket"
+)
 
 //import "github.com/creachadair/jrpc2/server"
-import "github.com/creachadair/jrpc2/jhttp"
 
 /* this file implements the rpcserver api, so as wallet and block explorer tools can work without migration */
 
@@ -131,7 +128,7 @@ func hasbasicauthfailed(rpcserver *RPCServer, w http.ResponseWriter, r *http.Req
 // setup handlers
 func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 
-	var wallet_apis WALLET_CONTEXT
+	var wallet_apis WalletContext
 
 	wallet_apis.logger = rpcserver.logger
 	wallet_apis.wallet = wallet
@@ -278,8 +275,7 @@ func hello(w http.ResponseWriter, r *http.Request) {
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }} // use default options
 
-type WALLET_CONTEXT struct {
-	r      *RPCServer
+type WalletContext struct {
 	logger logr.Logger
 	wallet *walletapi.Wallet_Disk
 } // exports daemon status and other RPC apis
@@ -329,10 +325,17 @@ var servicemux = handler.ServiceMap{
 	"WALLET": wallet_handler,
 }
 
-func fromContext(ctx context.Context) *WALLET_CONTEXT {
-	u, ok := ctx.Value("wallet_context").(*WALLET_CONTEXT)
+func fromContext(ctx context.Context) *WalletContext {
+	u, ok := ctx.Value("wallet_context").(*WalletContext)
 	if !ok {
 		panic("cannot find wallet context")
 	}
 	return u
+}
+
+func NewWalletContext(logger logr.Logger, wallet *walletapi.Wallet_Disk) WalletContext {
+	return WalletContext{
+		logger: logger,
+		wallet: wallet,
+	}
 }
