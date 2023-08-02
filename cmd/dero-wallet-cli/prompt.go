@@ -28,11 +28,13 @@ import (
 	"unicode"
 
 	"github.com/chzyer/readline"
+	"github.com/creachadair/jrpc2"
 	"github.com/deroproject/derohe/config"
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/walletapi"
+	"github.com/deroproject/derohe/walletapi/xswd"
 )
 
 //import "io/ioutil"
@@ -424,7 +426,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 	case "": // blank enter key just loop
 	default:
 		//fmt.Fprintf(l.Stderr(), "you said: %s", strconv.Quote(line))
-		logger.Error(err, "No such command")
+		logger.Error(err, "No such command", "command", command)
 	}
 
 }
@@ -798,6 +800,74 @@ func ConfirmYesNoDefaultNo(l *readline.Instance, prompt_temporary string) bool {
 		return true
 	}
 	return false
+}
+
+// TODO fix duplicated request (first one is stuck from main.go at ReadLine() call)
+func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) (a string) {
+	conf := l.GenPasswordConfig()
+	conf.EnableMask = false
+	prompt_mutex.Lock()
+
+	xswd_request = true
+	defer func() {
+		xswd_request = false
+		prompt_mutex.Unlock()
+	}()
+
+	conf.SetListener(func(line []rune, pos int, key rune) (newLine []rune, newPos int, ok bool) {
+		color := color_green
+
+		found := false
+		for _, v := range values {
+			if v == strings.ToUpper(string(line)) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			color = color_red
+		}
+
+		l.SetPrompt(fmt.Sprintf("%sXSWD: %s", color, prompt))
+		l.Refresh()
+
+		return nil, 0, false
+	})
+
+	validValue := false
+	for !validValue {
+		line, err := l.ReadPasswordWithConfig(conf)
+		if err != nil {
+			logger.Error(err, "Error reading input")
+			break
+		}
+		a = strings.ToUpper(string(line))
+
+		for _, v := range values {
+			if v == a {
+				validValue = true
+				break
+			}
+		}
+	}
+	return
+}
+
+// Ask permission for request
+func AskPermissionForRequest(l *readline.Instance, app *xswd.ApplicationData, request *jrpc2.Request) xswd.Permission {
+	values := []string{"A", "D", "AA", "AD"}
+	line := ReadStringXSWDPrompt(l, fmt.Sprintf("Request from %s: %sParams: %s Do you want to allow this request ? ([A]llow / [D]eny / [AA] Always Allow / [AD] Always Deny): ", app.Name, request.Method(), request.ParamString()), values)
+
+	if strings.ToUpper(strings.TrimSpace(line)) == "A" {
+		return xswd.Allow
+	} else if strings.ToUpper(strings.TrimSpace(line)) == "AA" {
+		return xswd.AlwaysAllow
+	} else if strings.ToUpper(strings.TrimSpace(line)) == "DA" {
+		return xswd.AlwaysDeny
+	}
+
+	return xswd.Deny
 }
 
 // confirms whether user knows the current password for the wallet

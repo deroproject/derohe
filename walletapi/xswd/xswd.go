@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/code"
@@ -57,6 +58,8 @@ type XSWD struct {
 	sync.Mutex
 }
 
+// Create a new XSWD server which allows to connect any dApp to the wallet safely through a websocket
+// Each request done by the session will wait on the appHandler and requestHandler to be accepted
 func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) Permission, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -90,10 +93,19 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 	return xswd
 }
 
+// Stop the XSWD server
+// This will close all the connections
+// and delete all applications
 func (x *XSWD) Stop() {
+	x.Lock()
+	defer x.Unlock()
 	x.server.Shutdown(context.Background())
+	x.applications = make(map[*websocket.Conn]ApplicationData)
+	x.logger.Info("XSWD server stopped")
 }
 
+// Get all connected Applications
+// This will return a copy of the map
 func (x *XSWD) GetApplications() []ApplicationData {
 	x.Lock()
 	defer x.Unlock()
@@ -106,6 +118,8 @@ func (x *XSWD) GetApplications() []ApplicationData {
 	return apps
 }
 
+// Remove an application
+// It will automatically close the connection
 func (x *XSWD) RemoveApplication(app *ApplicationData) {
 	x.Lock()
 	defer x.Unlock()
@@ -119,59 +133,89 @@ func (x *XSWD) RemoveApplication(app *ApplicationData) {
 	}
 }
 
-func (x *XSWD) addApplication(conn *websocket.Conn, app ApplicationData) bool {
+// Add an application from a websocket connection
+// it verify that application is valid and add it to the list
+func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app ApplicationData) bool {
 	x.Lock()
 	defer x.Unlock()
-
-	if !x.appHandler(&app).IsPositive() {
-		return false
-	}
 
 	// Sanity check
 	{
 		id := strings.TrimSpace(app.Id)
 		if len(id) != 64 {
+			x.logger.V(1).Info("Invalid ID size")
 			return false
 		}
 
 		if _, err := hex.DecodeString(id); err != nil {
+			x.logger.V(1).Info("Invalid hexadecimal ID")
 			return false
 		}
 
-		if len(app.Name) == 0 || len(app.Name) > 255 {
+		if len(strings.TrimSpace(app.Name)) == 0 || len(app.Name) > 255 || !isASCII(app.Name) {
+			x.logger.V(1).Info("Invalid name", "name", len(app.Name))
 			return false
 		}
 
-		if len(app.Description) == 0 || len(app.Description) > 255 {
+		if len(strings.TrimSpace(app.Description)) == 0 || len(app.Description) > 255 || !isASCII(app.Description) {
+			x.logger.V(1).Info("Invalid description", "description", len(app.Description))
 			return false
+		}
+
+		if len(app.Url) == 0 {
+			app.Url = r.Header.Get("Origin")
+			if len(app.Url) > 0 {
+				x.logger.V(1).Info("No URL passed, checking origin header")
+			}
 		}
 
 		// URL can be optional
 		if len(app.Url) > 255 {
+			x.logger.V(1).Info("Invalid URL", "url", len(app.Url))
+			return false
+		}
+
+		// Check that URL is starting with valid protocol
+		if !(strings.HasPrefix(app.Url, "http://") || strings.HasPrefix(app.Url, "https://")) {
+			x.logger.V(1).Info("Invalid application URL", "url", app.Url)
 			return false
 		}
 
 		// Signature can be optional but permissions can't exist without signature
 		if app.Permissions != nil {
 			if (len(app.Permissions) > 0 && len(app.Signature) != 64) || len(app.Permissions) > 255 {
+				x.logger.V(1).Info("Invalid permissions", "permissions", len(app.Permissions))
 				return false
 			}
 		}
 
 		// Signature can be optional but verify its len
 		if len(app.Signature) > 0 && len(app.Signature) != 64 {
+			x.logger.Info("Invalid signature size", "signature", len(app.Signature))
 			return false
 		}
 
 		// TODO verify signature
 	}
 
-	x.applications[conn] = app
-	x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
+	// Check that we don't already have this application
+	for _, a := range x.applications {
+		if a.Id == app.Id {
+			return false
+		}
+	}
 
-	return true
+	// check the permission from user
+	if x.appHandler(&app).IsPositive() {
+		x.applications[conn] = app
+		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
+		return true
+	}
+
+	return false
 }
 
+// Remove an application from the list for a session
 func (x *XSWD) removeApplication(conn *websocket.Conn) {
 	x.Lock()
 	defer x.Unlock()
@@ -185,6 +229,8 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
+// Handle a RPC Request from a session
+// We check that the method exists, that the application has the permission to use it
 func (x *XSWD) handleMessage(app ApplicationData, request *jrpc2.Request) interface{} {
 	methodName := request.Method()
 	handler := rpcserver.WalletHandler[methodName]
@@ -208,6 +254,7 @@ func (x *XSWD) handleMessage(app ApplicationData, request *jrpc2.Request) interf
 	}
 }
 
+// Request the permission for a method and save its result if it must be persisted
 func (x *XSWD) requestPermission(app ApplicationData, request *jrpc2.Request) bool {
 	x.Lock()
 	defer x.Unlock()
@@ -223,16 +270,19 @@ func (x *XSWD) requestPermission(app ApplicationData, request *jrpc2.Request) bo
 	return perm.IsPositive()
 }
 
+// block until the session is closed and read all its messages
 func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 	defer x.removeApplication(conn)
 
 	for {
+		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
 		if err != nil {
 			x.logger.Error(err, "Error while reading message from session")
 			return
 		}
 
+		// unmarshal the request
 		requests, err := jrpc2.ParseRequests(buff)
 		request := requests[0]
 		// We only support one request at a time for permission request
@@ -260,6 +310,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 	}
 }
 
+// Handle a WebSocket connection
 func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Accept from any origin
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
@@ -270,13 +321,24 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	// first message of the session should be its ApplicationData
 	var app_data ApplicationData
 	if err := conn.ReadJSON(&app_data); err != nil {
 		log.Println("Error while reading app_data:", err)
 		return
 	}
 
-	if x.addApplication(conn, app_data) {
+	if x.addApplication(r, conn, app_data) {
+		// TODO we should handle the case where user open multiple tabs of the same dApp ?
 		x.readMessageFromSession(conn)
 	}
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
 }

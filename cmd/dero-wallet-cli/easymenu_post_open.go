@@ -16,26 +16,29 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "errors"
-import "runtime"
-import "strings"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
-import "path/filepath"
-import "encoding/json"
+	"github.com/chzyer/readline"
+	"github.com/creachadair/jrpc2"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi/xswd"
+)
 
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
+var xswd_server *xswd.XSWD
 
 //import "github.com/deroproject/derohe/address"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
 
 // handle menu if a wallet is currently opened
 func display_easymenu_post_open_command(l *readline.Instance) {
@@ -65,6 +68,12 @@ func display_easymenu_post_open_command(l *readline.Instance) {
 		io.WriteString(w, "\t\033[1m13\033[0m\tShow transaction history\n")
 		io.WriteString(w, "\t\033[1m14\033[0m\tRescan transaction history\n")
 		io.WriteString(w, "\t\033[1m15\033[0m\tExport all transaction history in json format\n")
+		if xswd_server == nil {
+			io.WriteString(w, "\t\033[1m16\033[0m\tStart XSWD Server\n")
+		} else {
+			io.WriteString(w, "\t\033[1m16\033[0m\tStop XSWD Server\n")
+			io.WriteString(w, "\t\033[1m17\033[0m\tList XSWD Applications\n")
+		}
 	}
 
 	io.WriteString(w, "\n\t\033[1m9\033[0m\tExit menu and start prompt\n")
@@ -493,6 +502,33 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			} else {
 				logger.Info("successfully exported history", "file", filename)
 			}
+		}
+	case "16": // start/stop xswd server
+		if xswd_server != nil {
+			xswd_server.Stop()
+			xswd_server = nil
+			break
+		}
+
+		xswd_server = xswd.NewXSWDServer(wallet, func(ad *xswd.ApplicationData) xswd.Permission {
+			// TODO inform if it was already or not, and with permissions inside
+			if accept := ReadStringXSWDPrompt(l, fmt.Sprintf("Allow application %s (%s) to access your wallet (y/N)", ad.Name, ad.Url), []string{"Y", "N"}); accept == "Y" {
+				return xswd.Allow
+			} else {
+				return xswd.Deny
+			}
+		}, func(ad *xswd.ApplicationData, r *jrpc2.Request) xswd.Permission {
+			return AskPermissionForRequest(l, ad, r)
+		})
+	case "17":
+		if xswd_server == nil {
+			logger.Error(nil, "XSWD server is not running")
+			break
+		}
+		apps := xswd_server.GetApplications()
+		logger.Info(fmt.Sprintf("XSWD Applications (%d):", len(apps)))
+		for _, app := range apps {
+			logger.Info("Application", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url, "permissions", app.Permissions)
 		}
 
 	default:
