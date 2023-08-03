@@ -136,14 +136,14 @@ func (c *CancelableStdin) Close() error {
 // reading into the real stdin
 type FillableStdin struct {
 	sync.Mutex
-	stdin       io.Reader
+	stdin       io.ReadCloser
 	stdinBuffer io.ReadCloser
 	buf         []byte
 	bufErr      error
 }
 
 // NewFillableStdin gives you FillableStdin
-func NewFillableStdin(stdin io.Reader) (io.ReadCloser, io.Writer) {
+func NewFillableStdin(stdin io.ReadCloser) (io.ReadCloser, io.Writer) {
 	r, w := io.Pipe()
 	s := &FillableStdin{
 		stdinBuffer: r,
@@ -193,5 +193,6 @@ func (s *FillableStdin) Read(p []byte) (n int, err error) {
 
 func (s *FillableStdin) Close() error {
 	s.stdinBuffer.Close()
+	s.stdin.Close()
 	return nil
 }
