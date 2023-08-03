@@ -270,7 +270,11 @@ func (x *XSWD) requestPermission(app ApplicationData, request *jrpc2.Request) bo
 		perm = x.requestHandler(&app, request)
 		if perm == AlwaysDeny || perm == AlwaysAllow {
 			app.Permissions[request.Method()] = perm
+		} else if perm.IsPositive() {
+			x.logger.Info("Permission granted for method", "method", request.Method())
 		}
+	} else {
+		x.logger.V(1).Info("Permission already granted for method", "method", request.Method(), "permission", perm)
 	}
 
 	return perm.IsPositive()
