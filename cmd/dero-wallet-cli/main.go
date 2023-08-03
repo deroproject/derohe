@@ -111,8 +111,6 @@ var prompt string = "\033[92mDERO Wallet:\033[32m>>>\033[0m "
 
 var tablock uint32
 
-var xswd_request bool // whether we are in xswd request mode
-
 func main() {
 	var err error
 
@@ -336,10 +334,7 @@ func main() {
 			}
 		} else if err == io.EOF {
 			//			break
-			time.Sleep(time.Second)
-		}
-
-		if xswd_request {
+			//time.Sleep(time.Second)
 			continue
 		}
 
@@ -358,6 +353,7 @@ func main() {
 		}
 
 	}
+
 	prompt_mutex.Lock()
 	globals.Exit_In_Progress = true
 	prompt_mutex.Unlock()

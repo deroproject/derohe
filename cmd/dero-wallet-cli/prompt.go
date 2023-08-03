@@ -802,17 +802,12 @@ func ConfirmYesNoDefaultNo(l *readline.Instance, prompt_temporary string) bool {
 	return false
 }
 
-// TODO fix duplicated request (first one is stuck from main.go at ReadLine() call)
 func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) (a string) {
+	prompt_mutex.Lock()
+	defer prompt_mutex.Unlock()
+
 	conf := l.GenPasswordConfig()
 	conf.EnableMask = false
-	prompt_mutex.Lock()
-
-	xswd_request = true
-	defer func() {
-		xswd_request = false
-		prompt_mutex.Unlock()
-	}()
 
 	conf.SetListener(func(line []rune, pos int, key rune) (newLine []rune, newPos int, ok bool) {
 		color := color_green
@@ -837,6 +832,8 @@ func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) 
 
 	validValue := false
 	for !validValue {
+		validValue = true
+		l.Operation.KickReader()
 		line, err := l.ReadPasswordWithConfig(conf)
 		if err != nil {
 			logger.Error(err, "Error reading input")

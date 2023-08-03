@@ -54,6 +54,7 @@ type XSWD struct {
 	context        *rpcserver.WalletContext
 	wallet         *walletapi.Wallet_Disk
 	rpcHandler     handler.Map
+	exit           bool
 	// mutex for applications map
 	sync.Mutex
 }
@@ -78,6 +79,7 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		server:         server,
 		context:        rpcserver.NewWalletContext(logger, wallet),
 		wallet:         wallet,
+		exit:           false,
 		rpcHandler:     rpcHandler,
 	}
 
@@ -86,7 +88,9 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 
 	go func() {
 		if err := xswd.server.ListenAndServe(); err != nil {
-			logger.Error(err, "Error while starting XSWD server")
+			if !xswd.exit {
+				logger.Error(err, "Error while starting XSWD server")
+			}
 		}
 	}()
 
@@ -99,6 +103,8 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 func (x *XSWD) Stop() {
 	x.Lock()
 	defer x.Unlock()
+	x.exit = true
+
 	x.server.Shutdown(context.Background())
 	x.applications = make(map[*websocket.Conn]ApplicationData)
 	x.logger.Info("XSWD server stopped")
