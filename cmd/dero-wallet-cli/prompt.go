@@ -806,6 +806,10 @@ func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) 
 	prompt_mutex.Lock()
 	defer prompt_mutex.Unlock()
 
+	l.Operation.KickReader()
+	l.SetPrompt(fmt.Sprintf("%sXSWD: %s", color_green, prompt))
+	l.Refresh()
+
 	conf := l.GenPasswordConfig()
 	conf.EnableMask = false
 
@@ -832,8 +836,6 @@ func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) 
 
 	validValue := false
 	for !validValue {
-		validValue = true
-		l.Operation.KickReader()
 		line, err := l.ReadPasswordWithConfig(conf)
 		if err != nil {
 			logger.Error(err, "Error reading input")

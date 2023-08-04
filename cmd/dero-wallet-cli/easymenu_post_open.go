@@ -510,13 +510,9 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			break
 		}
 
-		xswd_server = xswd.NewXSWDServer(wallet, func(ad *xswd.ApplicationData) xswd.Permission {
+		xswd_server = xswd.NewXSWDServer(wallet, func(ad *xswd.ApplicationData) bool {
 			// TODO inform if it was already or not, and with permissions inside
-			if accept := ReadStringXSWDPrompt(l, fmt.Sprintf("Allow application %s (%s) to access your wallet (y/N): ", ad.Name, ad.Url), []string{"Y", "N"}); accept == "Y" {
-				return xswd.Allow
-			} else {
-				return xswd.Deny
-			}
+			return ReadStringXSWDPrompt(l, fmt.Sprintf("Allow application %s (%s) to access your wallet (y/N): ", ad.Name, ad.Url), []string{"Y", "N"}) == "Y"
 		}, func(ad *xswd.ApplicationData, r *jrpc2.Request) xswd.Permission {
 			return AskPermissionForRequest(l, ad, r)
 		})

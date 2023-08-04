@@ -3,7 +3,6 @@ package xswd
 import (
 	"context"
 	"encoding/hex"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -42,11 +41,30 @@ func (perm Permission) IsPositive() bool {
 	return perm == Allow || perm == AlwaysAllow
 }
 
+func (perm Permission) String() string {
+	var str string
+	if perm == Ask {
+		str = "Ask"
+	} else if perm == Allow {
+		str = "Allow"
+	} else if perm == Deny {
+		str = "Deny"
+	} else if perm == AlwaysAllow {
+		str = "Always Allow"
+	} else if perm == AlwaysDeny {
+		str = "Always Deny"
+	} else {
+		str = "Unknown"
+	}
+
+	return str
+}
+
 type XSWD struct {
 	// The websocket connected to and its app data
 	applications map[*websocket.Conn]ApplicationData
 	// function to request access of a dApp to wallet
-	appHandler func(*ApplicationData) Permission
+	appHandler func(*ApplicationData) bool
 	// function to request the permission
 	requestHandler func(*ApplicationData, *jrpc2.Request) Permission
 	server         *http.Server
@@ -61,7 +79,7 @@ type XSWD struct {
 
 // Create a new XSWD server which allows to connect any dApp to the wallet safely through a websocket
 // Each request done by the session will wait on the appHandler and requestHandler to be accepted
-func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) Permission, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
+func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) bool, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("XSWD server"))
@@ -193,6 +211,8 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 				x.logger.V(1).Info("Invalid permissions", "permissions", len(app.Permissions))
 				return false
 			}
+		} else {
+			app.Permissions = make(map[string]Permission)
 		}
 
 		// Signature can be optional but verify its len
@@ -212,10 +232,12 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	}
 
 	// check the permission from user
-	if x.appHandler(&app).IsPositive() {
+	if x.appHandler(&app) {
 		x.applications[conn] = app
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 		return true
+	} else {
+		x.logger.Info("Application rejected", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 	}
 
 	return false
@@ -237,7 +259,7 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 
 // Handle a RPC Request from a session
 // We check that the method exists, that the application has the permission to use it
-func (x *XSWD) handleMessage(app ApplicationData, request *jrpc2.Request) interface{} {
+func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) interface{} {
 	methodName := request.Method()
 	handler := rpcserver.WalletHandler[methodName]
 
@@ -261,17 +283,21 @@ func (x *XSWD) handleMessage(app ApplicationData, request *jrpc2.Request) interf
 }
 
 // Request the permission for a method and save its result if it must be persisted
-func (x *XSWD) requestPermission(app ApplicationData, request *jrpc2.Request) bool {
+func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) bool {
 	x.Lock()
 	defer x.Unlock()
 
 	perm, found := app.Permissions[request.Method()]
 	if !found {
-		perm = x.requestHandler(&app, request)
+		perm = x.requestHandler(app, request)
 		if perm == AlwaysDeny || perm == AlwaysAllow {
 			app.Permissions[request.Method()] = perm
-		} else if perm.IsPositive() {
-			x.logger.Info("Permission granted for method", "method", request.Method())
+		}
+
+		if perm.IsPositive() {
+			x.logger.Info("Permission granted", "method", request.Method(), "permission", perm)
+		} else {
+			x.logger.Info("Permission rejected", "method", request.Method(), "permission", perm)
 		}
 	} else {
 		x.logger.V(1).Info("Permission already granted for method", "method", request.Method(), "permission", perm)
@@ -288,7 +314,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
 		if err != nil {
-			x.logger.Error(err, "Error while reading message from session")
+			x.logger.V(1).Error(err, "Error while reading message from session")
 			return
 		}
 
@@ -297,24 +323,24 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		request := requests[0]
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
-			x.logger.Error(nil, "Invalid number of requests")
+			x.logger.V(1).Error(nil, "Invalid number of requests")
 			return
 		}
 
 		if err != nil {
-			x.logger.Error(err, "Error while parsing request")
+			x.logger.V(1).Error(err, "Error while parsing request")
 			return
 		}
 
 		app, found := x.applications[conn]
 		if !found {
-			x.logger.Error(nil, "Application not found")
+			x.logger.V(1).Error(nil, "Application not found")
 			return
 		}
 
-		response := x.handleMessage(app, request)
+		response := x.handleMessage(&app, request)
 		if err := conn.WriteJSON(response); err != nil {
-			x.logger.Error(err, "Error while writing JSON")
+			x.logger.V(1).Error(err, "Error while writing JSON")
 			return
 		}
 	}
@@ -326,7 +352,7 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("WebSocket upgrade error:", err)
+		x.logger.V(1).Error(err, "WebSocket upgrade error")
 		return
 	}
 	defer conn.Close()
@@ -334,7 +360,7 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// first message of the session should be its ApplicationData
 	var app_data ApplicationData
 	if err := conn.ReadJSON(&app_data); err != nil {
-		log.Println("Error while reading app_data:", err)
+		x.logger.V(1).Error(err, "Error while reading app_data")
 		return
 	}
 
