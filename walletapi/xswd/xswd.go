@@ -3,6 +3,7 @@ package xswd
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -88,7 +89,7 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 	server := &http.Server{Addr: ":44326", Handler: mux}
 
 	logger := globals.Logger.WithName("XSWD")
-	var rpcHandler handler.Map
+
 	xswd := &XSWD{
 		applications:   make(map[*websocket.Conn]ApplicationData),
 		appHandler:     appHandler,
@@ -97,8 +98,9 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		server:         server,
 		context:        rpcserver.NewWalletContext(logger, wallet),
 		wallet:         wallet,
-		exit:           false,
-		rpcHandler:     rpcHandler,
+		// don't create a different API, we provide the same
+		rpcHandler: rpcserver.WalletHandler,
+		exit:       false,
 	}
 
 	mux.HandleFunc("/xswd", xswd.handleWebSocket)
@@ -216,12 +218,25 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 		}
 
 		// Signature can be optional but verify its len
-		if len(app.Signature) > 0 && len(app.Signature) != 64 {
-			x.logger.Info("Invalid signature size", "signature", len(app.Signature))
-			return false
+		if len(app.Signature) > 0 {
+			if len(app.Signature) != 64 {
+				x.logger.Info("Invalid signature size", "signature", len(app.Signature))
+				return false
+			}
+
+			// TODO verify signature
+			/*signer, message, err := x.wallet.CheckSignature(app.Signature)
+			if err != nil {
+				x.logger.V(1).Info("Invalid signature", "signature", app.Signature)
+				return false
+			}
+
+			if signer.String() != x.wallet.GetAddress().String() {
+				x.logger.V(1).Info("Invalid signer")
+				return false
+			}*/
 		}
 
-		// TODO verify signature
 	}
 
 	// Check that we don't already have this application
@@ -257,13 +272,40 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
+// built-in function to sign the ApplicationData with current wallet
+func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) interface{} {
+	if x.requestPermission(app, request) {
+		x.logger.Info("Signature request accepted")
+		app.Signature = make([]byte, 0)
+		bytes, err := json.Marshal(app)
+		if err != nil {
+			x.logger.Error(err, "Error while marshaling application data")
+			return jrpc2.Errorf(code.InternalError, "Error while marshaling application data")
+		}
+
+		// TODO only save the signature
+		signature := x.wallet.SignData(bytes)
+
+		return signature // TODO
+	} else {
+		x.logger.Info("Signature request rejected")
+		return jrpc2.Errorf(code.Cancelled, "Permission not granted for signing application data")
+	}
+}
+
 // Handle a RPC Request from a session
 // We check that the method exists, that the application has the permission to use it
 func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) interface{} {
 	methodName := request.Method()
-	handler := rpcserver.WalletHandler[methodName]
+	handler := x.rpcHandler[methodName]
 
+	// Check that the method exists
 	if handler == nil {
+		// check if its SignData method
+		if methodName == "SignData" {
+			return x.handleSignData(app, request)
+		}
+
 		x.logger.Info("RPC Method not found", "method", methodName)
 		return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
 	}
