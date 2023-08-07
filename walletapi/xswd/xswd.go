@@ -31,7 +31,34 @@ type ApplicationData struct {
 type RPCResponse struct {
 	JsonRPC string      `json:"jsonrpc"`
 	ID      string      `json:"id"`
-	Result  interface{} `json:"result"`
+	Result  interface{} `json:"result,omitempty"`
+	Error   interface{} `json:"error,omitempty"`
+}
+
+func ResponseWithError(request *jrpc2.Request, err *jrpc2.Error) RPCResponse {
+	var id string
+	if request != nil {
+		id = request.ID()
+	}
+
+	return RPCResponse{
+		JsonRPC: "2.0",
+		ID:      id,
+		Error:   err,
+	}
+}
+
+func ResponseWithResult(request *jrpc2.Request, result interface{}) RPCResponse {
+	var id string
+	if request != nil {
+		id = request.ID()
+	}
+
+	return RPCResponse{
+		JsonRPC: "2.0",
+		ID:      id,
+		Result:  result,
+	}
 }
 
 type AuthorizationResponse struct {
@@ -289,23 +316,23 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 }
 
 // built-in function to sign the ApplicationData with current wallet
-func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) interface{} {
+func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) RPCResponse {
 	if x.requestPermission(app, request) {
 		x.logger.Info("Signature request accepted")
 		app.Signature = make([]byte, 0)
-		bytes, err := json.Marshal(app)
+		_, err := json.Marshal(app)
 		if err != nil {
 			x.logger.Error(err, "Error while marshaling application data")
-			return jrpc2.Errorf(code.InternalError, "Error while marshaling application data")
+			return ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Error while marshaling application data"))
 		}
 
 		// TODO only save the signature
-		signature := x.wallet.SignData(bytes)
-
-		return signature // TODO
+		//signature := x.wallet.SignData(bytes)
+		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "WIP"))
+		//return signature // TODO
 	} else {
 		x.logger.Info("Signature request rejected")
-		return jrpc2.Errorf(code.Cancelled, "Permission not granted for signing application data")
+		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "Permission not granted for signing application data"))
 	}
 }
 
@@ -322,52 +349,55 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 			return x.handleSignData(app, request)
 		}
 
-		// if daemon is online, request the daemon
-		// wallet play the proxy here
-		// and because no sensitive data can be obtained, we allow without requests
-		if x.wallet.IsDaemonOnlineCached() {
-			var params json.RawMessage
-			err := request.UnmarshalParams(&params)
-			if err != nil {
-				x.logger.V(1).Error(err, "Error while unmarshaling params")
-				return jrpc2.Errorf(code.InvalidParams, "Error while unmarshaling params: %q", err.Error())
+		// Only requests methods starting with DERO. are sent to daemon
+		if strings.HasPrefix(methodName, "DERO.") {
+			// if daemon is online, request the daemon
+			// wallet play the proxy here
+			// and because no sensitive data can be obtained, we allow without requests
+			if x.wallet.IsDaemonOnlineCached() {
+				var params json.RawMessage
+				err := request.UnmarshalParams(&params)
+				if err != nil {
+					x.logger.V(1).Error(err, "Error while unmarshaling params")
+					return ResponseWithError(request, jrpc2.Errorf(code.InvalidParams, "Error while unmarshaling params: %q", err.Error()))
+				}
+
+				x.logger.V(2).Info("requesting daemon with", "method", request.Method(), "param", request.ParamString())
+				result, err := walletapi.GetRPCClient().RPC.Call(context.Background(), request.Method(), params)
+				if err != nil {
+					x.logger.V(1).Error(err, "Error on daemon call")
+					return ResponseWithError(request, jrpc2.Errorf(code.InvalidRequest, "Error on daemon call: %q", err.Error()))
+				}
+
+				// we set original ID
+				result.SetID(request.ID())
+
+				json, err := result.MarshalJSON()
+				if err != nil {
+					x.logger.V(1).Error(err, "Error on marshal daemon response")
+					return ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Error on daemon call: %q", err.Error()))
+				}
+
+				x.logger.V(2).Info("received response", "response", string(json))
+				return result
 			}
-
-			x.logger.V(2).Info("requesting daemon with", "method", request.Method(), "param", request.ParamString())
-			result, err := walletapi.GetRPCClient().RPC.Call(context.Background(), request.Method(), params)
-			if err != nil {
-				x.logger.V(1).Error(err, "Error on daemon call")
-				return jrpc2.Errorf(code.InvalidRequest, "Error on daemon call: %q", err.Error())
-			}
-
-			// we set original ID
-			result.SetID(request.ID())
-
-			json, err := result.MarshalJSON()
-			if err != nil {
-				x.logger.V(1).Error(err, "Error on marshal daemon response")
-				return jrpc2.Errorf(code.InternalError, "Error on daemon call: %q", err.Error())
-			}
-
-			x.logger.V(2).Info("received response", "response", string(json))
-			return result
 		}
 
 		x.logger.Info("RPC Method not found", "method", methodName)
-		return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
+		return ResponseWithError(request, jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName))
 	}
 
 	if x.requestPermission(app, request) {
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
 		response, err := handler.Handle(ctx, request)
 		if err != nil {
-			return jrpc2.Errorf(code.InternalError, "Error while handling request method %q: %v", methodName, err)
+			return ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Error while handling request method %q: %v", methodName, err))
 		}
 
-		return RPCResponse{JsonRPC: "2.0", ID: request.ID(), Result: response}
+		return ResponseWithResult(request, response)
 	} else {
 		x.logger.Info("Permission not granted for method", "method", methodName)
-		return jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", methodName)
+		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", methodName))
 	}
 }
 
@@ -411,7 +441,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		requests, err := jrpc2.ParseRequests(buff)
 		if err != nil {
 			x.logger.V(1).Error(err, "Error while parsing request")
-			conn.WriteJSON(jrpc2.Errorf(code.ParseError, "Error while parsing request"))
+			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Error while parsing request")))
 			continue
 		}
 
@@ -419,7 +449,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
 			x.logger.V(1).Error(nil, "Invalid number of requests")
-			conn.WriteJSON(jrpc2.Errorf(code.ParseError, "Batch are not supported"))
+			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Batch are not supported")))
 			continue
 		}
 
@@ -428,6 +458,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		x.Unlock()
 		if !found {
 			x.logger.V(1).Error(nil, "Application not found")
+			conn.WriteJSON(ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Application not found")))
 			return
 		}
 
