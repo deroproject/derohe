@@ -30,13 +30,14 @@ package walletapi
 //import "fmt"
 
 //import "net/url"
-import "net/http"
+import (
+	"net/http"
 
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "github.com/gorilla/websocket"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/deroproject/derohe/glue/rwc"
+	"github.com/gorilla/websocket"
+)
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
 
@@ -80,4 +81,8 @@ func Connect(endpoint string) (err error) {
 	rpc_client.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), &jrpc2.ClientOptions{OnNotify: Notify_broadcaster})
 
 	return test_connectivity()
+}
+
+func GetRPCClient() *Client {
+	return rpc_client
 }

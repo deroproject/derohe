@@ -68,6 +68,7 @@ type XSWD struct {
 	appHandler func(*ApplicationData) bool
 	// function to request the permission
 	requestHandler func(*ApplicationData, *jrpc2.Request) Permission
+	handlerMutex   sync.Mutex
 	server         *http.Server
 	logger         logr.Logger
 	context        *rpcserver.WalletContext
@@ -152,8 +153,10 @@ func (x *XSWD) RemoveApplication(app *ApplicationData) {
 
 	for conn, a := range x.applications {
 		if a.Id == app.Id {
-			conn.Close()
 			delete(x.applications, conn)
+			if err := conn.Close(); err != nil {
+				x.logger.Error(err, "error while closing websocket session")
+			}
 			break
 		}
 	}
@@ -162,9 +165,6 @@ func (x *XSWD) RemoveApplication(app *ApplicationData) {
 // Add an application from a websocket connection
 // it verify that application is valid and add it to the list
 func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app ApplicationData) bool {
-	x.Lock()
-	defer x.Unlock()
-
 	// Sanity check
 	{
 		id := strings.TrimSpace(app.Id)
@@ -247,7 +247,11 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	}
 
 	// check the permission from user
+	x.handlerMutex.Lock()
+	defer x.handlerMutex.Unlock()
 	if x.appHandler(&app) {
+		x.Lock()
+		defer x.Unlock()
 		x.applications[conn] = app
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 		return true
@@ -265,6 +269,7 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 
 	app, found := x.applications[conn]
 	if !found {
+		x.logger.Error(nil, "WebSocket disconnected but was not found!")
 		return
 	}
 
@@ -306,6 +311,34 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 			return x.handleSignData(app, request)
 		}
 
+		// if daemon is online, request the daemon
+		// wallet play the proxy here
+		// and because no sensitive data can be obtained, we allow without requests
+		if x.wallet.IsDaemonOnlineCached() {
+			var params json.RawMessage
+			err := request.UnmarshalParams(&params)
+			if err != nil {
+				x.logger.V(1).Error(err, "Error while unmarshaling params")
+				return err
+			}
+
+			x.logger.V(2).Info("requesting daemon with", "method", request.Method(), "param", request.ParamString())
+			result, err := walletapi.GetRPCClient().RPC.Call(context.Background(), request.Method(), params)
+			if err != nil {
+				x.logger.V(1).Error(err, "Error on daemon call")
+				return err
+			}
+
+			json, err := result.MarshalJSON()
+			if err != nil {
+				x.logger.V(1).Error(err, "Error on marshal daemon response")
+				return err
+			}
+
+			x.logger.V(2).Info("received response", "response", string(json))
+			return result
+		}
+
 		x.logger.Info("RPC Method not found", "method", methodName)
 		return jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName)
 	}
@@ -326,8 +359,8 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 // Request the permission for a method and save its result if it must be persisted
 func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) bool {
-	x.Lock()
-	defer x.Unlock()
+	x.handlerMutex.Lock()
+	defer x.handlerMutex.Unlock()
 
 	perm, found := app.Permissions[request.Method()]
 	if !found {
@@ -356,12 +389,18 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
 		if err != nil {
-			x.logger.V(1).Error(err, "Error while reading message from session")
+			x.logger.V(2).Error(err, "Error while reading message from session")
 			return
 		}
 
 		// unmarshal the request
 		requests, err := jrpc2.ParseRequests(buff)
+		if err != nil {
+			x.logger.V(1).Error(err, "Error while parsing request")
+			conn.WriteJSON(jrpc2.Errorf(code.ParseError, "Error while parsing request"))
+			continue
+		}
+
 		request := requests[0]
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
@@ -374,7 +413,9 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 			return
 		}
 
+		x.Lock()
 		app, found := x.applications[conn]
+		x.Unlock()
 		if !found {
 			x.logger.V(1).Error(nil, "Application not found")
 			return
