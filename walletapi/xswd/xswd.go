@@ -28,6 +28,17 @@ type ApplicationData struct {
 	Signature   []byte                `json:"signature"`
 }
 
+type RPCResponse struct {
+	JsonRPC string      `json:"jsonrpc"`
+	ID      string      `json:"id"`
+	Result  interface{} `json:"result"`
+}
+
+type AuthorizationResponse struct {
+	Message  string `json:"message"`
+	Accepted bool   `json:"accepted"`
+}
+
 type Permission int
 
 const (
@@ -319,20 +330,23 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 			err := request.UnmarshalParams(&params)
 			if err != nil {
 				x.logger.V(1).Error(err, "Error while unmarshaling params")
-				return err
+				return jrpc2.Errorf(code.InvalidParams, "Error while unmarshaling params: %q", err.Error())
 			}
 
 			x.logger.V(2).Info("requesting daemon with", "method", request.Method(), "param", request.ParamString())
 			result, err := walletapi.GetRPCClient().RPC.Call(context.Background(), request.Method(), params)
 			if err != nil {
 				x.logger.V(1).Error(err, "Error on daemon call")
-				return err
+				return jrpc2.Errorf(code.InvalidRequest, "Error on daemon call: %q", err.Error())
 			}
+
+			// we set original ID
+			result.SetID(request.ID())
 
 			json, err := result.MarshalJSON()
 			if err != nil {
 				x.logger.V(1).Error(err, "Error on marshal daemon response")
-				return err
+				return jrpc2.Errorf(code.InternalError, "Error on daemon call: %q", err.Error())
 			}
 
 			x.logger.V(2).Info("received response", "response", string(json))
@@ -350,7 +364,7 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 			return jrpc2.Errorf(code.InternalError, "Error while handling request method %q: %v", methodName, err)
 		}
 
-		return response
+		return RPCResponse{JsonRPC: "2.0", ID: request.ID(), Result: response}
 	} else {
 		x.logger.Info("Permission not granted for method", "method", methodName)
 		return jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", methodName)
@@ -405,12 +419,8 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
 			x.logger.V(1).Error(nil, "Invalid number of requests")
-			return
-		}
-
-		if err != nil {
-			x.logger.V(1).Error(err, "Error while parsing request")
-			return
+			conn.WriteJSON(jrpc2.Errorf(code.ParseError, "Batch are not supported"))
+			continue
 		}
 
 		x.Lock()
@@ -448,8 +458,17 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if x.addApplication(r, conn, app_data) {
+		conn.WriteJSON(AuthorizationResponse{
+			Message:  "User has authorized the application",
+			Accepted: true,
+		})
 		// TODO we should handle the case where user open multiple tabs of the same dApp ?
 		x.readMessageFromSession(conn)
+	} else {
+		conn.WriteJSON(AuthorizationResponse{
+			Message:  "User has rejected the application",
+			Accepted: false,
+		})
 	}
 }
 
