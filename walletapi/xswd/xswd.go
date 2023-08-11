@@ -206,6 +206,9 @@ func (x *XSWD) RemoveApplication(app *ApplicationData) {
 	for conn, a := range x.applications {
 		if a.Id == app.Id {
 			delete(x.applications, conn)
+			if a.OnClose != nil {
+				a.OnClose <- true
+			}
 			if err := conn.Close(); err != nil {
 				x.logger.Error(err, "error while closing websocket session")
 			}
@@ -308,18 +311,19 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	if x.HasApplicationId(app.Id) {
 		return false
 	}
-	app.OnClose = make(chan bool)
 
 	x.handlerMutex.Lock()
-	x.Lock()
 	defer func() {
 		x.handlerMutex.Unlock()
-		x.Unlock()
 	}()
 
 	// check the permission from user
+	app.OnClose = make(chan bool)
 	if x.appHandler(&app) {
+		app.OnClose = nil
+		x.Lock()
 		x.applications[conn] = app
+		x.Unlock()
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 		return true
 	} else {
@@ -330,7 +334,7 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 }
 
 // Remove an application from the list for a session
-func (x *XSWD) removeApplication(conn *websocket.Conn) {
+func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn) {
 	x.Lock()
 	defer x.Unlock()
 
@@ -341,7 +345,9 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 		return
 	}
 
-	app.OnClose <- true
+	if app.OnClose != nil {
+		app.OnClose <- true
+	}
 	delete(x.applications, conn)
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
@@ -446,7 +452,10 @@ func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) b
 
 	perm, found := app.Permissions[request.Method()]
 	if !found {
+		app.OnClose = make(chan bool)
 		perm = x.requestHandler(app, request)
+		app.OnClose = nil
+
 		if perm == AlwaysDeny || perm == AlwaysAllow {
 			app.Permissions[request.Method()] = perm
 		}
@@ -465,7 +474,7 @@ func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) b
 
 // block until the session is closed and read all its messages
 func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
-	defer x.removeApplication(conn)
+	defer x.removeApplicationOfSession(conn)
 
 	var writerMutex sync.Mutex
 	for {

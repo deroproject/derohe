@@ -835,11 +835,12 @@ func ReadStringXSWDPrompt(l *readline.Instance, onClose chan bool, prompt string
 		prompt_mutex.Unlock()
 	}()
 
+	l.Operation.KickReader()
+
 	input := make(chan string)
 	validValue := false
 	for !validValue {
 		go func() {
-			l.Operation.KickReader()
 			line, err := l.ReadPasswordWithConfig(conf)
 			if err != nil {
 				logger.Error(err, "Error reading input")
@@ -868,7 +869,7 @@ func ReadStringXSWDPrompt(l *readline.Instance, onClose chan bool, prompt string
 // Ask permission for request
 func AskPermissionForRequest(l *readline.Instance, app *xswd.ApplicationData, request *jrpc2.Request) xswd.Permission {
 	values := []string{"A", "D", "AA", "AD"}
-	line := ReadStringXSWDPrompt(l, app.OnClose, fmt.Sprintf("Request from %s: %sParams: %s Do you want to allow this request ? ([A]llow / [D]eny / [AA] Always Allow / [AD] Always Deny): ", app.Name, request.Method(), request.ParamString()), values)
+	line := ReadStringXSWDPrompt(l, app.OnClose, fmt.Sprintf("Request from %s: %s | Params: %s | Do you want to allow this request ? ([A]llow / [D]eny / [AA] Always Allow / [AD] Always Deny): ", app.Name, request.Method(), request.ParamString()), values)
 
 	if strings.ToUpper(strings.TrimSpace(line)) == "A" {
 		return xswd.Allow
