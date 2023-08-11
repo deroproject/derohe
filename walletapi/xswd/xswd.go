@@ -164,7 +164,13 @@ func (x *XSWD) Stop() {
 	defer x.Unlock()
 	x.exit = true
 
-	x.server.Shutdown(context.Background())
+	if err := x.server.Shutdown(context.Background()); err != nil {
+		x.logger.Error(err, "Error while stopping XSWD server")
+	}
+
+	for conn := range x.applications {
+		conn.Close()
+	}
 	x.applications = make(map[*websocket.Conn]ApplicationData)
 	x.logger.Info("XSWD server stopped")
 }
@@ -297,9 +303,12 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 
 	// check the permission from user
 	x.handlerMutex.Lock()
-	defer x.handlerMutex.Unlock()
+	x.Lock()
+	defer func() {
+		x.handlerMutex.Unlock()
+		x.Unlock()
+	}()
 	if x.appHandler(&app) {
-		x.Lock()
 		x.applications[conn] = app
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 		x.Unlock()
@@ -316,9 +325,10 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 	x.Lock()
 	defer x.Unlock()
 
+	conn.Close()
 	app, found := x.applications[conn]
+	// conn was already closed
 	if !found {
-		x.logger.Error(nil, "WebSocket disconnected but was not found!")
 		return
 	}
 
@@ -458,7 +468,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// unmarshal the request
 		requests, err := jrpc2.ParseRequests(buff)
 		if err != nil {
-			x.logger.V(1).Error(err, "Error while parsing request")
+			x.logger.V(2).Error(err, "Error while parsing request")
 			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Error while parsing request")))
 			continue
 		}
@@ -466,7 +476,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		request := requests[0]
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
-			x.logger.V(1).Error(nil, "Invalid number of requests")
+			x.logger.V(2).Error(nil, "Invalid number of requests")
 			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Batch are not supported")))
 			continue
 		}
@@ -475,14 +485,14 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		app, found := x.applications[conn]
 		x.Unlock()
 		if !found {
-			x.logger.V(1).Error(nil, "Application not found")
+			x.logger.V(2).Error(nil, "Application not found")
 			conn.WriteJSON(ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Application not found")))
 			return
 		}
 
 		response := x.handleMessage(&app, request)
 		if err := conn.WriteJSON(response); err != nil {
-			x.logger.V(1).Error(err, "Error while writing JSON")
+			x.logger.V(2).Error(err, "Error while writing JSON")
 			return
 		}
 	}
