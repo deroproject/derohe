@@ -27,7 +27,16 @@ type ApplicationData struct {
 	Permissions map[string]Permission `json:"permissions"`
 	Signature   []byte                `json:"signature"`
 	// only init when accepted by user
-	OnClose chan bool // used to inform when the Session disconnect
+	OnClose      chan bool // used to inform when the Session disconnect
+	isRequesting bool
+}
+
+func (app *ApplicationData) SetIsRequesting(value bool) {
+	app.isRequesting = value
+}
+
+func (app *ApplicationData) IsRequesting() bool {
+	return app.isRequesting
 }
 
 type RPCResponse struct {
@@ -175,7 +184,11 @@ func (x *XSWD) Stop() {
 		x.logger.Error(err, "Error while stopping XSWD server")
 	}
 
-	for conn := range x.applications {
+	for conn, app := range x.applications {
+		if app.IsRequesting() {
+			app.OnClose <- true
+		}
+
 		conn.Close()
 	}
 	x.applications = make(map[*websocket.Conn]ApplicationData)
@@ -206,9 +219,10 @@ func (x *XSWD) RemoveApplication(app *ApplicationData) {
 	for conn, a := range x.applications {
 		if a.Id == app.Id {
 			delete(x.applications, conn)
-			if a.OnClose != nil {
+			if a.IsRequesting() {
 				a.OnClose <- true
 			}
+
 			if err := conn.Close(); err != nil {
 				x.logger.Error(err, "error while closing websocket session")
 			}
@@ -312,18 +326,21 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 		return false
 	}
 
+	// only one request at a time
 	x.handlerMutex.Lock()
 	defer func() {
+		app.SetIsRequesting(false)
 		x.handlerMutex.Unlock()
 	}()
 
 	// check the permission from user
 	app.OnClose = make(chan bool)
+	app.SetIsRequesting(true)
 	if x.appHandler(&app) {
-		app.OnClose = nil
 		x.Lock()
 		x.applications[conn] = app
 		x.Unlock()
+
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 		return true
 	} else {
@@ -334,6 +351,7 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 }
 
 // Remove an application from the list for a session
+// only used in internal
 func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn) {
 	x.Lock()
 	defer x.Unlock()
@@ -345,15 +363,19 @@ func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn) {
 		return
 	}
 
-	if app.OnClose != nil {
+	delete(x.applications, conn)
+	if app.IsRequesting() {
+		x.logger.Info("App is requesting prompt, closing")
 		app.OnClose <- true
 	}
-	delete(x.applications, conn)
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
 // built-in function to sign the ApplicationData with current wallet
 func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) RPCResponse {
+	app.SetIsRequesting(true)
+	defer app.SetIsRequesting(false)
+
 	if x.requestPermission(app, request) {
 		x.logger.Info("Signature request accepted")
 		app.Signature = make([]byte, 0)
@@ -424,6 +446,19 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 		return ResponseWithError(request, jrpc2.Errorf(code.MethodNotFound, "method %q not found", methodName))
 	}
 
+	// only one request at a time
+	x.handlerMutex.Lock()
+	defer func() {
+		app.SetIsRequesting(false)
+		x.handlerMutex.Unlock()
+	}()
+	// check that we still have the application connected
+	// otherwise don't accept as it may disconnected between both requests
+	if !x.HasApplicationId(app.Id) {
+		return nil
+	}
+
+	app.SetIsRequesting(true)
 	if x.requestPermission(app, request) {
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
 		response, err := handler.Handle(ctx, request)
@@ -440,21 +475,9 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 // Request the permission for a method and save its result if it must be persisted
 func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) bool {
-	// only request one prompt at a time
-	x.handlerMutex.Lock()
-	defer x.handlerMutex.Unlock()
-
-	// check that we still have the application connected
-	// otherwise don't accept as it may disconnected between both requests
-	if !x.HasApplicationId(app.Id) {
-		return false
-	}
-
 	perm, found := app.Permissions[request.Method()]
 	if !found {
-		app.OnClose = make(chan bool)
 		perm = x.requestHandler(app, request)
-		app.OnClose = nil
 
 		if perm == AlwaysDeny || perm == AlwaysAllow {
 			app.Permissions[request.Method()] = perm
@@ -478,6 +501,10 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 
 	var writerMutex sync.Mutex
 	for {
+		// acquire the lock to read
+		writerMutex.Lock()
+		writerMutex.Unlock()
+
 		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
 		if err != nil {
@@ -520,11 +547,13 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// when the app has disconnected
 		go func(conn *websocket.Conn, app *ApplicationData, request *jrpc2.Request) {
 			response := x.handleMessage(app, request)
-			writerMutex.Lock()
-			defer writerMutex.Unlock()
-			if err := conn.WriteJSON(response); err != nil {
-				x.logger.V(2).Error(err, "Error while writing JSON")
-				return
+			if response != nil {
+				writerMutex.Lock()
+				defer writerMutex.Unlock()
+				if err := conn.WriteJSON(response); err != nil {
+					x.logger.V(2).Error(err, "Error while writing JSON")
+					return
+				}
 			}
 		}(conn, &app, request)
 	}
