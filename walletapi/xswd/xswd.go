@@ -311,7 +311,6 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	if x.appHandler(&app) {
 		x.applications[conn] = app
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
-		x.Unlock()
 		return true
 	} else {
 		x.logger.Info("Application rejected", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
