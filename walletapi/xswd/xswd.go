@@ -26,6 +26,8 @@ type ApplicationData struct {
 	Url         string                `json:"url"`
 	Permissions map[string]Permission `json:"permissions"`
 	Signature   []byte                `json:"signature"`
+	// only init when accepted by user
+	OnClose chan bool // used to inform when the Session disconnect
 }
 
 type RPCResponse struct {
@@ -300,14 +302,16 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	if x.HasApplicationId(app.Id) {
 		return false
 	}
+	app.OnClose = make(chan bool)
 
-	// check the permission from user
 	x.handlerMutex.Lock()
 	x.Lock()
 	defer func() {
 		x.handlerMutex.Unlock()
 		x.Unlock()
 	}()
+
+	// check the permission from user
 	if x.appHandler(&app) {
 		x.applications[conn] = app
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
@@ -331,6 +335,7 @@ func (x *XSWD) removeApplication(conn *websocket.Conn) {
 		return
 	}
 
+	app.OnClose <- true
 	delete(x.applications, conn)
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
@@ -489,11 +494,15 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 			return
 		}
 
-		response := x.handleMessage(&app, request)
-		if err := conn.WriteJSON(response); err != nil {
-			x.logger.V(2).Error(err, "Error while writing JSON")
-			return
-		}
+		// handle the request in goroutine, so we can detect
+		// when the app has disconnected
+		go func(conn *websocket.Conn, app *ApplicationData, request *jrpc2.Request) {
+			response := x.handleMessage(app, request)
+			if err := conn.WriteJSON(response); err != nil {
+				x.logger.V(2).Error(err, "Error while writing JSON")
+				return
+			}
+		}(conn, &app, request)
 	}
 }
 

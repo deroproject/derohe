@@ -802,13 +802,8 @@ func ConfirmYesNoDefaultNo(l *readline.Instance, prompt_temporary string) bool {
 	return false
 }
 
-func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) (a string) {
+func ReadStringXSWDPrompt(l *readline.Instance, onClose chan bool, prompt string, values []string) (a string) {
 	prompt_mutex.Lock()
-	defer prompt_mutex.Unlock()
-
-	l.Operation.KickReader()
-	l.SetPrompt(fmt.Sprintf("%sXSWD: %s", color_green, prompt))
-	l.Refresh()
 
 	conf := l.GenPasswordConfig()
 	conf.EnableMask = false
@@ -834,14 +829,31 @@ func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) 
 		return nil, 0, false
 	})
 
+	defer func() {
+		l.SetPrompt(color_normal)
+		l.Refresh()
+		prompt_mutex.Unlock()
+	}()
+
+	input := make(chan string)
 	validValue := false
 	for !validValue {
-		line, err := l.ReadPasswordWithConfig(conf)
-		if err != nil {
-			logger.Error(err, "Error reading input")
-			break
+		go func() {
+			l.Operation.KickReader()
+			line, err := l.ReadPasswordWithConfig(conf)
+			if err != nil {
+				logger.Error(err, "Error reading input")
+			}
+			value := strings.ToUpper(string(line))
+			input <- value
+		}()
+
+		select {
+		case <-onClose:
+			l.Operation.KickReader()
+			return ""
+		case a = <-input:
 		}
-		a = strings.ToUpper(string(line))
 
 		for _, v := range values {
 			if v == a {
@@ -856,7 +868,7 @@ func ReadStringXSWDPrompt(l *readline.Instance, prompt string, values []string) 
 // Ask permission for request
 func AskPermissionForRequest(l *readline.Instance, app *xswd.ApplicationData, request *jrpc2.Request) xswd.Permission {
 	values := []string{"A", "D", "AA", "AD"}
-	line := ReadStringXSWDPrompt(l, fmt.Sprintf("Request from %s: %sParams: %s Do you want to allow this request ? ([A]llow / [D]eny / [AA] Always Allow / [AD] Always Deny): ", app.Name, request.Method(), request.ParamString()), values)
+	line := ReadStringXSWDPrompt(l, app.OnClose, fmt.Sprintf("Request from %s: %sParams: %s Do you want to allow this request ? ([A]llow / [D]eny / [AA] Always Allow / [AD] Always Deny): ", app.Name, request.Method(), request.ParamString()), values)
 
 	if strings.ToUpper(strings.TrimSpace(line)) == "A" {
 		return xswd.Allow
