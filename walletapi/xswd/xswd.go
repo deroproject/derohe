@@ -200,6 +200,19 @@ func (x *XSWD) RemoveApplication(app *ApplicationData) {
 	}
 }
 
+// Check if a application exist by its id
+func (x *XSWD) HasApplicationId(app_id string) bool {
+	x.Lock()
+	defer x.Unlock()
+
+	for _, a := range x.applications {
+		if a.Id == app_id {
+			return true
+		}
+	}
+	return false
+}
+
 // Add an application from a websocket connection
 // it verify that application is valid and add it to the list
 func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app ApplicationData) bool {
@@ -278,10 +291,8 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	}
 
 	// Check that we don't already have this application
-	for _, a := range x.applications {
-		if a.Id == app.Id {
-			return false
-		}
+	if x.HasApplicationId(app.Id) {
+		return false
 	}
 
 	// check the permission from user
@@ -289,9 +300,9 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	defer x.handlerMutex.Unlock()
 	if x.appHandler(&app) {
 		x.Lock()
-		defer x.Unlock()
 		x.applications[conn] = app
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
+		x.Unlock()
 		return true
 	} else {
 		x.logger.Info("Application rejected", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
@@ -403,8 +414,15 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 // Request the permission for a method and save its result if it must be persisted
 func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) bool {
+	// only request one prompt at a time
 	x.handlerMutex.Lock()
 	defer x.handlerMutex.Unlock()
+
+	// check that we still have the application connected
+	// otherwise don't accept as it may disconnected between both requests
+	if !x.HasApplicationId(app.Id) {
+		return false
+	}
 
 	perm, found := app.Permissions[request.Method()]
 	if !found {
