@@ -114,7 +114,7 @@ type XSWD struct {
 	context        *rpcserver.WalletContext
 	wallet         *walletapi.Wallet_Disk
 	rpcHandler     handler.Map
-	exit           bool
+	running        bool
 	// mutex for applications map
 	sync.Mutex
 }
@@ -141,7 +141,7 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		wallet:         wallet,
 		// don't create a different API, we provide the same
 		rpcHandler: rpcserver.WalletHandler,
-		exit:       false,
+		running:    true,
 	}
 
 	mux.HandleFunc("/xswd", xswd.handleWebSocket)
@@ -149,13 +149,18 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 
 	go func() {
 		if err := xswd.server.ListenAndServe(); err != nil {
-			if !xswd.exit {
+			if xswd.running {
 				logger.Error(err, "Error while starting XSWD server")
+				xswd.Stop()
 			}
 		}
 	}()
 
 	return xswd
+}
+
+func (x *XSWD) IsRunning() bool {
+	return x.running
 }
 
 // Stop the XSWD server
@@ -164,7 +169,7 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 func (x *XSWD) Stop() {
 	x.Lock()
 	defer x.Unlock()
-	x.exit = true
+	x.running = false
 
 	if err := x.server.Shutdown(context.Background()); err != nil {
 		x.logger.Error(err, "Error while stopping XSWD server")
@@ -175,6 +180,7 @@ func (x *XSWD) Stop() {
 	}
 	x.applications = make(map[*websocket.Conn]ApplicationData)
 	x.logger.Info("XSWD server stopped")
+	x = nil
 }
 
 // Get all connected Applications
@@ -461,6 +467,7 @@ func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) b
 func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 	defer x.removeApplication(conn)
 
+	var writerMutex sync.Mutex
 	for {
 		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
@@ -473,7 +480,9 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		requests, err := jrpc2.ParseRequests(buff)
 		if err != nil {
 			x.logger.V(2).Error(err, "Error while parsing request")
+			writerMutex.Lock()
 			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Error while parsing request")))
+			writerMutex.Unlock()
 			continue
 		}
 
@@ -481,7 +490,9 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
 			x.logger.V(2).Error(nil, "Invalid number of requests")
+			writerMutex.Lock()
 			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Batch are not supported")))
+			writerMutex.Unlock()
 			continue
 		}
 
@@ -490,7 +501,9 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		x.Unlock()
 		if !found {
 			x.logger.V(2).Error(nil, "Application not found")
+			writerMutex.Lock()
 			conn.WriteJSON(ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Application not found")))
+			writerMutex.Unlock()
 			return
 		}
 
@@ -498,6 +511,8 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// when the app has disconnected
 		go func(conn *websocket.Conn, app *ApplicationData, request *jrpc2.Request) {
 			response := x.handleMessage(app, request)
+			writerMutex.Lock()
+			defer writerMutex.Unlock()
 			if err := conn.WriteJSON(response); err != nil {
 				x.logger.V(2).Error(err, "Error while writing JSON")
 				return
