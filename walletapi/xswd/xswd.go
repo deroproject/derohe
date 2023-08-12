@@ -237,7 +237,7 @@ func (x *XSWD) HasApplicationId(app_id string) bool {
 	defer x.Unlock()
 
 	for _, a := range x.applications {
-		if a.Id == app_id {
+		if strings.EqualFold(a.Id, app_id) {
 			return true
 		}
 	}
@@ -447,10 +447,8 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 	// only one request at a time
 	x.handlerMutex.Lock()
-	defer func() {
-		app.SetIsRequesting(false)
-		x.handlerMutex.Unlock()
-	}()
+	defer x.handlerMutex.Unlock()
+
 	// check that we still have the application connected
 	// otherwise don't accept as it may disconnected between both requests
 	if !x.HasApplicationId(app.Id) {
@@ -459,6 +457,7 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 	app.SetIsRequesting(true)
 	if x.requestPermission(app, request) {
+		app.SetIsRequesting(false)
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
 		response, err := handler.Handle(ctx, request)
 		if err != nil {
@@ -467,6 +466,7 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 		return ResponseWithResult(request, response)
 	} else {
+		app.SetIsRequesting(false)
 		x.logger.Info("Permission not granted for method", "method", methodName)
 		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", methodName))
 	}
