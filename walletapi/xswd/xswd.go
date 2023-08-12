@@ -328,15 +328,13 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 
 	// only one request at a time
 	x.handlerMutex.Lock()
-	defer func() {
-		app.SetIsRequesting(false)
-		x.handlerMutex.Unlock()
-	}()
+	defer x.handlerMutex.Unlock()
 
 	// check the permission from user
 	app.OnClose = make(chan bool)
 	app.SetIsRequesting(true)
 	if x.appHandler(&app) {
+		app.SetIsRequesting(false)
 		x.Lock()
 		x.applications[conn] = app
 		x.Unlock()
@@ -344,6 +342,7 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 		return true
 	} else {
+		app.SetIsRequesting(false)
 		x.logger.Info("Application rejected", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 	}
 
@@ -561,6 +560,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 
 // Handle a WebSocket connection
 func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	globals.Logger.V(2).Info("New WebSocket connection", "addr", r.RemoteAddr)
 	// Accept from any origin
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
