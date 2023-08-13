@@ -27,8 +27,8 @@ type ApplicationData struct {
 	Permissions map[string]Permission `json:"permissions"`
 	Signature   []byte                `json:"signature"`
 	// only init when accepted by user
-	OnClose      chan bool // used to inform when the Session disconnect
-	isRequesting bool
+	OnClose      chan bool `json:"-"` // used to inform when the Session disconnect
+	isRequesting bool      `json:"-"`
 }
 
 func (app *ApplicationData) SetIsRequesting(value bool) {
@@ -109,6 +109,9 @@ func (perm Permission) String() string {
 
 	return str
 }
+
+const PermissionDenied code.Code = -32043
+const PermissionAlwaysDenied code.Code = -32044
 
 type XSWD struct {
 	// The websocket connected to and its app data
@@ -373,9 +376,9 @@ func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn) {
 // built-in function to sign the ApplicationData with current wallet
 func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) RPCResponse {
 	app.SetIsRequesting(true)
-	defer app.SetIsRequesting(false)
-
-	if x.requestPermission(app, request) {
+	perm := x.requestPermission(app, request)
+	app.SetIsRequesting(false)
+	if perm.IsPositive() {
 		x.logger.Info("Signature request accepted")
 		app.Signature = make([]byte, 0)
 		_, err := json.Marshal(app)
@@ -389,8 +392,13 @@ func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) RPCR
 		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "WIP"))
 		//return signature // TODO
 	} else {
+		code := PermissionDenied
+		if perm == AlwaysDeny {
+			code = PermissionAlwaysDenied
+		}
+
 		x.logger.Info("Signature request rejected")
-		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "Permission not granted for signing application data"))
+		return ResponseWithError(request, jrpc2.Errorf(code, "Permission not granted for signing application data"))
 	}
 }
 
@@ -456,8 +464,9 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 	}
 
 	app.SetIsRequesting(true)
-	if x.requestPermission(app, request) {
-		app.SetIsRequesting(false)
+	perm := x.requestPermission(app, request)
+	app.SetIsRequesting(false)
+	if perm.IsPositive() {
 		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
 		response, err := handler.Handle(ctx, request)
 		if err != nil {
@@ -466,14 +475,18 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 		return ResponseWithResult(request, response)
 	} else {
-		app.SetIsRequesting(false)
+		code := PermissionDenied
+		if perm == AlwaysDeny {
+			code = PermissionAlwaysDenied
+		}
+
 		x.logger.Info("Permission not granted for method", "method", methodName)
-		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "Permission not granted for method %q", methodName))
+		return ResponseWithError(request, jrpc2.Errorf(code, "Permission not granted for method %q", methodName))
 	}
 }
 
 // Request the permission for a method and save its result if it must be persisted
-func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) bool {
+func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) Permission {
 	perm, found := app.Permissions[request.Method()]
 	if !found {
 		perm = x.requestHandler(app, request)
@@ -491,7 +504,7 @@ func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) b
 		x.logger.V(1).Info("Permission already granted for method", "method", request.Method(), "permission", perm)
 	}
 
-	return perm.IsPositive()
+	return perm
 }
 
 // block until the session is closed and read all its messages
