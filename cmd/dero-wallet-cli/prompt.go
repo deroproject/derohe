@@ -875,7 +875,7 @@ func AskPermissionForRequest(l *readline.Instance, app *xswd.ApplicationData, re
 		return xswd.Allow
 	} else if strings.ToUpper(strings.TrimSpace(line)) == "AA" {
 		return xswd.AlwaysAllow
-	} else if strings.ToUpper(strings.TrimSpace(line)) == "DA" {
+	} else if strings.ToUpper(strings.TrimSpace(line)) == "AD" {
 		return xswd.AlwaysDeny
 	}
 
