@@ -42,8 +42,9 @@ func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error
 		if topo <= previous_topo || previous_topo+1 != topo {
 			c.logger.V(1).Info("malformed object request  received, banning peer", "request", request)
 			c.exit()
-			return fmt.Errorf("invalid topo height for change set request")
+			return fmt.Errorf("invalid topo height for change set request (current = %d, previous = %d)", topo, previous_topo)
 		}
+		previous_topo = topo
 
 		var cbl Complete_Block
 
