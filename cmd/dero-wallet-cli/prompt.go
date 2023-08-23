@@ -91,13 +91,24 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		fallthrough
 	case "balance": // give user his balance
 		balance_unlocked, locked_balance := wallet.Get_Balance_Rescan()
-		fmt.Fprintf(l.Stderr(), "DERO Balance    : "+color_green+"%s"+color_white+"\n", globals.FormatMoney(locked_balance+balance_unlocked))
+		fmt.Fprintf(l.Stderr(), "DERO Balance: "+color_green+"%s"+color_white+"\n", globals.FormatMoney(locked_balance+balance_unlocked))
 
 		line_parts := line_parts[1:] // remove first part
 
 		switch len(line_parts) {
 		case 0:
-			//logger.Error(err,"not implemented")
+			addr := wallet.GetAddress().String()
+			for scid := range wallet.GetAccount().EntriesNative {
+				if !scid.IsZero() {
+					balance, _, err := wallet.GetDecryptedBalanceAtTopoHeight(scid, -1, addr)
+					if err != nil {
+						logger.Error(err, "error during Sc balance", "scid", scid.String())
+					} else {
+						// TODO digits token standard
+						fmt.Fprintf(l.Stderr(), "SCID %s Balance: "+color_green+"%d"+color_white+"\n\n", scid, balance)
+					}
+				}
+			}
 			break
 
 		case 1: // scid balance
@@ -110,7 +121,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 			if err != nil {
 				logger.Error(err, "error during Sc balance", "scid", scid.String())
 			} else {
-				fmt.Fprintf(l.Stderr(), "SCID %s Balance    : "+color_green+"%s"+color_white+"\n\n", line_parts[0], globals.FormatMoney(balance))
+				fmt.Fprintf(l.Stderr(), "SCID %s Balance: "+color_green+"%s"+color_white+"\n\n", line_parts[0], globals.FormatMoney(balance))
 			}
 
 		case 2: // scid balance at topoheight
