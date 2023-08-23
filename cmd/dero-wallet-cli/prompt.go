@@ -573,7 +573,6 @@ func ReadSCID(l *readline.Instance) (a crypto.Hash, err error) {
 			l.SetPrompt(fmt.Sprintf("%sEnter SCID: ", color))
 		} else {
 			l.SetPrompt(fmt.Sprintf("%sEnter SCID: ", color))
-
 		}
 
 		l.Refresh()
