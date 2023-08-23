@@ -24,37 +24,37 @@ package walletapi
  */
 //import "io"
 //import "os"
-import "fmt"
-import "time"
-import "sync"
-import "bytes"
-import "math/big"
+import (
+	"bytes"
+	"context"
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/creachadair/jrpc2"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "bufio"
-import "strings"
-import "context"
 
 //import "runtime"
 //import "compress/gzip"
-import "encoding/hex"
-
-import "runtime/debug"
 
 //import "github.com/vmihailenco/msgpack"
 
 //import "github.com/gorilla/websocket"
 //import "github.com/mafredri/cdp/rpcc"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/bn256"
-
-import "github.com/creachadair/jrpc2"
 
 // this global variable should be within wallet structure
 var Connected bool = false
@@ -198,7 +198,6 @@ func (w *Wallet_Memory) sync_loop() {
 			continue
 		}
 
-		var zerohash crypto.Hash
 		if len(w.account.EntriesNative) == 0 {
 			if err := w.Sync_Wallet_Memory_With_Daemon(); err != nil {
 				logger.Error(err, "wallet syncing err")
@@ -206,8 +205,8 @@ func (w *Wallet_Memory) sync_loop() {
 		} else {
 			for k := range w.account.EntriesNative {
 				err := w.Sync_Wallet_Memory_With_Daemon_internal(k)
-				if k == zerohash && err != nil {
-					logger.Error(err, "wallet syncing err")
+				if err != nil {
+					globals.Logger.V(3).Error(err, "Error while syncing SCID", "scid", k)
 				}
 			}
 		}
@@ -259,18 +258,19 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash
 
 		if _, _, _, e, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
 
-			//fmt.Printf("data '%s' previous '%s' scid %s\n",w.account.Balance_Result[scid].Data , previous,scid)
+			//fmt.Printf("data '%s' previous '%s' scid %s\n", w.account.Balance_Result[scid].Data, previous, scid)
 			if w.getEncryptedBalanceresult(scid).Data != previous {
 				b := w.DecodeEncryptedBalanceNow(e) // try to decode balance
 
 				if scid.IsZero() {
 					w.account.Balance_Mature = b
 				}
+				w.Lock()
 				w.account.Balance[scid] = b
+				w.Unlock()
 				w.SyncHistory(scid) // also update statement
-			} else {
-
 			}
+
 			w.save_if_disk() // save wallet
 		} else {
 			return err

@@ -337,6 +337,11 @@ func (w *Wallet_Memory) Clean() {
 	for k := range w.account.EntriesNative {
 		delete(w.account.EntriesNative, k)
 	}
+
+	for k := range w.account.Balance {
+		delete(w.account.Balance, k)
+	}
+
 	w.account.RingMembers = map[string]int64{}
 	w.account.Balance_Result = w.account.Balance_Result[:0]
 	w.account.Registered = false
