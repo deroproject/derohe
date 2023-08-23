@@ -197,7 +197,13 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 		var amount_to_transfer uint64
 		max_balance, _ := wallet.Get_Balance_scid(scid)
-		amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter token amount to transfer (max %s): ", globals.FormatMoney(max_balance)))
+		max_str := fmt.Sprintf("%d", max_balance)
+		if scid.IsZero() {
+			max_str = globals.FormatMoney(max_balance)
+		} // TODO else digits based on token standard
+
+		amount_str := read_line_with_prompt(l, fmt.Sprintf("Enter token amount to transfer (max %s): ", max_str))
+		// TODO digits based on token standard
 		if amount_str == "" {
 			amount_str = ".00001"
 		}

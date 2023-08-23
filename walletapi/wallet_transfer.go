@@ -262,7 +262,6 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 
 	_, _, block_hash, self_e, _ = w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight, w.GetAddress().String())
 	if err != nil {
-		fmt.Printf("self unregistered err %s\n", err)
 		return
 	}
 
@@ -324,12 +323,11 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 					transfers[t].Payload_RPC = append(transfers[t].Payload_RPC, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: addr.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
 					continue
 				} else {
-					fmt.Printf("integrtated address, but don't know how to process\n")
+					// Shouldn't we jus replicate them in payload_rpc ?
 					err = fmt.Errorf("integrated address used, but don't know how to process %+v", addr.Arguments)
+					return
 				}
 			}
-
-			return
 		}
 
 		var dest_e *crypto.ElGamal
