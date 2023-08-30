@@ -1,17 +1,20 @@
 package walletapi
 
-import "fmt"
-import "strconv"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+	"strconv"
 
-//import "encoding/binary"
-import mathrand "math/rand"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
+	//import "encoding/binary"
+	mathrand "math/rand"
+
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 // this is run some tests and benchmarks
 type GenerateProofFunc func(scid crypto.Hash, scid_index int, s *crypto.Statement, witness *crypto.Witness, u *bn256.G1, txid crypto.Hash, burn_value uint64) *crypto.Proof
@@ -56,7 +59,7 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
-	for t, _ := range transfers {
+	for t := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
 		var D bn256.G1
@@ -135,6 +138,7 @@ rebuild_tx:
 
 		value := transfers[t].Amount
 		burn_value := transfers[t].Burn
+		should_do_fees := false
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
 			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len(publickeylist)/16)+w.GetFeeMultiplier())))
 			if data, err := scdata.MarshalBinary(); err != nil {
@@ -142,6 +146,7 @@ rebuild_tx:
 			} else {
 				fees = fees + (uint64(len(data))*15)/10
 			}
+			should_do_fees = true
 			fees_done = true
 		}
 
@@ -149,9 +154,9 @@ rebuild_tx:
 			var x bn256.G1
 			switch {
 			case i == witness_index[0]:
-
-				if asset.SCID.IsZero() {
-					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(fees)-int64(burn_value))) // decrease senders balance
+				if asset.SCID.IsZero() && should_do_fees {
+					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(fees)-int64(burn_value))) // decrease senders balance (with fees)
+					should_do_fees = false
 				} else {
 					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(burn_value))) // decrease senders balance
 				}
