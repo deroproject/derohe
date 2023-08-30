@@ -59,6 +59,9 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
+	for ; max_bits%8 != 0; max_bits++ { // round to next higher byte size
+	}
+
 	for t := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
@@ -70,9 +73,6 @@ rebuild_tx:
 		var witness_index []int
 		for i := 0; i < len(rings[t]); i++ { // todocheck whether this is power of 2 or not
 			witness_index = append(witness_index, i)
-		}
-
-		for ; max_bits%8 != 0; max_bits++ { // round to next higher byte size
 		}
 
 		//witness_index[3], witness_index[1] = witness_index[1], witness_index[3]
@@ -144,12 +144,35 @@ rebuild_tx:
 		should_do_fees := asset.SCID.IsZero() && !fees_done && fees != 0
 
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
-			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len(publickeylist)/16)+w.GetFeeMultiplier())))
+			total_bytes := 0
+			for t := range transfers {
+				transfer := transfers[t]
+				// Compute rings size and their public keys
+				rings_count := len(rings[t])
+				rings_size := rings_count * max_bits / 8
+				total_bytes += rings_size
+
+				// Calculate the size of the payload
+				data, err := transfer.Payload_RPC.MarshalBinary()
+				if err != nil {
+					panic(err)
+				}
+
+				// + 1 come from the witness_index[1] append to the payload
+				total_bytes += len(data) + 1
+			}
+
+			// Add SC Data
 			if data, err := scdata.MarshalBinary(); err != nil {
 				panic(err)
 			} else {
-				fees = fees + (uint64(len(data))*15)/10
+				total_bytes += len(data)
 			}
+
+			// TODO add fixed size of statement + proof
+
+			// multiply total_bytes by DERO fees per KB with fee multiplier
+			fees = uint64(float64(total_bytes) * (float64(config.FEE_PER_KB) + float64(w.GetFeeMultiplier())))
 			should_do_fees = true
 			fees_done = true
 		}
