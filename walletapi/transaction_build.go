@@ -140,7 +140,8 @@ rebuild_tx:
 		burn_value := transfers[t].Burn
 
 		// If user provide fees, we will use it, otherwise we will calculate it
-		should_do_fees := !fees_done && fees != 0
+		// Fees are only paid on DERO transfers, not on tokens transfers
+		should_do_fees := asset.SCID.IsZero() && !fees_done && fees != 0
 
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
 			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len(publickeylist)/16)+w.GetFeeMultiplier())))
