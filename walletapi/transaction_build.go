@@ -248,7 +248,7 @@ rebuild_tx:
 			// TODO add fixed size of statement + proof
 
 			// multiply total_bytes by DERO fees per KB with fee multiplier
-			fees = uint64(float64(total_bytes) * (float64(config.FEE_PER_KB) + float64(w.GetFeeMultiplier())))
+			fees = uint64(float64(total_bytes) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
 			should_do_fees = true
 			fees_done = true
 		}
