@@ -187,53 +187,57 @@ rebuild_tx:
 				}
 
 				// Statement
+				statement_size := 0
 				{
 					// Publickeylist pointers total size
-					rings_size := rings_count*max_bits/8 + 2
-					total_bytes += rings_size
+					rings_size := rings_count * (max_bits / 8)
+					statement_size += rings_size
 
 					// 1 byte for power, 1 byte for bytes per public key
-					total_bytes += 2
+					statement_size += 2
 
-					// 8 bytes for fees
-					total_bytes += 8
+					// 8 bytes for fees (varint but max value in case)
+					statement_size += 8
 
 					// 33 bytes for D
-					total_bytes += 33
-
-					// 32 bytes for roothash
-					total_bytes += 32
+					statement_size += 33
 
 					// 33 bytes per C field (bn256.G1 compressed format)
-					total_bytes += 33 * rings_count
+					statement_size += 33 * rings_count
+
+					// 32 bytes for roothash
+					statement_size += 32
 				}
+				total_bytes += statement_size
 
 				// Proof
+				proof_size := 0
 				{
 					// BA, BS, A, B, u, T_1, T_2
-					total_bytes += 7 * 33
+					proof_size += 7 * 33
 
 					// dynamic sizes
 					m := int(math.Log2(float64(rings_count)))
 					// CLnG, CRnG, C_0G, DG, y_0G, gG, C_XG, y_XG
-					total_bytes += 8 * m * 33
+					proof_size += 8 * m * 33
 
-					// FieldElement in Proof must be as long as CLnG
+					// FieldVector in Proof must be double of CLnG len
 					// which is m
 					// each element in vector is 32 bytes
-					total_bytes += m * 32
+					proof_size += m * 2 * 32
 
 					// z_A, that, mu, c, s_sk, s_r, s_b, s_tau
-					total_bytes += 8 * 32
+					proof_size += 8 * 32
 
 					// InnerProduct
 					{
 						// a, b (32 bytes each)
-						total_bytes += 2 * 32
+						proof_size += 2 * 32
 						// bulletproofs are 128 bits, so its 7 elements in ls, rs
-						total_bytes += 7 * 2 * 33
+						proof_size += 7 * 2 * 33
 					}
 				}
+				total_bytes += proof_size
 			}
 
 			// Add SC Data
@@ -246,11 +250,21 @@ rebuild_tx:
 			}
 
 			// multiply total_bytes by DERO fees per KB with fee multiplier
-			fees = uint64(float64(total_bytes) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
+			{
+				size_in_kb := total_bytes / 1024
+
+				if (total_bytes % 1024) != 0 { // for any part there of, use a full KB fee
+					size_in_kb += 1
+				}
+
+				fees = uint64(float64(size_in_kb) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
+			}
+
 			should_do_fees = true
 			fees_done = true
 		}
 
+		fees_in_statement := false
 		for i := range publickeylist { // setup commitments
 			var x bn256.G1
 			switch {
@@ -258,6 +272,7 @@ rebuild_tx:
 				if asset.SCID.IsZero() && should_do_fees {
 					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(fees)-int64(burn_value))) // decrease senders balance (with fees)
 					should_do_fees = false
+					fees_in_statement = true
 				} else {
 					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(burn_value))) // decrease senders balance
 				}
@@ -324,7 +339,7 @@ rebuild_tx:
 
 		// time for bullets-sigma
 		fees_currentasset := uint64(0)
-		if asset.SCID.IsZero() && should_do_fees {
+		if asset.SCID.IsZero() && fees_in_statement {
 			fees_currentasset = fees
 		}
 		statement := GenerateStatement(CLn, CRn, publickeylist, C, &D, fees_currentasset) // generate statement
@@ -371,7 +386,6 @@ rebuild_tx:
 		//tx.Payloads[t].Proof = crypto.GenerateProof(&tx.Payloads[t].Statement, &witness_list[t], u, tx.GetHash(), tx.Payloads[t].BurnValue)
 
 		tx.Payloads[t].Proof = GenerateProoffuncptr(tx.Payloads[t].SCID, scid_index, &tx.Payloads[t].Statement, &witness_list[t], u, tx.GetHash(), tx.Payloads[t].BurnValue)
-
 	}
 
 	// after the tx is serialized, it loses information which is then fed by blockchain
