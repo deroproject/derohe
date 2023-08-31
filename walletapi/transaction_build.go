@@ -2,6 +2,7 @@ package walletapi
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 
@@ -145,28 +146,103 @@ rebuild_tx:
 
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
 			total_bytes := 0
-			for t := range transfers {
-				transfer := transfers[t]
-				// Compute rings size and their public keys
-				rings_count := len(rings[t])
-				rings_size := rings_count * max_bits / 8
-				total_bytes += rings_size
-
-				// Calculate the size of the payload
-				data, err := transfer.Payload_RPC.MarshalBinary()
-				if err != nil {
-					panic(err)
+			// Transaction Prefix
+			{
+				// Those following are Uvarint, which means they are variable size
+				// But we put full max size to support any future update
+				total_bytes += 8 // Version
+				total_bytes += 8 // Source Network
+				total_bytes += 8 // Destination Network
+				total_bytes += 8 // Transaction Type
+				if tx.TransactionType == transaction.PREMINE || tx.TransactionType == transaction.SC_TX {
+					total_bytes += 8 // Burn Value
 				}
 
-				// + 1 come from the witness_index[1] append to the payload
-				total_bytes += len(data) + 1
+				if tx.TransactionType == transaction.PREMINE || tx.TransactionType == transaction.COINBASE || tx.TransactionType == transaction.REGISTRATION {
+					total_bytes += 33 // Miner Address
+				}
+
+				if tx.TransactionType == transaction.REGISTRATION {
+					total_bytes += 2 * 33 // C, S (fixed size)
+				}
+
+				if tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.SC_TX {
+					total_bytes += 8  // Height
+					total_bytes += 32 // BLID
+					// This one is a varint too (but we put max size)
+					total_bytes += len(transfers) * 8 // Number of Assets (uint64)
+				}
+			}
+
+			for t := range transfers {
+				rings_count := len(rings[t])
+
+				// Common Payload
+				{
+					total_bytes += 1  // RPC Type
+					total_bytes += 32 // SCID
+
+					// the payload max size
+					total_bytes += transaction.PAYLOAD_LIMIT
+				}
+
+				// Statement
+				{
+					// Publickeylist pointers total size
+					rings_size := rings_count*max_bits/8 + 2
+					total_bytes += rings_size
+
+					// 1 byte for power, 1 byte for bytes per public key
+					total_bytes += 2
+
+					// 8 bytes for fees
+					total_bytes += 8
+
+					// 33 bytes for D
+					total_bytes += 33
+
+					// 32 bytes for roothash
+					total_bytes += 32
+
+					// 33 bytes per C field (bn256.G1 compressed format)
+					total_bytes += 33 * rings_count
+				}
+
+				// Proof
+				{
+					// BA, BS, A, B, u, T_1, T_2
+					total_bytes += 7 * 33
+
+					// dynamic sizes
+					m := int(math.Log2(float64(rings_count)))
+					// CLnG, CRnG, C_0G, DG, y_0G, gG, C_XG, y_XG
+					total_bytes += 8 * m * 33
+
+					// FieldElement in Proof must be as long as CLnG
+					// which is m
+					// each element in vector is 32 bytes
+					total_bytes += m * 32
+
+					// z_A, that, mu, c, s_sk, s_r, s_b, s_tau
+					total_bytes += 8 * 32
+
+					// InnerProduct
+					{
+						// a, b (32 bytes each)
+						total_bytes += 2 * 32
+						// bulletproofs are 128 bits, so its 7 elements in ls, rs
+						total_bytes += 7 * 2 * 33
+					}
+				}
 			}
 
 			// Add SC Data
-			if data, err := scdata.MarshalBinary(); err != nil {
-				panic(err)
-			} else {
-				total_bytes += len(data)
+			if tx.TransactionType == transaction.SC_TX {
+				if data, err := scdata.MarshalBinary(); err != nil {
+					panic(err)
+				} else {
+					total_bytes += len(data) + 8 // 8 is varint max value size
+				}
 			}
 
 			// TODO add fixed size of statement + proof
