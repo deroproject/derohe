@@ -308,18 +308,18 @@ func (w *Wallet_Memory) Get_Payments_DestinationPort(scid crypto.Hash, port uint
 
 // return all payments within a tx there can be only 1 entry
 // NOTE: what about multiple payments
-func (w *Wallet_Memory) Get_Payments_TXID(scid crypto.Hash, txid string) (entry rpc.Entry) {
+func (w *Wallet_Memory) Get_Payments_TXID(scid crypto.Hash, txid string) (crypto.Hash, rpc.Entry) {
 	w.Lock()
 	defer w.Unlock()
 
 	all_entries := w.account.EntriesNative[scid]
 	if all_entries == nil || len(all_entries) < 1 {
-		return
+		return scid, rpc.Entry{}
 	}
 
 	for _, e := range all_entries {
 		if txid == e.TXID {
-			return e
+			return scid, e
 		}
 	}
 
@@ -333,13 +333,13 @@ func (w *Wallet_Memory) Get_Payments_TXID(scid crypto.Hash, txid string) (entry 
 
 			for _, e := range entries {
 				if txid == e.TXID {
-					return e
+					return scid, e
 				}
 			}
 		}
 	}
 
-	return
+	return scid, rpc.Entry{}
 }
 
 // delete most of the data and prepare for rescan

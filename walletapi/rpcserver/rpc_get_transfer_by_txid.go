@@ -38,7 +38,7 @@ func GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (
 	}
 
 	// if everything is okay, fire the query and convert the result to output format
-	result.Entry = w.wallet.Get_Payments_TXID(p.SCID, p.TXID)
+	result.SCID, result.Entry = w.wallet.Get_Payments_TXID(p.SCID, p.TXID)
 
 	if result.Entry.Height == 0 {
 		return result, fmt.Errorf("Transaction not found. TXID %s", p.TXID)
