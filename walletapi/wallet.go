@@ -307,13 +307,14 @@ func (w *Wallet_Memory) Get_Payments_DestinationPort(scid crypto.Hash, port uint
 }
 
 // return all payments within a tx there can be only 1 entry
+// ZERO SCID will also search in all other tokens
 // NOTE: what about multiple payments
 func (w *Wallet_Memory) Get_Payments_TXID(scid crypto.Hash, txid string) (crypto.Hash, rpc.Entry) {
 	w.Lock()
 	defer w.Unlock()
 
 	all_entries := w.account.EntriesNative[scid]
-	if all_entries == nil || len(all_entries) < 1 {
+	if (all_entries == nil || len(all_entries) < 1) && !scid.IsZero() {
 		return scid, rpc.Entry{}
 	}
 
