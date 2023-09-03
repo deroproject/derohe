@@ -316,6 +316,15 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		logger.Info("Menu mode enabled")
 	case "i8", "integrated_address": // user wants a random integrated address 8 bytes
 		a := wallet.GetRandomIAddress8()
+		if ConfirmYesNoDefaultNo(l, "Do you want to set a specific SCID ? (y/N)") {
+			scid, err := ReadSCID(l)
+			if err != nil {
+				logger.Error(err, "Error reading SCID")
+				break
+			}
+			a.Arguments = append(a.Arguments, rpc.Argument{Name: rpc.RPC_ASSET, DataType: rpc.DataHash, Value: scid})
+		}
+
 		fmt.Fprintf(l.Stderr(), "Wallet integrated address : "+color_green+"%s"+color_white+"\n", a.String())
 		fmt.Fprintf(l.Stderr(), "Embedded Arguments : "+color_green+"%s"+color_white+"\n", a.Arguments)
 
