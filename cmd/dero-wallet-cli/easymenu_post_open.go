@@ -16,26 +16,26 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "errors"
-import "runtime"
-import "strings"
+import (
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
 
-import "path/filepath"
-import "encoding/json"
-
-import "github.com/chzyer/readline"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "github.com/deroproject/derohe/address"
-
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
 
 // handle menu if a wallet is currently opened
 func display_easymenu_post_open_command(l *readline.Instance) {
@@ -162,6 +162,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			err := wallet.SendTransaction(reg_tx)
 			if err != nil {
 				fmt.Fprintf(l.Stderr(), "sending registration tx err %s\n", err)
+				fmt.Fprintf(l.Stderr(), "You can register your wallet by sending this RAW tx data to the daemon (DERO.SendRawTransaction):\n%s\n", hex.EncodeToString(reg_tx.Serialize()))
 			} else {
 				fmt.Fprintf(l.Stderr(), "registration tx dispatched successfully\n")
 			}

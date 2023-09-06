@@ -294,6 +294,10 @@ func (chain *Blockchain) Find_Blocks_Height_Range(startheight, stopheight int64)
 	}
 	_, topos_end := chain.Store.Topo_store.binarySearchHeight(stopheight)
 
+	if topos_start == nil || topos_end == nil {
+		return
+	}
+
 	lowest := topos_start[0]
 	for _, t := range topos_start {
 		if t < lowest {
