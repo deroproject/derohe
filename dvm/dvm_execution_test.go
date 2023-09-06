@@ -19,6 +19,7 @@ package dvm
 import "fmt"
 import "reflect"
 import "testing"
+import "github.com/holiman/uint256"
 
 //import "github.com/deroproject/derosuite/crypto"
 
@@ -868,6 +869,694 @@ var execution_tests_if = []struct {
 		map[string]interface{}{"a1": "77", "a2": "1"},
 		fmt.Errorf("dummy"),
 		Variable{Type: Uint64, ValueUint64: uint64(2)},
+	},
+
+	// test all arithmetic operations for uint256
+	{
+		"valid  function  testing  substraction ",
+		`Function TestRun(a1 Uint256, a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint64
+		 20 
+		 30 return  a1 - a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "12", "a2": "4"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  multiplication ",
+		`Function TestRun(a1 Uint256, a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 * a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "4"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  division ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 / a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "25", "a2": "3"}, // it is 25 to confirm we are doing integer division
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  modulus ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 % a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "35", "a2": "9"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  SHL ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 << a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "4", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  SHR ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 >> a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "32", "a2": "2"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  OR ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 | a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "8", "a2": "8"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  AND ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 & a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "9", "a2": "10"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(8)},
+	}, {
+		"valid  function  testing  NOT ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  !a1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "9", "a2": "10"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0).Not(uint256.NewInt(9))},
+	}, {
+		"valid  function  testing  ^XOR ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  ^a1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "9", "a2": "10"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0).Not(uint256.NewInt(9))},
+	}, {
+		"valid  function  testing  XOR ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 ^ a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "60", "a2": "13"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(49)},
+	}, {
+		"valid  function  testing  ||  ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 || a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "0", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(1)},
+	}, {
+		"valid  function  testing  &&  1 ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 && a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "0", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0)},
+	}, {
+		"valid  function  testing  &&  2",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  (a1 && a2)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(1)},
+	},
+
+	{
+		"valid  function  testing  &&  3",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  0 || (a1 && a2)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(1)},
+	},
+	{
+		"valid  function  testing  LET ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 20 LET s1 = a1 + a2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	},
+	{
+		"valid  function  testing  IF THEN form1  fallthrough",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 15 if a1 == 2 then GOTO 30
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	},
+	{
+		"valid  function  testing  IF THEN form1  THEN case",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 15 if a1 == 2 then GOTO 30
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0)},
+	},
+	{
+		"valid  function  testing  IF THEN ELSE form1  THEN case",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 15 if a1 == 2 then GOTO 30 ELSE GOTO 20
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(0)},
+	}, {
+		"valid  function  testing  IF THEN ELSE form1  ELSE case",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 15 if a1 == 2 then GOTO 30 ELSE GOTO 20
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "77", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	},
+	{
+		"valid  function  testing  != success ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 != 3 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	},
+	{
+		"valid  function  testing  !=  failed",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 != 3 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "3", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	},
+
+	{
+		"valid  function  testing  <> ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 <> 3 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"invalid operator testing  = ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 = 3 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		fmt.Errorf("dummy"),
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	},
+	{
+		"valid  function  testing  > success ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 > 1 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing  > failed ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if 1 > a1 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	}, {
+		"valid  function  testing  >= success",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 >= 2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing  >= failed",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 >= 2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	}, {
+		"valid  function  testing  < success ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 < 3 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing  < failed ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 < 3 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "5", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	}, {
+		"valid  function  testing  <= success ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 <= 2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing  <= success ",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 <= 2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "4", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	}, {
+		"valid  function  testing string == success",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 == a2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "asdf", "a2": "asdf"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing string == success",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 == "asdf" then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "asdf", "a2": "asdf"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing string == failed",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 == a2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "asdf", "a2": "asdf1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	}, {
+		"valid  function  testing !string  success ",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if !a1  then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "", "a2": "asdf1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing !string  fail ",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if !a1  then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "a1", "a2": "asdf1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	}, {
+		"valid  function  testing string != ",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 != a2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "asdf", "a2": "asdfz"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	}, {
+		"valid  function  testing LOR ",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 != a2 || a1 != a2 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "asdf", "a2": "asdf"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(2)},
+	},
+	{
+		"invalid  function  testing  comparision of uint256 /string ",
+		`Function TestRun(a1 String,a2 String) Uint256
+		 10 dim s1, s2 as Uint256
+		 13 LET s1 = 99
+		 15 if a1 != s1 then GOTO 30 
+		 20 RETURN 2
+		 30 return  s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "asdf", "a2": "asdfz"},
+		fmt.Errorf("dummy"),
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	},
+
+	{
+		"valid  function  arbitrary function evaluation",
+		`Function TestRun(a1 Uint256,a2 Uint256) Uint256
+		 10 dim s1, s2 as Uint256
+		 15 fact_recursive(10)
+		 20 LET s1 = fact_recursive(10)
+		 30 return  s1
+                 End Function
+                 Function fact_recursive(s Uint256) Uint256
+                    10  IF s == 1 THEN GOTO 20 ELSE GOTO 30
+                    20  RETURN 1
+                    30  RETURN  s * fact_recursive(s -1)
+                    End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "77", "a2": "1"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(3628800)},
+	},
+
+	{
+		"Invalid  function with 2 string params substractions",
+		`Function TestRun(a1 String,a2 String) String
+		 10 dim s1, s2 as Uint256
+		 20 
+		 30 return  a1 - a2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "4", "a2": "4"},
+		fmt.Errorf("dummy"),
+		Variable{Type: String, ValueString: "44"},
+	},
+
+	// mixed type testing
+	{
+		"invalid  function  testing  comparision of uint256 / uint64 ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint256
+		 10 DIM s1 AS uint256
+		 13 LET s1 = 99
+		 15 if a1 == a2 then GOTO 30 
+		 20 RETURN 2
+		 30 return s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "101", "a2": "101"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	},
+	{
+		"invalid  function  testing  addition of uint256 / uint64 ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint256
+		 10 DIM s1, s2 AS uint256
+		 13 LET s1 = 99
+		 15 LET s2 = a1 + a2
+		 30 return s2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "101", "a2": "101"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(202)},
+	},
+	{
+		"invalid  function  return of different type uint256 / uint64 ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint256
+		 10 DIM s1, s2 AS uint64
+		 13 LET s1 = 99
+		 15 LET s2 = a1 + a2
+		 30 return s2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "101", "a2": "101"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(202)},
+	},
+	{
+		"invalid  function  return of different type uint64 / uint256",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 DIM s1, s2 AS uint256
+		 13 LET s1 = 99
+		 15 LET s2 = a1 + a2
+		 30 return s2
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "101", "a2": "101"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(202)},
+	},
+	{
+		"invalid  function  testing comparison of uint256 / uint64 ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint256
+		 10 DIM s1, s2 AS uint64
+		 13 LET s1 = 99
+		 15 IF a2 > s1 THEN GOTO 30
+		 20 RETURN a2
+		 30 return s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "101", "a2": "101"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	},
+	{
+		"invalid  function  testing trucation of uint256",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 DIM s1 AS uint256
+		 15 let s1 = a1 * a2
+		 20 RETURN s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "8589934592", "a2": "8589934593"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint256.NewInt(0).Mul(uint256.NewInt(8589934592), uint256.NewInt(8589934593)).Uint64()},
+	},
+	{
+		"invalid  function  testing trucation of uint256",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint256
+		 10 DIM s1 AS uint64
+		 15 let s1 = a1 * a2
+		 20 RETURN s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "0xffffffffffffffff", "a2": "8589934593"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(uint256.NewInt(0).Mul(uint256.NewInt(0xffffffffffffffff), uint256.NewInt(8589934593)).Uint64())},
+	},
+	{
+		"invalid  function  testing avoid truncation of intermediate product",
+		`Function TestRun(a1 Uint64, a2 Uint64, a3 Uint64) Uint64
+		 10 DIM s1 AS uint64
+		 11 DIM s2 AS uint256
+		 12 LET s2 = a2
+		 15 RETURN a1 * s2 / a3
+		 20 RETURN s1
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "0xffffffffffffffff", "a2": "4294967287", "a3": "4294967288"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint256.NewInt(0).Div(uint256.NewInt(0).Mul(uint256.NewInt(0xffffffffffffffff), uint256.NewInt(4294967287)), uint256.NewInt(4294967288)).Uint64()},
 	},
 }
 

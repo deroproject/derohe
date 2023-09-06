@@ -251,8 +251,6 @@ func ErrorRevert(ss *graviton.Snapshot, cache map[crypto.Hash]*graviton.Tree, ba
 		switch scid_asset {
 		case zeroscid: // main dero balance, handle it
 			curbtree = balance_tree
-		case scid: // this scid balance, handle it
-			curbtree = cache[scid]
 		default: // any other asset scid
 			var ok bool
 			if curbtree, ok = cache[scid_asset]; !ok {

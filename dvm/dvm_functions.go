@@ -22,11 +22,14 @@ import "strconv"
 import "strings"
 import "crypto/sha256"
 import "encoding/hex"
+import "math/big"
 import "golang.org/x/crypto/sha3"
 import "github.com/blang/semver/v4"
 
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/deroproject/derohe/globals"
+import "github.com/holiman/uint256"
 
 // this files defines  external functions which can be called in DVM
 // for example to load and store data from the blockchain and other basic functions
@@ -40,6 +43,7 @@ import "github.com/deroproject/derohe/cryptography/crypto"
 // also, more investigation is required to enable predetermined external oracles
 
 type DVM_FUNCTION_PTR_UINT64 func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64)
+type DVM_FUNCTION_PTR_UINT256 func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int)
 type DVM_FUNCTION_PTR_STRING func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string)
 type DVM_FUNCTION_PTR_ANY func(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{})
 
@@ -50,13 +54,16 @@ type func_data struct {
 	ComputeCost int64
 	StorageCost int64
 	PtrU        DVM_FUNCTION_PTR_UINT64
+	PtrL        DVM_FUNCTION_PTR_UINT256	// long
 	PtrS        DVM_FUNCTION_PTR_STRING
 	Ptr         DVM_FUNCTION_PTR_ANY
 }
 
 func init() {
 	func_table["version"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 1000, StorageCost: 0, PtrU: dvm_version}}
+	func_table["scload"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_scload}}
 	func_table["load"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_load}}
+	func_table["scexists"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_scexists}}
 	func_table["exists"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_exists}}
 	func_table["store"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_store}}
 	func_table["delete"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 3000, StorageCost: 0, PtrU: dvm_delete}}
@@ -80,17 +87,25 @@ func init() {
 	func_table["send_asset_to_address"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 90000, StorageCost: 0, PtrU: dvm_send_asset_to_address}}
 	func_table["derovalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_derovalue}}
 	func_table["assetvalue"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_assetvalue}}
+	func_table["uint64"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrU: dvm_uint64}}
+	func_table["uint256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrL: dvm_uint256}}
+	func_table["ismainnet"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 100, StorageCost: 0, PtrU: dvm_ismainnet}}
 	func_table["atoi"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_atoi}}
 	func_table["itoa"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrS: dvm_itoa}}
+	func_table["sqrt"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrL: dvm_sqrt}}
+	func_table["pow"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrL: dvm_pow}}
 	func_table["sha256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha256}}
 	func_table["sha3256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_sha3256}}
 	func_table["keccak256"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 25000, StorageCost: 0, PtrS: dvm_keccak256}}
 	func_table["hex"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hex}}
 	func_table["hexdecode"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_hexdecode}}
-	func_table["min"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_min}}
-	func_table["max"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, PtrU: dvm_max}}
+	func_table["min"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_min}}
+	func_table["max"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 5000, StorageCost: 0, Ptr: dvm_max}}
 	func_table["strlen"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrU: dvm_strlen}}
 	func_table["substr"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 20000, StorageCost: 0, PtrS: dvm_substr}}
+	func_table["tolower"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_tolower}}
+	func_table["toupper"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_toupper}}
+	func_table["subfield"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrS: dvm_subfield}}
 	func_table["panic"] = []func_data{func_data{Range: semver.MustParseRange(">=0.0.0"), ComputeCost: 10000, StorageCost: 0, PtrU: dvm_panic}}
 }
 
@@ -103,6 +118,8 @@ func (dvm *DVM_Interpreter) Handle_Internal_Function(expr *ast.CallExpr, func_na
 				dvm.State.ConsumeGas(f.ComputeCost)
 				if f.PtrU != nil {
 					return f.PtrU(dvm, expr)
+				} else if f.PtrL != nil {
+					return f.PtrL(dvm, expr)
 				} else if f.PtrS != nil {
 					return f.PtrS(dvm, expr)
 				} else {
@@ -119,12 +136,18 @@ func (dvm *DVM_Interpreter) Handle_Internal_Function(expr *ast.CallExpr, func_na
 // the load/store functions are sandboxed and thus cannot affect any other SC storage
 // loads  a variable from store
 func (dvm *DVM_Interpreter) Load(key Variable) interface{} {
+	return dvm.SCLoad(dvm.State.Chain_inputs.SCID, key)
+}
+
+func (dvm *DVM_Interpreter) SCLoad(scid crypto.Hash, key Variable) interface{} {
 	var found uint64
-	result := dvm.State.Store.Load(DataKey{SCID: dvm.State.Chain_inputs.SCID, Key: key}, &found)
+	result := dvm.State.Store.Load(DataKey{SCID: scid, Key: key}, &found)
 
 	switch result.Type {
 	case Uint64:
 		return result.ValueUint64
+	case Uint256:
+		return &result.ValueUint256
 	case String:
 		return result.ValueString
 
@@ -135,8 +158,12 @@ func (dvm *DVM_Interpreter) Load(key Variable) interface{} {
 
 // whether a variable exists in store or not
 func (dvm *DVM_Interpreter) Exists(key Variable) uint64 {
+	return dvm.SCExists(dvm.State.Chain_inputs.SCID, key)
+}
+
+func (dvm *DVM_Interpreter) SCExists(scid crypto.Hash, key Variable) uint64 {
 	var found uint64
-	dvm.State.Store.Load(DataKey{SCID: dvm.State.Chain_inputs.SCID, Key: key}, &found)
+	dvm.State.Store.Load(DataKey{SCID: scid, Key: key}, &found)
 	return found
 }
 
@@ -153,6 +180,8 @@ func convertdatatovariable(datai interface{}) Variable {
 	switch k := datai.(type) {
 	case uint64:
 		return Variable{Type: Uint64, ValueUint64: k}
+	case *uint256.Int:
+		return Variable{Type: Uint256, ValueUint256: *k}
 	case string:
 		return Variable{Type: String, ValueString: k}
 	default:
@@ -178,11 +207,46 @@ func dvm_version(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result
 	return true, uint64(1)
 }
 
+func dvm_scload(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
+	checkargscount(2, len(expr.Args)) // check number of arguments
+	scid := dvm.eval(expr.Args[0])
+	key := dvm.eval(expr.Args[1])
+
+	if _, ok := scid.(string); !ok {
+		panic("asset must be valid string")
+	}
+        if len(scid.(string)) != 32 {
+                panic("asset must be valid string of 32 byte length")
+        }
+
+        var asset crypto.Hash
+        copy(asset[:], ([]byte(scid.(string))))
+
+	return true, dvm.SCLoad(asset, convertdatatovariable(key))
+}
+
+func dvm_scexists(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+	checkargscount(2, len(expr.Args)) // check number of arguments
+	scid := dvm.eval(expr.Args[0])
+	key := dvm.eval(expr.Args[1])
+
+	if _, ok := scid.(string); !ok {
+		panic("asset must be valid string")
+	}
+        if len(scid.(string)) != 32 {
+                panic("asset must be valid string of 32 byte length")
+        }
+
+        var asset crypto.Hash
+        copy(asset[:], ([]byte(scid.(string))))
+
+	return true, dvm.SCExists(asset, convertdatatovariable(key))
+}
+
 func dvm_load(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
 	checkargscount(1, len(expr.Args)) // check number of arguments
 	key := dvm.eval(expr.Args[0])
 	return true, dvm.Load(convertdatatovariable(key))
-
 }
 
 func dvm_exists(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
@@ -226,6 +290,8 @@ func dvm_mapget(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result 
 
 	if v.Type == Uint64 {
 		return true, v.ValueUint64
+	} else if v.Type == Uint256 {
+		return true, &v.ValueUint256
 	} else if v.Type == String {
 		return true, v.ValueString
 	} else {
@@ -460,12 +526,143 @@ func dvm_itoa(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result st
 
 	asset_eval := dvm.eval(expr.Args[0])
 
-	if _, ok := asset_eval.(uint64); !ok {
+        switch v := asset_eval.(type) {
+        case uint64:
+		result = fmt.Sprintf("%d", v)
+        case *uint256.Int:
+		result = v.String()
+	default:
 		panic("itoa argument must be valid uint64")
 	}
 
-	return true, fmt.Sprintf("%d", asset_eval.(uint64))
+	return true, result
 
+}
+
+func dvm_uint64(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+
+	asset_eval := dvm.eval(expr.Args[0])
+
+	var z uint64
+
+        switch v := asset_eval.(type) {
+        case uint64:
+		z = v
+        case *uint256.Int:
+		z = v.Uint64()
+        case string:
+		i, err := strconv.ParseUint(v, 0, 64)
+		if err != nil {
+			i = 0
+		}
+		z = i
+	}
+
+	return true, z
+}
+
+func dvm_uint256(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+
+	asset_eval := dvm.eval(expr.Args[0])
+
+	z := uint256.NewInt(0)
+
+        switch v := asset_eval.(type) {
+        case uint64:
+		z.SetUint64(v)
+        case *uint256.Int:
+		z.Set(v)
+        case string:
+		t := new(big.Int)
+		var t_valid bool
+
+		if t, t_valid = t.SetString(v, 0); t_valid {
+			z, _ = uint256.FromBig(t);
+		}
+        }
+
+	return true, z
+}
+
+func dvm_ismainnet(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+	checkargscount(0, len(expr.Args)) // check number of arguments
+
+	mainnet := uint64(0)
+
+	if globals.IsMainnet() {
+		mainnet = uint64(1)
+	}
+
+	return true, mainnet
+}
+
+func dvm_sqrt(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+
+	e := dvm.eval(expr.Args[0])
+
+        switch v := e.(type) {
+        case uint64:
+		e = dvm.castToUint256(v)
+        case string:
+		panic("sqrt argument must be valid int")
+        }
+
+	y := e.(*uint256.Int)
+	x := uint256.NewInt(0)
+	z := uint256.NewInt(1)
+	tmp := uint256.NewInt(0)
+
+	if y.IsZero() {
+		return true, y
+	}
+	if y.Eq(z) {
+		return true, z
+	}
+
+	z.SetUint64(0)
+	if y.GtUint64(3) {
+		z = y.Clone()
+		x.Rsh(y, 1)
+		x.AddUint64(x, 1)
+	}
+
+	for z.Gt(x) {
+		z = x.Clone()
+		tmp.Div(y, x)
+		tmp.Add(tmp, x)
+		x.Rsh(tmp, 1)
+	}
+
+	return true, z
+}
+
+func dvm_pow(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result *uint256.Int) {
+	checkargscount(2, len(expr.Args)) // check number of arguments
+
+	e1 := dvm.eval(expr.Args[0])
+	e2 := dvm.eval(expr.Args[1])
+
+        switch v1 := e1.(type) {
+        case uint64:
+		e1 = dvm.castToUint256(v1)
+        case string:
+		panic("pow arguments must be valid int")
+        }
+
+        switch v2 := e2.(type) {
+        case uint64:
+		e2 = dvm.castToUint256(v2)
+        case string:
+		panic("pow arguments must be valid int")
+        }
+
+	x := e1.(*uint256.Int)
+	y := e2.(*uint256.Int)
+
+	return true, x.Exp(x, y)
 }
 
 func dvm_atoi(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
@@ -528,6 +725,50 @@ func dvm_substr(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result 
 	return true, substr(input_eval.(string), offset_eval.(uint64), length_eval.(uint64))
 }
 
+func dvm_tolower(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+	input_eval := dvm.eval(expr.Args[0])
+	if _, ok := input_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+
+	return true, strings.ToLower(input_eval.(string))
+}
+
+func dvm_toupper(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
+	checkargscount(1, len(expr.Args)) // check number of arguments
+	input_eval := dvm.eval(expr.Args[0])
+	if _, ok := input_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+
+	return true, strings.ToUpper(input_eval.(string))
+}
+
+func dvm_subfield(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
+	checkargscount(3, len(expr.Args)) // check number of arguments
+	input_eval := dvm.eval(expr.Args[0])
+	if _, ok := input_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+	separator_eval := dvm.eval(expr.Args[1])
+	if _, ok := separator_eval.(string); !ok {
+		panic("input argument must be valid string")
+	}
+	field_eval := dvm.eval(expr.Args[2])
+	if _, ok := field_eval.(uint64); !ok {
+		panic("input argument must be valid uint64")
+	}
+
+	res := ""
+	s := strings.Split(input_eval.(string), separator_eval.(string))
+	if field_eval.(uint64) < uint64(len(s)) {
+		res = s[field_eval.(uint64)]
+	}
+
+	return true, res
+}
+
 func dvm_sha256(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result string) {
 	checkargscount(1, len(expr.Args)) // check number of arguments
 	input_eval := dvm.eval(expr.Args[0])
@@ -585,41 +826,46 @@ func dvm_hexdecode(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, resu
 	}
 }
 
-func dvm_min(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
-	checkargscount(2, len(expr.Args)) // check number of arguments
-
-	a1 := dvm.eval(expr.Args[0])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
-	}
-
-	a2 := dvm.eval(expr.Args[1])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
-	}
-
-	if a1.(uint64) < a2.(uint64) {
-		return true, a1.(uint64)
-	}
-	return true, a2.(uint64)
+func isUint(exp interface{}) (bool) {
+	return (fmt.Sprintf("%T", exp) == "uint64" || fmt.Sprintf("%T", exp) == "*uint256.Int")
 }
 
-func dvm_max(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {
+func dvm_min(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
 	checkargscount(2, len(expr.Args)) // check number of arguments
+
 	a1 := dvm.eval(expr.Args[0])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
-	}
-
 	a2 := dvm.eval(expr.Args[1])
-	if _, ok := a1.(uint64); !ok {
-		panic("input argument must be uint64")
+
+	if !isUint(a1) || !isUint(a2) {
+		panic("input arguments must be integers")
 	}
 
-	if a1.(uint64) > a2.(uint64) {
-		return true, a1.(uint64)
+	a1 = dvm.castToUint256(a1)
+	a2 = dvm.castToUint256(a2)
+
+	if a1.(*uint256.Int).Lt(a2.(*uint256.Int)) {
+		return true, a1
 	}
-	return true, a2.(uint64)
+	return true, a2
+}
+
+func dvm_max(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result interface{}) {
+	checkargscount(2, len(expr.Args)) // check number of arguments
+
+	a1 := dvm.eval(expr.Args[0])
+	a2 := dvm.eval(expr.Args[1])
+
+	if !isUint(a1) || !isUint(a2) {
+		panic("input arguments must be integers")
+	}
+
+	a1 = dvm.castToUint256(a1)
+	a2 = dvm.castToUint256(a2)
+
+	if a1.(*uint256.Int).Gt(a2.(*uint256.Int)) {
+		return true, a1
+	}
+	return true, a2
 }
 
 func dvm_panic(dvm *DVM_Interpreter, expr *ast.CallExpr) (handled bool, result uint64) {

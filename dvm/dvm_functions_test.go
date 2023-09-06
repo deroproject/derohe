@@ -22,6 +22,7 @@ import "testing"
 import "encoding/hex"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "github.com/holiman/uint256"
 
 // ensure 100% coverage of functions execution
 var execution_tests_functions = []struct {
@@ -32,6 +33,188 @@ var execution_tests_functions = []struct {
 	Eerr       error    // execute error
 	result     Variable // execution result
 }{
+	{
+		"valid  function  testing  MAP*() with 256bit key",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 20 DIM v1, v2 AS Uint256
+		 30 MAPSTORE(a2, a1)
+		 40 LET v1 = a2
+		 50 IF MAPEXISTS(v1) THEN GOTO 100
+		 60 RETURN 1
+		 100 IF MAPGET(v1) == a1 THEN GOTO 200
+		 110 RETUN 1
+		 200 DIM str AS String
+		 210 LET str = ITOA(v1)
+		 230 LET v2 = UINT256(str)
+		 240 IF MAPGET(v2) == a1 THEN GOTO 300
+		 250 RETURN 1
+		 300 MAPDELETE(v2)
+		 310 IF !MAPEXISTS(v1) THEN GOTO 500
+		 320 RETURN 1
+		 500 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  MAP*() with 64bit key",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 20 DIM v1, v2 AS Uint64
+		 25 DIM v3 as Uint256
+		 30 MAPSTORE(a1, a2)
+		 40 LET v1 = a1
+		 50 IF MAPEXISTS(v1) THEN GOTO 100
+		 60 RETURN 1
+		 100 IF MAPGET(v1) == a2 THEN GOTO 200
+		 110 RETUN 1
+		 200 DIM str AS String
+		 210 LET str = ITOA(a2)
+		 230 LET v3 = UINT256(str)
+		 240 IF MAPGET(v1) == v3 THEN GOTO 300
+		 250 RETURN 1
+		 300 MAPDELETE(v1)
+		 310 IF !MAPEXISTS(v1) THEN GOTO 500
+		 320 RETURN 1
+		 500 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  MAX() ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 IF MAX(a1, a2) == a1 THEN GOTO 50
+		 20 RETURN 1
+		 50 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  MIN() ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 IF MIN(a1, a2) == a2 THEN GOTO 50
+		 20 RETURN 1
+		 50 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654320"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  ITOA() ",
+		`Function TestRun(a1 Uint64, a2 Uint256) Uint64
+		 10 IF ITOA(a1) == "987654321" THEN GOTO 50
+		 20 RETURN 1
+		 50 IF ITOA(a2) == "0x3ade68b1" THEN GOTO 90
+		 60 RETURN 1
+		 90 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "987654321", "a2": "987654321"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  UINT64() ",
+		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
+		 10 dim s1, s2 as Uint64
+		 20 dim s3, s4 as Uint256
+		 30 LET s1 = 987654321
+		 40 LET s3 = 987654321
+		 50 IF s1 == UINT64(s3) THEN GOTO 100
+		 60 return 0
+		 100 LET s2 = UINT64("987654321")
+		 110 IF s2*s2 == s3*UINT64(s3) THEN GOTO 200
+		 120 RETURN 1
+		 200 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  UINT256() ",
+		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
+		 10 dim s1, s2 as Uint64
+		 20 dim s3, s4 as Uint256
+		 30 LET s1 = 123456
+		 40 LET s3 = UINT256("123456")
+		 50 IF s1 == s3 THEN GOTO 100
+		 60 return 0
+		 100 LET s2 = UINT256("0xffffffffffffffff")
+		 110 IF (UINT256(s1)*s2) == (UINT256(123456) * UINT256("0xffffffffffffffff")) THEN GOTO 200
+		 120 RETURN 1
+		 200 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1", "a2": "1"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(99)},
+	},
+	{
+		"valid  function  testing  SQRT(Uint64) ",
+		`Function TestRun(a1 Uint64) Uint64
+		 10 RETURN SQRT(a1)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "1046529"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(1023)},
+	},
+	{
+		"valid  function  testing  SQRT(Uint256) ",
+		`Function TestRun(a1 Uint256) Uint256
+		 10 DIM square AS Uint256
+		 20 LET square = a1 * a1
+		 30 IF SQRT(square) == a1 THEN GOTO 100
+		 40 RETURN 1
+		 100 RETURN 99
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "109876543210"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *uint256.NewInt(99)},
+	},
+	{
+		"valid  function  testing  POW(Uint64) ",
+		`Function TestRun(a1 Uint64, a2 Uint64) Uint64
+		 10 RETURN POW(a1, a2)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "33"},
+		nil,
+		Variable{Type: Uint64, ValueUint64: uint64(8589934592)},
+	},
+	{
+		"valid  function  testing  POW(Uint256) ",
+		`Function TestRun(a1 Uint256, a2 Uint256) Uint256
+		 10 RETURN POW(a1, a2)
+                 End Function
+                 `,
+		"TestRun",
+		map[string]interface{}{"a1": "2", "a2": "255"},
+		nil,
+		Variable{Type: Uint256, ValueUint256: *(uint256.NewInt(0).Exp(uint256.NewInt(2), uint256.NewInt(255)))},
+	},
 	{
 		"valid  function  testing  BLOCK_HEIGHT() ",
 		`Function TestRun(a1 Uint64,a2 Uint64) Uint64
@@ -216,6 +399,56 @@ var execution_tests_functions = []struct {
          	 End Function`,
 		"TestRun",
 		map[string]interface{}{"input": string("0123456789")},
+		nil,
+		Variable{Type: String, ValueString: string("")},
+	},
+	{
+		"tolower()",
+		`Function TestRun(input String) String
+		 30 return  tolower(input)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("A0b1C2d3E5f6")},
+		nil,
+		Variable{Type: String, ValueString: string("a0b1c2d3e5f6")},
+	},
+	{
+		"toupper()",
+		`Function TestRun(input String) String
+		 30 return  toupper(input)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("A0b1C2d3E5f6")},
+		nil,
+		Variable{Type: String, ValueString: string("A0B1C2D3E5F6")},
+	},
+	{
+		"subfield()",
+		`Function TestRun(input String) String
+		 30 return  subfield(input, ":", 3)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("This::is:a:test")},
+		nil,
+		Variable{Type: String, ValueString: string("a")},
+	},
+	{
+		"subfield()",
+		`Function TestRun(input String) String
+		 30 return  subfield(input, ":", 5)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("This::is:a:test")},
+		nil,
+		Variable{Type: String, ValueString: string("")},
+	},
+	{
+		"subfield()",
+		`Function TestRun(input String) String
+		 30 return  subfield(input, ":", 1)
+         	 End Function`,
+		"TestRun",
+		map[string]interface{}{"input": string("This::is:a:test")},
 		nil,
 		Variable{Type: String, ValueString: string("")},
 	},
