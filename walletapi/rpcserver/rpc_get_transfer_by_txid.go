@@ -16,10 +16,13 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 func GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (result rpc.Get_Transfer_By_TXID_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -35,7 +38,7 @@ func GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (
 	}
 
 	// if everything is okay, fire the query and convert the result to output format
-	result.Entry = w.wallet.Get_Payments_TXID(p.TXID)
+	result.SCID, result.Entry = w.wallet.Get_Payments_TXID(p.SCID, p.TXID)
 
 	if result.Entry.Height == 0 {
 		return result, fmt.Errorf("Transaction not found. TXID %s", p.TXID)
