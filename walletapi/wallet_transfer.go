@@ -16,33 +16,35 @@
 
 package walletapi
 
-import "fmt"
+import (
+	"encoding/hex"
+	"fmt"
+
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "sort"
 //import "math/rand"
 //import cryptorand "crypto/rand"
 
 //import "encoding/binary"
-import "encoding/hex"
 
 //import "encoding/json"
 
 //import "github.com/vmihailenco/msgpack"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-
 //import "github.com/deroproject/derohe/crypto/ringct"
-import "github.com/deroproject/derohe/transaction"
 
 //import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/rpc"
 
 //import "github.com/deroproject/derohe/ddn"
 
 //import "github.com/deroproject/derohe/structures"
 //import "github.com/deroproject/derohe/blockchain/inputmaturity"
-import "github.com/deroproject/derohe/cryptography/bn256"
 
 /*
 func (w *Wallet_Memory) Transfer_Simplified(addr string, value uint64, data []byte, scdata rpc.Arguments) (tx *transaction.Transaction, err error) {
@@ -54,11 +56,33 @@ func (w *Wallet_Memory) Transfer_Simplified(addr string, value uint64, data []by
 }
 */
 
+// This function set the address asset requested naively
+// This can be a security flaw for exchanges or other services who accept integrated address without necessary checks
+func (w *Wallet_Memory) TransferAssetFromAddress(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, gasstorage uint64, dry_run bool) (tx *transaction.Transaction, err error) {
+	// Update all asset used in transfer to use the one from integrated address if present
+	for i := range transfers {
+		transfer := transfers[i]
+		// parse address
+		var addr *rpc.Address
+		if addr, err = rpc.NewAddress(transfer.Destination); err != nil {
+			return nil, err
+
+		}
+
+		// if address contains RPC Asset, set it as SCID
+		if addr.Arguments.Has(rpc.RPC_ASSET, rpc.DataHash) {
+			scid := addr.Arguments.Value(rpc.RPC_ASSET, rpc.DataHash).(crypto.Hash)
+			transfer.SCID = scid
+		}
+	}
+
+	return w.TransferPayload0(transfers, ringsize, transfer_all, scdata, gasstorage, dry_run)
+}
+
 // we should reply to an entry
 
 // send amount to specific addresses
 func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, gasstorage uint64, dry_run bool) (tx *transaction.Transaction, err error) {
-
 	//    var  transfer_details structures.Outgoing_Transfer_Details
 	w.transfer_mutex.Lock()
 	defer w.transfer_mutex.Unlock()
@@ -238,7 +262,6 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 
 	_, _, block_hash, self_e, _ = w.GetEncryptedBalanceAtTopoHeight(transfers[0].SCID, topoheight, w.GetAddress().String())
 	if err != nil {
-		fmt.Printf("self unregistered err %s\n", err)
 		return
 	}
 
@@ -300,12 +323,11 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 					transfers[t].Payload_RPC = append(transfers[t].Payload_RPC, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: addr.Arguments.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64)})
 					continue
 				} else {
-					fmt.Printf("integrtated address, but don't know how to process\n")
+					// Shouldn't we jus replicate them in payload_rpc ?
 					err = fmt.Errorf("integrated address used, but don't know how to process %+v", addr.Arguments)
+					return
 				}
 			}
-
-			return
 		}
 
 		var dest_e *crypto.ElGamal

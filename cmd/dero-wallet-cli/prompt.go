@@ -91,13 +91,24 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		fallthrough
 	case "balance": // give user his balance
 		balance_unlocked, locked_balance := wallet.Get_Balance_Rescan()
-		fmt.Fprintf(l.Stderr(), "DERO Balance    : "+color_green+"%s"+color_white+"\n", globals.FormatMoney(locked_balance+balance_unlocked))
+		fmt.Fprintf(l.Stderr(), "DERO Balance: "+color_green+"%s"+color_white+"\n", globals.FormatMoney(locked_balance+balance_unlocked))
 
 		line_parts := line_parts[1:] // remove first part
 
 		switch len(line_parts) {
 		case 0:
-			//logger.Error(err,"not implemented")
+			addr := wallet.GetAddress().String()
+			for scid := range wallet.GetAccount().EntriesNative {
+				if !scid.IsZero() {
+					balance, _, err := wallet.GetDecryptedBalanceAtTopoHeight(scid, -1, addr)
+					if err != nil {
+						logger.Error(err, "error during Sc balance", "scid", scid.String())
+					} else {
+						// TODO digits token standard
+						fmt.Fprintf(l.Stderr(), "SCID %s Balance: "+color_green+"%d"+color_white+"\n\n", scid, balance)
+					}
+				}
+			}
 			break
 
 		case 1: // scid balance
@@ -110,7 +121,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 			if err != nil {
 				logger.Error(err, "error during Sc balance", "scid", scid.String())
 			} else {
-				fmt.Fprintf(l.Stderr(), "SCID %s Balance    : "+color_green+"%s"+color_white+"\n\n", line_parts[0], globals.FormatMoney(balance))
+				fmt.Fprintf(l.Stderr(), "SCID %s Balance: "+color_green+"%s"+color_white+"\n\n", line_parts[0], globals.FormatMoney(balance))
 			}
 
 		case 2: // scid balance at topoheight
@@ -305,6 +316,15 @@ func handle_prompt_command(l *readline.Instance, line string) {
 		logger.Info("Menu mode enabled")
 	case "i8", "integrated_address": // user wants a random integrated address 8 bytes
 		a := wallet.GetRandomIAddress8()
+		if ConfirmYesNoDefaultNo(l, "Do you want to set a specific SCID ? (y/N)") {
+			scid, err := ReadSCID(l)
+			if err != nil {
+				logger.Error(err, "Error reading SCID")
+				break
+			}
+			a.Arguments = append(a.Arguments, rpc.Argument{Name: rpc.RPC_ASSET, DataType: rpc.DataHash, Value: scid})
+		}
+
 		fmt.Fprintf(l.Stderr(), "Wallet integrated address : "+color_green+"%s"+color_white+"\n", a.String())
 		fmt.Fprintf(l.Stderr(), "Embedded Arguments : "+color_green+"%s"+color_white+"\n", a.Arguments)
 
@@ -573,7 +593,6 @@ func ReadSCID(l *readline.Instance) (a crypto.Hash, err error) {
 			l.SetPrompt(fmt.Sprintf("%sEnter SCID: ", color))
 		} else {
 			l.SetPrompt(fmt.Sprintf("%sEnter SCID: ", color))
-
 		}
 
 		l.Refresh()
