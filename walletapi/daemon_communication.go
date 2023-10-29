@@ -505,7 +505,7 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 	
 	saOfflineOperations = append(saOfflineOperations, sOfflineOperations)
 
-	fmt.Printf("Response checks out.\n\n");
+	fmt.Printf("\nFound a valid response\n");
 	return
 }
 

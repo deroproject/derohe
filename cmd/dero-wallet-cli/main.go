@@ -565,7 +565,7 @@ func update_prompt(l *readline.Instance) {
 		if (bOffline==true) {
 			sFileRequest:="./offline_request"
 			if _, err := os.Stat(sFileRequest); err == nil {
-				fmt.Printf("\nIncoming sign request\n")
+				fmt.Printf("\nFound ./offline_request -- new decryption request\n")
 				
 		                baData, err := os.ReadFile(sFileRequest)
 		                if err!=nil {
@@ -607,7 +607,6 @@ func update_prompt(l *readline.Instance) {
 		                }
 		                
 		                sProtocolChecksum := saParts[4]		                
-				fmt.Printf("Evaluate the checksum %s\n",sProtocolChecksum);				
 				
 			        sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
 			        iCalculatedChecksum:=0x01;
@@ -669,7 +668,7 @@ func update_prompt(l *readline.Instance) {
 					err = fmt.Errorf("Error saving file. %s\n",err)
 					continue;
 				}
-				fmt.Printf("Saved signed result in ./offline_response\n")
+				fmt.Printf("Saved result in ./offline_response\n")
         	        }
 		}
 

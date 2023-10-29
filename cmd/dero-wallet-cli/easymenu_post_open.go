@@ -83,7 +83,7 @@ func display_easymenu_post_open_command(l *readline.Instance) {
 				io.WriteString(w, "\t\033[1m6\033[0m\tToken transfer to another wallet\n")
 			} else {
 				io.WriteString(w, "\t\033[1m5\033[0m\tPrepare (DERO) transaction (for the offline wallet to sign)\n")
-				io.WriteString(w, "\t\033[1m6\033[0m\tPrepare token transaction (for the offline wallet to sign)\n")		
+// Not yet implemented/tested	io.WriteString(w, "\t\033[1m6\033[0m\tPrepare token transaction (for the offline wallet to sign)\n")		
 			}
 			io.WriteString(w, "\n")
 		}
