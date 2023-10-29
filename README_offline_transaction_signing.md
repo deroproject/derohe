@@ -83,9 +83,8 @@ shortfalls:
    *  How do you spend the funds of an address in the offline wallet?
    
    The Dero command line (CLI) wallet overcomes these obstacles as follow:
-
-   Viewing the transaction history
-   -------------------------------
+   
+   <b>Viewing the transaction history</b><br>
    The Dero blockchain is encrypted. None of the transaction data is visible on
    the blockchain. You can't import an address into the online wallet and view
    the activity that occurred on that address. The secret key is required to 
@@ -106,13 +105,13 @@ shortfalls:
    the funds, like they would have if the wallet contained the secret (private)
    key as well.
    
-   Spend the funds 
-   ---------------
+   <b>Spend the funds</b><br>
    The online wallet can construct a transaction for its address. All the required 
    inputs are contained in this transaction. The transaction is stored in a data file.
-   The file must be copied to the offline machine. There the secret key authorises (signs) the transaction. The authorised transaction is copied back to the online wallet and submitted to the network for processing.
+   The file must be copied to the offline machine. There the secret key authorises (signs) the transaction.
+   The authorised transaction is copied back to the online wallet and submitted to the network for processing.
    
-6. Summary
+7. Summary
    Pirate's Treasure Chest wallet gives you access to these features today:
    * BIP39 master seed 
    * Split addresses between two wallets. The offline contains the private keys
@@ -133,88 +132,72 @@ shortfalls:
    At the moment only the cli (command line) wallet supports offline transaction signing.
 
    If you've downloaded the Linux CLI (command line interface) install archive, extract
-   it as follow:
-   $ tar -xvzf dero_linux_amd64.tar.gz
-   $ cd dero_linux_amd64
-   $ ls
-   derod-linux-amd64  dero-miner-linux-amd64  dero-wallet-cli-linux-amd64  explorer-linux-amd64  simulator-linux-amd64  Start.md
-   
+   it as follow:<br><i>
+   $ tar -xvzf dero_linux_amd64.tar.gz<br>
+   $ cd dero_linux_amd64<br>
+   $ ls<br>
+   derod-linux-amd64  dero-miner-linux-amd64  dero-wallet-cli-linux-amd64  explorer-linux-amd64  simulator-linux-amd64  Start.md<br>
+   </i><br>
    We'll use the dero-wallet-cli-* application
    
    To build from source, you'll need to Go language (golang) compiler on your machine
    to compile the software. On a Debian based Linux installation, you can install the
-   package as follow:
-   # apt-get update
-   # apt-get install golang:amd64
-   
-   If you want to check out a copy of the github source code:
-   $ git clone https://github.com/deroproject/derohe
-   $ cd derohe/cmd/dero-wallet-cli
-   $ go build
-  
+   package as follow:<br><i>
+   $ sudo apt-get update<br>
+   $ sudo apt-get install golang:amd64</i><br>
+      
+   If you want to check out a copy of the github source code:<br><i>
+   $ git clone https://github.com/deroproject/derohe<br>
+   $ cd derohe/cmd/dero-wallet-cli<br>
+   $ go build</i><br> 
    The new application is called: dero-wallet-cli
    
-3 Offline machine
-3.1 First run
-  From a terminal console, launch the application: ./dero-wallet-cli --help
-  We will use the following command line options:
-  --offline - Specify that this wallet is an offline (signing) wallet
-  
-  --wallet-file - The name of your wallet, i.e. offline.db
-  --password - The password with which to encypt the wallet. It needs to 
-               be a strong password, which can withstand a password attack,
-               but note, you'll have to enter this password regularly, so it
-               still needs to be something practical to work with.
-               
-  --generate-new-wallet - Let the wallet create a new mnemonic seed phrase and address
-  or
-  --restore-deterministic-wallet - You'll provide the mnemonic seed phrase
-  --electrum-seed - Here you'll provide the mnemonic phrase
+3 Offline machine<br>
+3.1 First run<br>
+   From a terminal console, launch the application: <i>./dero-wallet-cli --help</i><br>
+   We will use the following command line options:<br>
+   <i>--offline</i> - Specify that this wallet is an offline (signing) wallet<br>
+   <i>--wallet-file</i> - The name of your wallet, i.e. offline.db<br><br>
+   <i>--password</i> - The password with which to encypt the wallet. It needs to be a strong password, which can withstand a password attack, but note, you'll have to enter this password regularly, so it still needs to be something practical to work with.<br>
+   <i>--generate-new-wallet</i> - Let the wallet create a new mnemonic seed phrase and address<br>
+   or<br>
+   <i>--restore-deterministic-wallet</i> - You'll provide the mnemonic seed phrase<br>
+   <i>--electrum-seed</i> - Here you'll provide the mnemonic phrase<br>
+   An example will be:<br>
+   <i>$ ./dero-wallet-cli --offline --wallet-file=offline.db --password=someexamplepw --restore-deterministic-wallet --electrum-seed="your 25 seedphrase words here"</i><br>
+   After the wallet starts up the menu will provide you with a couple of options. At the top of the menu is a greeting to show you that it is running in offline mode:<br>
+&nbsp;&nbsp;&nbsp;Offline (signing) wallet:<br>
+&nbsp;&nbsp;&nbsp;1. Setup the online wallet with the exported public key<br>
+&nbsp;&nbsp;&nbsp;2. Generate a registration transaction for the online wallet<br>
+&nbsp;&nbsp;&nbsp;3. Sign spend transactions for the online wallet<br>
+   Select '0' to exit the wallet.<br>
+   Check to see if the wallet was saved to disk: <i>$ ls</i><br>
+   The output must contain your wallet file: offline.db<br>
+   
+3.2 Second run<br>
+   Now that the wallet is already created, you don't provide the restore & seed CLI options anymore:<br>
+   <i>$ ./dero-wallet-cli --offline --wallet-file=offline.db --password=someexamplepw</i><br>
+&nbsp;&nbsp;&nbsp;Menu options:<br>
+&nbsp;&nbsp;&nbsp;1 Display account Address -- Shows your account address. Share this with people so they can send Dero to you: Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3<br>
+&nbsp;&nbsp;&nbsp;2 Display seed -- This prints your mnemonic recovery seed. If somebody obtains this seed phrase, they can restore a wallet and spend all your funds.<br>
+&nbsp;&nbsp;&nbsp;3 Display Keys -- This normally contains the public and secret keys. While you're running in offline mode, an dditional entry is display: The 'view only' key. This key is used to set up the online (view only) wallet.<br>
+&nbsp;&nbsp;&nbsp;secret key: 1234567890abcdecbd05d9e1a7f52796da7bc2d931bd0034ee6facef8f46e9be<br>
+&nbsp;&nbsp;&nbsp;public key: 1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201<br>
+&nbsp;&nbsp;&nbsp;View only key - Import the complete text into the online (view only) wallet to set it up:<br>
+&nbsp;&nbsp;&nbsp;viewkey,dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201,1f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f9342290626bd4f1422affe88578e5fbdb825f1d4d6d60bd458402dc18c1614a2395b;20010<br>
+&nbsp;&nbsp;&nbsp;4 Generate registration transaction -- In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address.<br>
+Example output:<br>
+&nbsp;&nbsp;&nbsp;Generating registration transaction for wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3<br>
+&nbsp;&nbsp;&nbsp;Searched 100000 hashes<br>
+&nbsp;&nbsp;&nbsp;...<br>
+&nbsp;&nbsp;&nbsp;...<br>
+&nbsp;&nbsp;&nbsp;Searched 24600000 hashes<br>
+&nbsp;&nbsp;&nbsp;Found transaction:<br>
+&nbsp;&nbsp;&nbsp;Found the registration transaction. Import the complete text into the online (view only) wallet:<br>
+<br>  &nbsp;&nbsp;&nbsp;registration,dero1qy0eqpxjp6prmcr67j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,010000011f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f934201001822f65724584421db9e860e740250450b8192b3036a351c343274253636e21ad69f267b3a23e0f1d271ab17c143be2019710e682d4671258bb5dacd07e958,00000057d2f1c0fa1f00849f863fe296e4933c9ed18666587f7fe0f497c03993;24578<br>
 
-  An example will be:
-  $ ./dero-wallet-cli --offline --wallet-file=offline.db --password=someexamplepw --restore-deterministic-wallet --electrum-seed="your 25 seedphrase words here"
-  
-  After the wallet starts up the menu will provide you with a couple of options.
-  At the top of the menu is a greeting to show you that it is running in offline mode:
-    Offline (signing) wallet:
-    1. Setup the online wallet with the exported public key
-    2. Generate a registration transaction for the online wallet
-    3. Sign spend transactions for the online wallet
-  
-  Select '0' to exit the wallet.
-  Check to see if the wallet was saved to disk
-  $ ls
-  The output must contain your wallet file: offline.db
-  
-3.2 Second run 
-  Now that the wallet is already created, you don't provide the restore & seed CLI options anymore:
-  $ ./dero-wallet-cli --offline --wallet-file=offline.db --password=someexamplepw
-
-  Menu options:
-  1 Display account Address -- Shows your account address. Share this with people so they can pay you:
-    Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3
-  2 Display seed -- This prints your mnemonic recovery seed. If somebody obtains this seed phrase, they can restore a wallet and spend all your funds.
-  3 Display Keys -- This normally contains the public and secret keys. While you're running in offline mode, an additional entry is display: The 'view only' key. This key is used to set up the online (view only) wallet.
-  secret key: 1234567890abcdecbd05d9e1a7f52796da7bc2d931bd0034ee6facef8f46e9be
-  public key: 1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201
-  View only key - Import the complete text into the online (view only) wallet to set it up:
-  viewkey,dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201,1f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f9342290626bd4f1422affe88578e5fbdb825f1d4d6d60bd458402dc18c1614a2395b;20010
-  
-  4 Generate registration transaction -- In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address. 
-  
-  Example output:
-  Generating registration transaction for wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3
-  Searched 100000 hashes
-  ...
-  ...
-  Searched 24600000 hashes
-  Found transaction:
-  Found the registration transaction. Import the complete text into the online (view only) wallet:
-  registration,dero1qy0eqpxjp6prmcr67j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,010000011f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f934201001822f65724584421db9e860e740250450b8192b3036a351c343274253636e21ad69f267b3a23e0f1d271ab17c143be2019710e682d4671258bb5dacd07e958,00000057d2f1c0fa1f00849f863fe296e4933c9ed18666587f7fe0f497c03993;24578
-  
-
-4 Online machine
-4.1 First run
+4 Online machine<br>
+4.1 First run<br>
   From a terminal console, launch the application: ./dero-wallet-cli --help
   We will use the following command line options:
   --remote - Connect to a remote node. This is often called 'light weight mode', since you do 
