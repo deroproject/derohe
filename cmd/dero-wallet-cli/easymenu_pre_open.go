@@ -143,7 +143,13 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 			break
 		}
 
-		wallett, err = walletapi.Create_Encrypted_Wallet(filename, password, new(crypto.BNRed).SetBytes(seed_raw))
+		seed := new(crypto.BNRed).SetBytes(seed_raw)
+	        account,err2 := walletapi.Generate_Account_From_Seed ( seed )
+	        if err2 != nil {
+	                logger.Error(err, "Could not use the seed to create an account")
+		}
+		
+		wallett, err = walletapi.Create_Encrypted_Wallet(filename, password, account)
 		if err != nil {
 			logger.Error(err, "Error while recovering wallet using seed key")
 			break

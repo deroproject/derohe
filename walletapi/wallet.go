@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"encoding/hex"
 
 	"github.com/deroproject/derohe/cryptography/bn256"
 	"github.com/deroproject/derohe/cryptography/crypto"
@@ -183,6 +184,58 @@ func Generate_Account_From_Seed(Seed *crypto.BNRed) (user *Account, err error) {
 
 	return
 }
+
+func Generate_Account_From_ViewOnly_params(sPublicKey string, sPublicKeyG1 string, IsMainnet bool ) (user *Account, err error) {
+	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
+
+	user.mainnet=IsMainnet
+
+        //Secret:
+        var biSecret,ok = new(big.Int).SetString("0000000000000000000000000000000000000000000000000000000000000000",0)
+        if !ok {
+                err = fmt.Errorf("Cant assign secret")
+                return
+        }
+        user.Keys.Secret = crypto.GetBNRed(biSecret)
+
+        //Public:
+        //Initialise the structure:
+        user.Keys.Public = crypto.GPoint.ScalarMult( user.Keys.Secret )
+
+        //Apply the imported public key:
+        baData, err := hex.DecodeString( sPublicKeyG1 )
+        if err!=nil {
+		err = fmt.Errorf("Could not decode the hex input")
+		return
+	}
+        _, err = user.Keys.Public.G1().Unmarshal(baData)
+        if err!=nil {
+		err = fmt.Errorf("Could not process the public key")
+		return
+	}
+
+	sDerivedPublic := fmt.Sprintf("%x",user.Keys.Public)
+	if (sDerivedPublic != sPublicKey) {
+		err = fmt.Errorf("The derived public key (%s) doesn't match the provided public key (%s) from the input\n", sDerivedPublic, sPublicKey)
+		return
+	}
+
+        fmt.Printf("  Restored public key: %x\n", user.Keys.Public)
+	return
+}
+
+
+// Is this a 'view only' wallet?
+// Return true: view only wallet with only a public key
+//        false: full function wallet with public & private key
+func (w *Wallet_Memory) ViewOnly() bool {
+	if (len(w.account.Keys.Secret.String()) > 1) {
+		return false
+	} else {
+		return true
+	}
+}
+
 
 // convert key to seed using language
 func (w *Wallet_Memory) GetSeed() (str string) {

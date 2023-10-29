@@ -35,8 +35,8 @@ type Wallet_Disk struct {
 // when smart contracts are implemented, each will have it's own universe to track and maintain transactions
 
 // this file implements the encrypted data store at rest
-func Create_Encrypted_Wallet(filename string, password string, seed *crypto.BNRed) (wd *Wallet_Disk, err error) {
-
+// By providing the Account as input, both full and view-only wallet types are supported
+func Create_Encrypted_Wallet(filename string, password string, account *Account) (wd *Wallet_Disk, err error) {
 	if _, err = os.Stat(filename); err == nil {
 		err = fmt.Errorf("File '%s' already exists", filename)
 		return
@@ -50,7 +50,7 @@ func Create_Encrypted_Wallet(filename string, password string, seed *crypto.BNRe
 	wd = &Wallet_Disk{filename: filename}
 
 	// generate account keys
-	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, seed); err != nil {
+	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account); err != nil {
 		return nil, err
 	}
 	wd.Wallet_Memory.wallet_disk = wd
@@ -66,7 +66,13 @@ func Create_Encrypted_Wallet_From_Recovery_Words(filename string, password strin
 	if err != nil {
 		return
 	}
-	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, crypto.GetBNRed(seed)); err != nil {
+
+	account,err2 := Generate_Account_From_Seed (crypto.GetBNRed(seed))
+	if err2 != nil {
+		return
+	}
+	
+	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account); err != nil {
 		return nil, err
 	}
 
@@ -78,9 +84,16 @@ func Create_Encrypted_Wallet_From_Recovery_Words(filename string, password strin
 // create an encrypted wallet using using random data
 func Create_Encrypted_Wallet_Random(filename string, password string) (wd *Wallet_Disk, err error) {
 	wd = &Wallet_Disk{filename: filename}
-	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, crypto.RandomScalarBNRed()); err == nil {
+
+	account,err2 := Generate_Account_From_Seed ( crypto.RandomScalarBNRed() )
+        if err2 != nil {
+                return
+        }
+
+	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account ); err == nil {	
 		return wd, nil
 	}
+	
 	wd.Wallet_Memory.wallet_disk = wd
 
 	return nil, err

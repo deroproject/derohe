@@ -26,8 +26,11 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
+	"strconv"
+	"encoding/hex"
+	
 	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/cryptography/bn256"	
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/rpc"
@@ -39,28 +42,60 @@ import (
 // handle menu if a wallet is currently opened
 func display_easymenu_post_open_command(l *readline.Instance) {
 	w := l.Stderr()
+	
+	bViewOnly := wallet.ViewOnly()
+	bOffline := globals.Arguments["--offline"].(bool)
+	
+        if (bViewOnly==true) {
+                io.WriteString(w, "Online (view only) wallet:\n");
+		io.WriteString(w, " 1. Register you account, using registration transaction from the offline (signing) wallet.\n")
+                io.WriteString(w, " 2. View your account balance & transaction history\n")
+                io.WriteString(w, " 3. Generate transactions for the offline wallet to sign.\n")
+                io.WriteString(w, " 4. Submit the signed transactions to the network.\n\n")
+        }
+        if (bOffline==true) {
+        	io.WriteString(w, "Offline (signing) wallet:\n")
+        	io.WriteString(w, " 1. Setup the online wallet with the exported public key\n")
+        	io.WriteString(w, " 2. Generate a registration transaction for the online wallet\n");
+        	io.WriteString(w, " 3. Sign spend transactions for the online wallet\n");
+        }
+
+	
 	io.WriteString(w, "Menu:\n")
 
 	io.WriteString(w, "\t\033[1m1\033[0m\tDisplay account Address \n")
-	io.WriteString(w, "\t\033[1m2\033[0m\tDisplay Seed "+color_red+"(Please save seed in safe location)\n\033[0m")
+	if ( bViewOnly==false ) {
+		io.WriteString(w, "\t\033[1m2\033[0m\tDisplay Seed "+color_red+"(Please save seed in safe location)\n\033[0m")
+	}
 
 	io.WriteString(w, "\t\033[1m3\033[0m\tDisplay Keys (hex)\n")
 
-	if !wallet.IsRegistered() {
-		io.WriteString(w, "\t\033[1m4\033[0m\tAccount registration to blockchain (registration has no fee requirement and is precondition to use the account)\n")
-		io.WriteString(w, "\n")
-		io.WriteString(w, "\n")
-	} else { // hide some commands, if view only wallet
-		io.WriteString(w, "\t\033[1m4\033[0m\tDisplay wallet pool\n")
-		io.WriteString(w, "\t\033[1m5\033[0m\tTransfer (send  DERO) to Another Wallet\n")
-		io.WriteString(w, "\t\033[1m6\033[0m\tToken transfer to another wallet\n")
-		io.WriteString(w, "\n")
+	if (bOffline==true) {
+		io.WriteString(w, "\t\033[1m4\033[0m\tGenerate registration transaction for the online (view only) wallet\n")	
+		io.WriteString(w, "\t\033[1m5\033[0m\tSign (DERO) transaction, prepared by the online (view only) wallet\n")
+	} else {
+		if !wallet.IsRegistered() {
+			io.WriteString(w, "\t\033[1m4\033[0m\tAccount registration to blockchain (registration has no fee requirement and is precondition to use the account)\n")			
+		} else {
+			io.WriteString(w, "\t\033[1m4\033[0m\tDisplay wallet pool\n")
+			if ( bViewOnly==false ) {
+				io.WriteString(w, "\t\033[1m5\033[0m\tTransfer (send  DERO) to Another Wallet\n")
+				io.WriteString(w, "\t\033[1m6\033[0m\tToken transfer to another wallet\n")
+			} else {
+				io.WriteString(w, "\t\033[1m5\033[0m\tPrepare (DERO) transaction (for the offline wallet to sign)\n")
+				io.WriteString(w, "\t\033[1m6\033[0m\tPrepare token transaction (for the offline wallet to sign)\n")		
+			}
+			io.WriteString(w, "\n")
+		}
 	}
 
 	io.WriteString(w, "\t\033[1m7\033[0m\tChange wallet password\n")
 	io.WriteString(w, "\t\033[1m8\033[0m\tClose Wallet\n")
-	if wallet.IsRegistered() {
-		io.WriteString(w, "\t\033[1m12\033[0m\tTransfer all balance (send  DERO) To Another Wallet\n")
+	if wallet.IsRegistered() && (bOffline==false) {
+		// Commands applicable only to online wallets
+		if (bViewOnly==false) {
+			io.WriteString(w, "\t\033[1m12\033[0m\tTransfer all balance (send  DERO) To Another Wallet\n")
+		}
 		io.WriteString(w, "\t\033[1m13\033[0m\tShow transaction history\n")
 		io.WriteString(w, "\t\033[1m14\033[0m\tRescan transaction history\n")
 		io.WriteString(w, "\t\033[1m15\033[0m\tExport all transaction history in json format\n")
@@ -95,19 +130,30 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 	case "1":
 		fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+"\n", wallet.GetAddress())
 
-		if !wallet.IsRegistered() {
-			reg_tx := wallet.GetRegistrationTX()
-			fmt.Fprintf(l.Stderr(), "Registration TX : "+color_green+"%x"+color_white+"\n", reg_tx.Serialize())
+		if !wallet.IsRegistered() && globals.Arguments["--offline"].(bool)==false {
+			// The registration transaction to 'remote' requires some POW: First 3 bytes must be 0. 
+			// The view only wallet doesn't generate its own registratio transaction
+			if (globals.Arguments["--remote"]==true) || (wallet.ViewOnly()==true)  {			
+				fmt.Fprintf(l.Stderr(), "Register your account in order to synchronise with the network\n");
+			} else {
+				reg_tx := wallet.GetRegistrationTX()
+				fmt.Fprintf(l.Stderr(), "Registration TX : "+color_green+"%x"+color_white+"\n", reg_tx.Serialize())
+			}
+			
 		}
 		PressAnyKey(l, wallet)
 
 	case "2": // give user his seed
-		if !ValidateCurrentPassword(l, wallet) {
-			logger.Error(fmt.Errorf("Invalid password"), "")
-			PressAnyKey(l, wallet)
-			break
+	        if (wallet.ViewOnly() == false) {
+			if !ValidateCurrentPassword(l, wallet) {
+				logger.Error(fmt.Errorf("Invalid password"), "")
+				PressAnyKey(l, wallet)
+				break
+			}
+			display_seed(l, wallet) // seed should be given only to authenticated users
+		} else {
+			fmt.Printf("This is a view only wallet. It doens't contain the seed phrase\n")
 		}
-		display_seed(l, wallet) // seed should be given only to authenticated users
 		PressAnyKey(l, wallet)
 
 	case "3": // give user his keys in hex form
@@ -122,52 +168,194 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 		PressAnyKey(l, wallet)
 
 	case "4": // Registration
-
-		if !wallet.IsRegistered() {
-
-			// at this point we must send the registration transaction
-			fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered. Please wait till the account is registered.", wallet.GetAddress())
-			fmt.Fprintf(l.Stderr(), "This is a pre-condition POW for using the online chain.")
-			fmt.Fprintf(l.Stderr(), "This will take a couple of minutes. Please wait....\n")
-
+		// If the wallet is performing the 'offline' (sign) role, the transaction must be printed in a data format
+		// which can be imported in the ViewOnly 'online' wallet.
+		var IsOffline = globals.Arguments["--offline"].(bool)
+		
+		if (!wallet.IsRegistered()) || (IsOffline==true) {
 			var reg_tx *transaction.Transaction
+			
+			if (wallet.ViewOnly()==true) {
+				// Format: [0] - preamble: registration			
+				//         [1] Address
+				//         [2] Registration address
+				//         [3] Hash of the registartion address
+				//         [4] Checksum of the string
+				
+				//The view only online wallet received the registration transaction from the offline wallet.
+				sRegistration := read_line_with_prompt(l, fmt.Sprintf("Enter the registration transaction (obtained from the offline (signing) wallet): "))
+				
+				//Strip off any newlines or extra spaces
+				sTmp := strings.ReplaceAll(sRegistration,"\n","")
+				sRegistration = strings.ReplaceAll(sTmp," ","");
+				
+				//Split string on ';'
+				saParts := strings.Split(sRegistration,";")
+				if (len(saParts) != 2) {
+					fmt.Fprintf(l.Stderr(), "Invalid number of parts. Expected 2, found %d\n\n", len(saParts))
+					break;
+				}
+				
+				sTransaction := saParts[0]
+				sProtocolChecksum := saParts[1]
+				iProtocolChecksum,err := strconv.Atoi(sProtocolChecksum)
+				if err!=nil {
+					fmt.Fprintf(l.Stderr(), "Could not convert the checksum back to an integer\n\n")
+					break
+				}
+								
+				//Regenerate checksum:
+                                var iCalculatedChecksum=0
+                                for t := range sTransaction {
+                                        iCalculatedChecksum = iCalculatedChecksum + (int)(sTransaction[t])
+                                }
+                                
+                                // Check 1: Checksum
+                                if (iProtocolChecksum != iCalculatedChecksum) {
+                                	fmt.Fprintf(l.Stderr(), "Checksum calculation failed. Please check if you've imported the transaction correctly\n\n");
+                                	break
+				}				
+				
+				saParts = strings.Split(sTransaction,",")
+				if (len(saParts) != 4) {
+					fmt.Fprintf(l.Stderr(), "Invalid number of parts. Expected 4, found %d\n\n", len(saParts))
+					break
+				}
+				
+				if (saParts[0]!="registration") {
+					fmt.Fprintf(l.Stderr(), "Input doesn't start with 'registration'\n\n")
+					break;			
+				}
+				
+				//Check 2: Is this transaction for our address?
+				sAddress := wallet.GetAddress().String()
+				if (sAddress != saParts[1]) {
+					fmt.Fprintf(l.Stderr(), "Mismatch: Our address is %s, the registration transaction contains a different address:%s\n", sAddress, saParts[1])
+					break
+				}
+				
+				
+				baRegistrationTx, err1 := hex.DecodeString(saParts[2])
+				if err1 != nil {
+				  fmt.Fprintf(l.Stderr(), "Could not convert the transaction back to binary data.\n\n")
+				  break
+				}
+				baHash, err1 := hex.DecodeString(saParts[3])
+				if err1 != nil {
+				  fmt.Fprintf(l.Stderr(), "Could not convert the hash back to binary data.\n\n")
+				  break
+				}
+				if (baHash[0]!=0 || baHash[1]!=0 || baHash[2]!=0) {
+				  fmt.Fprintf(l.Stderr(), "For a valid registration transaction the first 3 bytes must be 0\n\n")
+				  break
+				}
 
-			successful_regs := make(chan *transaction.Transaction)
-
-			counter := 0
-
-			for i := 0; i < runtime.GOMAXPROCS(0); i++ {
-				go func() {
-
-					for counter == 0 {
-
-						lreg_tx := wallet.GetRegistrationTX()
-						hash := lreg_tx.GetHash()
-
-						if hash[0] == 0 && hash[1] == 0 && hash[2] == 0 {
-							successful_regs <- lreg_tx
-							counter++
-							break
-						}
-					}
-				}()
-			}
-
-			reg_tx = <-successful_regs
-
-			fmt.Fprintf(l.Stderr(), "Registration TXID %s\n", reg_tx.GetHash())
-			err := wallet.SendTransaction(reg_tx)
-			if err != nil {
-				fmt.Fprintf(l.Stderr(), "sending registration tx err %s\n", err)
+				var tx2 transaction.Transaction
+				tx2.Deserialize( baRegistrationTx )
+				
+				//var hash2 string
+				calculated_hash := fmt.Sprintf("%s", tx2.GetHash())
+				PublicKey2 := fmt.Sprintf("%x", tx2.MinerAddress )
+				
+				keys := wallet.Get_Keys()
+				PublicKey  := fmt.Sprintf("%s", keys.Public.StringHex())
+				
+				// Check 3
+				if (calculated_hash != saParts[3]) {
+					fmt.Fprintf(l.Stderr(), "Mismatch: the calculated hash (of the registration transaction) and the hash provided in the input differs\n\n")
+					break
+				}
+				
+				// Check 4
+				if (PublicKey != PublicKey2) {
+					fmt.Fprintf(l.Stderr(), "Mismatch: the registration transaction is for public key: %s, but our public key is %s\n\n", PublicKey2, PublicKey)
+					break
+				}	
+				
+				//At this point the address & public key in the transaction matchs our online wallet values.
+				reg_tx = & tx2
 			} else {
-				fmt.Fprintf(l.Stderr(), "registration tx dispatched successfully\n")
+				// The offline wallet generates the registration and provide the transaction text to be used 
+				// by the online wallet to complete the registration.
+				// The full function wallet (view+sign) generates the registration transaction and submits it
+				// directy to the network to complete the registration
+				if IsOffline==true {
+					fmt.Fprintf(l.Stderr(), "Generating registration transaction for wallet address : "+color_green+"%s"+color_white+"\n", wallet.GetAddress())
+				} else {
+					fmt.Fprintf(l.Stderr(), "Wallet address : "+color_green+"%s"+color_white+" is going to be registered. Please wait till the account is registered. ", wallet.GetAddress())
+				}
+				fmt.Fprintf(l.Stderr(), "This is a pre-condition POW for using the online chain. ")
+				fmt.Fprintf(l.Stderr(), "This will take a couple of minutes. A match is usually found between 2-5 million hashes. Please wait....\n")
+
+
+				successful_regs := make(chan *transaction.Transaction)
+
+				counter := 0
+				counter2 := 0
+
+				for i := 0; i < runtime.GOMAXPROCS(0); i++ {
+					go func() {
+						for counter == 0 {
+
+							lreg_tx := wallet.GetRegistrationTX()
+							hash := lreg_tx.GetHash()
+
+							if hash[0] == 0 && hash[1] == 0 && hash[2] == 0 {
+								fmt.Printf("Found transaction:\n");
+								successful_regs <- lreg_tx
+								counter++
+								break
+							} else {
+								counter2++
+								if ((counter2 % 100000) == 0) {
+									//Match usually found round about 2 million mark
+									fmt.Printf("Searched %d hashes\n",counter2)
+									
+									//FIxIT quick search
+//									successful_regs <- lreg_tx
+//									counter++
+//									break;
+								}
+							}
+						}
+					}()
+				}
+
+				reg_tx = <-successful_regs
 			}
 
-		} else {
-
+			if (IsOffline==true) {
+				// Offline wallet prints the prepared transaction, to be used in the online wallet
+				fmt.Printf("Found the registration transaction. Import the complete text into the online (view only) wallet:\n");
+				sTransaction := fmt.Sprintf("registration,%s,%x,%s",wallet.GetAddress().String(), reg_tx.Serialize(), reg_tx.GetHash())
+				
+				//Append a simple checksum to the string to detect copy/paste errors
+				//during import into the online wallet:
+				var iChecksum=0
+				for t := range sTransaction {
+					iChecksum = iChecksum + (int)(sTransaction[t])
+				}
+				
+				fmt.Printf("%s;%d\n\n",sTransaction, iChecksum)
+				
+			} else {
+				// View only online wallet & full feature wallet submits the transaction to the network
+				fmt.Fprintf(l.Stderr(), "Registration TXID %s\n", reg_tx.GetHash())
+				err := wallet.SendTransaction(reg_tx)
+				if err != nil {
+					fmt.Fprintf(l.Stderr(), "sending registration tx err %s\n\n", err)
+				} else {
+					fmt.Fprintf(l.Stderr(), "registration tx dispatched successfully\n\n")
+				}
+			}
 		}
 
 	case "6":
+		if globals.Arguments["--offline"].(bool) {
+			//Offline wallet can´t send tokens
+			break;
+		}
+	
 		if !valid_registration_or_display_error(l, wallet) {
 			break
 		}
@@ -213,7 +401,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			break // invalid amount provided, bail out
 		}
 
-		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
+		if ConfirmYesNoDefaultNo(l, color_white+"Confirm Transaction (y/N)") {
 			tx, err := wallet.TransferPayload0([]rpc.Transfer{{SCID: scid, Amount: amount_to_transfer, Destination: a.String()}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
@@ -228,6 +416,354 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 		}
 
 	case "5":
+		if globals.Arguments["--offline"].(bool) {
+			// Offline wallet: Sign transaction
+			if !ValidateCurrentPassword(l, wallet) {
+				logger.Error(fmt.Errorf("Invalid password"), "")
+				break
+			}			
+
+			_ = os.Remove("./signed")
+
+			baData, err := os.ReadFile("./transaction")
+			if err!=nil {
+				fmt.Printf("Cant read from the transaction file: ./transaction\n\n");
+				break;
+			}
+			fmt.Printf("Read %d bytes from ./transaction\n",len(baData))
+			sTransaction := string(baData[:])
+			
+			_ = os.Remove("./transaction")
+	    
+			
+			//Parameter   [0]: header: sign_offline
+			//            [1]: Project - 'dero'
+			//            [2]: Version - Layout of the command fields
+			// Version 1: [3] Array of transfers (outputs)
+			//            [4] Array of ring balances
+			//            [5] Array of rings
+			//            [6] block_hash
+			//            [7] height
+			//            [8] Array of scdata
+			//            [9] treehash
+			//            [10] max_bits
+			//            [11] gasstorage
+			//            [12] Checksum of all the characters in the command.
+			saParts := strings.Split(sTransaction," ")
+			if (len(saParts)!=13) {
+				fmt.Printf("Invalid number of parts in the transaction. Found %d, expected 13\n", len(saParts))
+				break;
+			}
+			
+			if (saParts[0] != "sign_offline") {
+				fmt.Printf("Transaction doesn't start with 'sign_offline'\n")
+				break;
+			}
+			if  (saParts[1] != "dero") {
+				fmt.Printf("Expected a Dero transaction, Found %s\n",saParts[1]);
+				break;
+			}
+
+			if (saParts[2] != "1") {
+				fmt.Printf("Only transaction version 1 supported. Found %s\n",saParts[2])
+				break;
+			}
+                
+                	sChecksumInput:="dero 1 ";
+			//---------------------------------------------------------------------------------------------------------------------         
+			var transfers []rpc.Transfer
+			
+			sTmp := strings.ReplaceAll(saParts[3],"'","")
+			sTmp1:= strings.ReplaceAll(sTmp, "[","")                
+			sTmp  = strings.ReplaceAll(sTmp1,"]","")
+
+			saTransfers := strings.SplitAfter(sTmp, "}")
+			//fmt.Printf("transfers:%d\n",len(saTransfers)-1);
+			sChecksumInput+="transfers:";
+			for t:=range saTransfers {
+				if len(saTransfers[t])>0 {
+					var transfer rpc.Transfer
+				
+					sTmp1 = strings.ReplaceAll(saTransfers[t], ",{","")             
+					sTmp  = strings.ReplaceAll(sTmp1, "{","")                                               
+					sTransfer := strings.ReplaceAll(sTmp,"}","")
+					
+					saParts := strings.Split(sTransfer,",")
+					if (len(saParts)!=5) {
+						fmt.Printf("Parse error. Invalid number of parts in transfers. Expected 5, found %d\n", len(saParts));
+						break;
+					}
+					
+					sTmp:=strings.ReplaceAll(saParts[0],"\"","")
+					saItemValue:=strings.Split(sTmp,":")
+					if (saItemValue[0]!="SCID") {
+						fmt.Printf("Parse error. Could not find SCID in transfers\n");
+						break;
+					}
+					err = transfer.SCID.UnmarshalText([]byte(string(saItemValue[1])))
+					if err != nil {
+						fmt.Printf("Parse error. Could not assign SCID to transfers\n");
+						break;
+					}
+		                        sChecksumInput+=" \""+saItemValue[1]+"\""
+					
+					
+					sTmp=strings.ReplaceAll(saParts[1],"\"","")
+					saItemValue=strings.Split(sTmp,":")
+					if (saItemValue[0]!="Destination") {
+						fmt.Printf("Parse error. Could not find destination in transfers\n");
+						break;
+					}
+					transfer.Destination = saItemValue[1]					
+					sChecksumInput+=" \""+saItemValue[1]+"\""
+					
+					sTmp=strings.ReplaceAll(saParts[2],"\"","")
+					saItemValue=strings.Split(sTmp,":")
+					if (saItemValue[0]!="Amount") {
+						fmt.Printf("Parse error. Could not find amount in transfers\n");
+						break;
+					}
+					transfer.Amount, err = strconv.ParseUint(saItemValue[1],10,64)					
+					sChecksumInput+=" "+saItemValue[1]
+						
+					sTmp=strings.ReplaceAll(saParts[3],"\"","")
+					saItemValue=strings.Split(sTmp,":")
+					if (saItemValue[0]!="Burn") {
+						fmt.Printf("Parse error. Could not find burn in transfers\n");
+						break;
+					}
+					transfer.Burn, err = strconv.ParseUint(saItemValue[1],10,64)					
+					sChecksumInput+=" "+saItemValue[1]
+					
+					sTmp=strings.ReplaceAll(saParts[4],"\"","")
+					saItemValue=strings.Split(sTmp,":")
+					if (saItemValue[0]!="RPC") {
+						fmt.Printf("Parse error. Could not find rpc in transfers\n");
+						break;
+					}
+					hexRPC, err2 := hex.DecodeString(saItemValue[1])
+					if err2 != nil {
+						fmt.Printf("Parse error. Could not hex decode the rpc field of the transfers\n");
+						break;
+					} 
+					err2 = transfer.Payload_RPC.UnmarshalBinary(hexRPC)
+					if err2 != nil {
+						fmt.Printf("Parse error. Could not assign the rpc field of the transfers\n");
+						break;                          
+					}
+					sChecksumInput+=" \""+saItemValue[1]+"\""
+					
+					transfers = append(transfers, transfer)
+				}
+			}
+
+			//---------------------------------------------------------------------------------------------------------------------         
+			var rings_balances [][][]byte //initialize all maps
+
+			sTmp  = strings.ReplaceAll(saParts[4],"'","")
+			sTmp1 = strings.ReplaceAll(sTmp, "[","")                
+			sTmp  = strings.ReplaceAll(sTmp1,"]","")
+
+			saRingBalances := strings.SplitAfter(sTmp, "}")
+			//fmt.Printf(":%d\n",len(saRingBalances)-1);              
+
+			sChecksumInput+=" rings_balances:"
+			for t:=range saRingBalances {
+				if len(saRingBalances[t])>0 {
+					var ring_balances  [][]byte
+				
+					sTmp1 = strings.ReplaceAll(saRingBalances[t], ",{","")          
+					sTmp  = strings.ReplaceAll(sTmp1, "{","")
+					sRingBalance := strings.ReplaceAll(sTmp,"}","")
+					
+					saRingBalances:=strings.Split(sRingBalance,",")
+					if ( len(saRingBalances)<16) {
+						fmt.Printf("Expected at least 16 ring balances. Found %d\n", len(saRingBalances))
+						break;
+					}
+					
+					for t := range saRingBalances {
+					      baData,_ := hex.DecodeString( saRingBalances[t] )
+					      ring_balances = append(ring_balances,baData)
+					      
+					      sChecksumInput+=" "+saRingBalances[t]
+					}
+					rings_balances = append(rings_balances, ring_balances)
+				}
+			}
+			/*			
+			fmt.Printf("rings_balances:{%d} entries\n",len(rings_balances))
+			var counter1=0
+			var counter2=0
+			for t := range rings_balances {         
+			    fmt.Printf("rings_balances{%d}:{%d} entries\n",counter1,len(rings_balances[t]))
+			    counter2=0
+			    for u := range rings_balances[t] {
+			      fmt.Printf("  ring balance[%d]=\"%x\"\n",counter2,rings_balances[t][u])
+			      counter2++
+			    }
+			    counter1++
+			} 
+			*/			
+			//---------------------------------------------------------------------------------------------------------------------
+			var rings [][]*bn256.G1
+			sChecksumInput+=" rings:";
+
+			sTmp  = strings.ReplaceAll(saParts[5],"'","")
+			sTmp1 = strings.ReplaceAll(sTmp, "[","")                
+			sTmp  = strings.ReplaceAll(sTmp1,"]","")
+
+			saRings := strings.SplitAfter(sTmp, "}")
+			//fmt.Printf("Rings:%d\n",len(saRings)-1);                
+
+			for t:=range saRings {
+				if len(saRings[t])>0 {
+					var ring []*bn256.G1
+					var oG1    *bn256.G1                    
+				
+					sTmp1 = strings.ReplaceAll(saRings[t], ",{","")         
+					sTmp  = strings.ReplaceAll(sTmp1, "{","")
+					sRing := strings.ReplaceAll(sTmp,"}","")
+					
+					saRing:=strings.Split(sRing,",")
+					//fmt.Printf("saRing=%d\n",len(saRing))
+					if ( len(saRing)<16) {
+						fmt.Printf("Expected at least 16 rings. Found %d\n\n", len(saRing))
+						break
+					}
+					
+					for t := range saRing {
+					    //fmt.Printf("Processing: '%s'\n", saRing[t])
+					    baData,err := hex.DecodeString( saRing[t] )
+					    if err!=nil {
+						fmt.Printf("Could not decode ring entry: %s\n\n", saRing[t])
+						break
+					    }           
+					    oG1 = new(bn256.G1);                                      
+					    _,err = oG1.Unmarshal(baData);      
+					    if err != nil { 
+						fmt.Printf("Could not assign ring data\n\n");
+						break
+					    }; 
+					    ring = append(ring,oG1)
+					    
+					    sChecksumInput+=" "+saRing[t]
+					}
+					rings = append(rings, ring)
+				}
+			}
+			/*			
+			fmt.Printf("rings:{%d} entries\n",len(rings))
+			counter1=0
+			counter2=0
+			for t := range rings {
+				fmt.Printf("ring{%d}:{%d} entries\n",counter1,len(rings[t]))
+				counter2=0
+				for u := range rings[t] {
+					fmt.Printf("  ring[%d]=\"%x\"\n",counter2,rings[t][u].Marshal() )
+					counter2++
+				}
+				counter1++
+			}       
+			*/			
+			//---------------------------------------------------------------------------------------------------------------------
+			//[6] block_hash
+			sTmp  = strings.ReplaceAll(saParts[6],"\"","")
+			block_hash := crypto.HashHexToHash(sTmp)
+	                sChecksumInput+=" "+saParts[6]
+			
+			//[7] height
+			var height uint64
+			height, err = strconv.ParseUint(saParts[7],10,64)
+			if err!=nil {
+				fmt.Printf("Parse error. Could not assign height to transfers\n\n");
+			}
+	                sChecksumInput+=" "+saParts[7]
+			
+			//[8] Array of scdata
+			var scdata rpc.Arguments
+			sTmp  = strings.ReplaceAll(saParts[8],"'","")
+			sTmp1 = strings.ReplaceAll(sTmp, "[","")                
+			sTmp  = strings.ReplaceAll(sTmp1,"]","")			
+			if (len(sTmp) > 0) {
+				hexSCData, err2 := hex.DecodeString(sTmp)
+				if err2!=nil {
+					fmt.Printf("Parse error. Could not decode the SCData\n\n");
+					break;
+				}                       
+				if (len(hexSCData)>0) {
+				      err = scdata.UnmarshalBinary(hexSCData)
+				      if err!=nil {
+					fmt.Printf("Parse error. Could not decode the SCData\n\n");
+					break;
+				      }
+				}       
+			}
+	                sChecksumInput+=" "+saParts[8]
+			
+			//[9] treehash
+			sTmp  = strings.ReplaceAll(saParts[9],"\"","")
+			treehash_raw, err := hex.DecodeString(sTmp)
+			if err != nil {
+				fmt.Printf("Parse error. Could not decode treehash_raw\n\n")
+				break;
+			}
+	                sChecksumInput+=" "+saParts[9]
+			
+			//[10] max_bits
+			var max_bits int
+			max_bits, err = strconv.Atoi(saParts[10])
+	                sChecksumInput+=" "+saParts[10]
+			
+			//[11] gasstorage
+			var gasstorage uint64
+			gasstorage, err = strconv.ParseUint(saParts[11],10,64)
+	                sChecksumInput+=" "+saParts[11]
+			
+			//[12] Checksum
+			var iProtocolChecksum int
+			iProtocolChecksum, err = strconv.Atoi(saParts[12])
+
+	                iCalculatedChecksum:=0x01;
+        	        for t := range sChecksumInput {
+                	        iVal := int(sChecksumInput[t])
+	                        iCalculatedChecksum = iCalculatedChecksum + iVal;
+        	        }
+        	        
+			if (iCalculatedChecksum != iProtocolChecksum) {
+				fmt.Printf("The checksum for the transaction data is invalid. Please provide the transaction again.\n\n")
+				break
+			}
+			
+			tx := wallet.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage)
+			if tx == nil {
+				fmt.Printf("somehow the tx could not be built, please retry\n\n")
+				break
+			}
+			
+			sTxSerialized := tx.Serialize()
+			sOutput := fmt.Sprintf("signed dero 1 %x",sTxSerialized)
+			
+			iCalculatedChecksum=0x01;
+        	        for t := range sOutput {
+                	        iVal := int(sOutput[t])
+	                        iCalculatedChecksum = iCalculatedChecksum + iVal;
+        	        }
+        	        sChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
+        	        sOutput+=" "+sChecksum	
+			
+			baData = []byte( sOutput )
+			err = os.WriteFile("./signed", baData, 0666)
+			if err!=nil {
+			    fmt.Printf("Error saving file to ./signed: %s\n",err)
+			    break
+			}			
+			fmt.Printf("Saved signed transaction to ./signed. Return it to the online (view only) wallet to complete the transaction.\n\n")
+			break;
+		}
+
+
+		
 		if !valid_registration_or_display_error(l, wallet) {
 			break
 		}
@@ -293,28 +829,28 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
-						return
+						break
 					}
 				case rpc.DataInt64:
 					if v, err := ReadInt64(l, arg.Name, arg.Value.(int64)); err == nil {
 						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
-						return
+						break
 					}
 				case rpc.DataUint64:
 					if v, err := ReadUint64(l, arg.Name, arg.Value.(uint64)); err == nil {
 						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
-						return
+						break
 					}
 				case rpc.DataFloat64:
 					if v, err := ReadFloat64(l, arg.Name, arg.Value.(float64)); err == nil {
 						arguments = append(arguments, rpc.Argument{Name: arg.Name, DataType: arg.DataType, Value: v})
 					} else {
 						logger.Error(fmt.Errorf("%s could not be parsed (type %s),", arg.Name, arg.DataType), "")
-						return
+						break
 					}
 				case rpc.DataTime:
 					logger.Error(fmt.Errorf("time argument is currently not supported."), "")
@@ -359,23 +895,23 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				arguments = append(arguments, rpc.Argument{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: v})
 			} else {
 				logger.Error(err, fmt.Sprintf("%s could not be parsed (type %s),", "Number", rpc.DataUint64))
-				return
+				break
 			}
 
 			if v, err := ReadString(l, "Comment", ""); err == nil {
 				arguments = append(arguments, rpc.Argument{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: v})
 			} else {
 				logger.Error(fmt.Errorf("%s could not be parsed (type %s),", "Comment", rpc.DataString), "")
-				return
+				break
 			}
 		}
 
 		if _, err := arguments.CheckPack(transaction.PAYLOAD0_LIMIT); err != nil {
 			logger.Error(err, "Arguments packing err")
-			return
+			break
 		}
 
-		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
+		if ConfirmYesNoDefaultNo(l, color_white+"Confirm Transaction (y/N)") {
 
 			//src_port := uint64(0xffffffffffffffff)
 
@@ -418,7 +954,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				globals.Logger.Infof("Payment ID is integrated in address ID:%x", a.PaymentID)
 			}
 
-			if ConfirmYesNoDefaultNo(l, "Confirm Transaction to send entire balance (y/N)") {
+			if ConfirmYesNoDefaultNo(l, color_white+"Confirm Transaction to send entire balance (y/N)") {
 
 				addr_list := []address.Address{*a}
 				amount_list := []uint64{0} // transfer 50 dero, 2 dero

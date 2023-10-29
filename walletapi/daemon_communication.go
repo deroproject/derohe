@@ -23,7 +23,7 @@ package walletapi
  * *
  */
 //import "io"
-//import "os"
+import "os"
 import (
 	"bytes"
 	"context"
@@ -34,7 +34,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	
 	"github.com/creachadair/jrpc2"
 	"github.com/deroproject/derohe/block"
 	"github.com/deroproject/derohe/config"
@@ -246,7 +246,6 @@ func IsDaemonOnline() bool {
 // sync the wallet with daemon, this is instantaneous and can be done with a single call
 // we have now the apis to avoid polling
 func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash) (err error) {
-
 	if !IsDaemonOnline() {
 		daemon_height = 0
 		daemon_topoheight = 0
@@ -261,7 +260,7 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash
 			//fmt.Printf("data '%s' previous '%s' scid %s\n", w.account.Balance_Result[scid].Data, previous, scid)
 			if w.getEncryptedBalanceresult(scid).Data != previous {
 				b := w.DecodeEncryptedBalanceNow(e) // try to decode balance
-
+				
 				if scid.IsZero() {
 					w.account.Balance_Mature = b
 				}
@@ -339,12 +338,197 @@ func (w *Wallet_Memory) SendTransaction(tx *transaction.Transaction) (err error)
 	return
 }
 
+
+
+type OfflineOperations_t struct {
+    iType   int
+    baRequest []byte
+    baResult  []byte
+}
+var saOfflineOperations []OfflineOperations_t
+
+func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) (result []byte, err error) {
+	if (w.ViewOnly()==false) {
+		err = fmt.Errorf("OfflineOperationWithSecretKey() should only be used by view only wallets\n")
+		return
+	}
+	//Clean up temporary files:
+	sFileResponse:="./offline_response"
+	_ = os.Remove(sFileResponse)
+        if _, err = os.Stat(sFileResponse); err == nil {
+        	err = fmt.Errorf("Could not delete %s\n",sFileResponse)
+                return
+	}
+	err=nil	
+	
+	sFileRequest:="./offline_request"
+	_ = os.Remove(sFileRequest)
+        if _, err = os.Stat(sFileRequest); err == nil {
+        	err = fmt.Errorf("Could not delete %s\n",sFileRequest)
+                return
+	}
+	err=nil
+	
+	var sType string
+	if (iType==0) {
+		sType = "scalar_mult"
+	} else if (iType==1) {
+		sType = "shared_secret"
+	} else {
+		err = fmt.Errorf("Unsupported type: %d\n", iType)
+		return
+	}	
+
+	//During the processing of the blockchain data, the same transaction 
+	//will appear mutiple times. Test to see if we can simply return the
+	//previously obtained result:
+	for t := range saOfflineOperations {
+		if (saOfflineOperations[t].iType == iType) {
+			if bytes.Equal(saOfflineOperations[t].baRequest,baData) {
+				result = make([]byte, len(saOfflineOperations[t].baResult))
+				copy (result,saOfflineOperations[t].baResult)
+				return;
+			}
+		}
+	}
+	
+	//Parameter   [0] action: 0=scalar mult, 1=shared secret
+	//            [1] Project - 'dero'
+	//            [2] Version - Layout of the command fields
+	// Version 1: [3] data
+	//            [4] Checksum of all the characters in the data stream
+	sOutput := fmt.Sprintf("%s dero 1 %x",sType,baData)
+        var iCalculatedChecksum=0x01
+        for t := range sOutput {
+	        iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
+        }
+        sOutput = fmt.Sprintf("%s %d",sOutput, iCalculatedChecksum)
+        
+        baOutput := []byte(sOutput)
+        
+        err = os.WriteFile(sFileRequest, baOutput, 0644)
+	if err!=nil {
+		err = fmt.Errorf("Error saving file. %s\n",err)
+		return
+	}
+	fmt.Printf("\nInteraction with offline wallet required. Saved request to: %s\nSearching for 60 seconds for the response at: %s\n",sFileRequest,sFileResponse)
+
+	bFound:=0
+	counter:=0
+	for counter <= 60 {  
+		if _, err := os.Stat(sFileResponse); err == nil {
+			bFound=1
+			break;
+		}
+		counter++
+		time.Sleep(1 * time.Second)
+	}
+  
+	if (bFound==0) {
+	    err = fmt.Errorf("Could not find the response file.\n");
+	    return;
+	}
+
+	baInput, err := os.ReadFile(sFileResponse)
+        if err!=nil {
+        	err = fmt.Errorf("Could not read from %s. Check the file permissions.\n",sFileResponse);
+                return;
+	}              
+        _ = os.Remove(sFileResponse)
+        if _, err = os.Stat(sFileResponse); err == nil {
+                err = fmt.Errorf("Could not delete %s\n",sFileResponse)
+                return
+        }
+	
+	//Parameter   [0] header  - scalar_mult_result or shared_secret_result
+	//            [1] Project - 'dero'
+	//            [2] Version - Layout of the command fields
+	// Version 1: [3] scalar multiply result used to decode the balance
+	//            [4] Checksum of all the characters in the data stream
+	sInput := string(baInput[:])
+	saParts := strings.Split(sInput," ")
+	if (len(saParts) != 5) {
+		err = fmt.Errorf("Invalid number of parts in the transaction. Found %d, expected 14\n", len(saParts))
+		return;
+	}
+	
+	sCompare := fmt.Sprintf("%s_result", sType)
+	if (saParts[0] != sCompare) {
+		err = fmt.Errorf("Requested operation: '%s'. Expected back result: '%s', found: %s\n",sType, sCompare, saParts[0])
+		return
+	}
+
+	if  (saParts[1] != "dero") {
+		err = fmt.Errorf("Expected Dero communication, Found %s\n",saParts[1]);
+		return;
+	}
+
+	if (saParts[2] != "1") {
+		err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saParts[2])
+		return
+	}
+	
+	sProtocolChecksum := saParts[4]
+	sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
+	iCalculatedChecksum=0x01;
+	for t := range sInput {
+		iVal := int(sInput[t])
+		iCalculatedChecksum = iCalculatedChecksum + iVal;
+	}
+	sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
+
+	if (sProtocolChecksum!=sCalculatedChecksum) {
+		err = fmt.Errorf("The checksum of the signed transaction data is invalid.\n")
+		return
+	}	
+	
+	result,err = hex.DecodeString(saParts[3])
+	if err!=nil {
+		err = fmt.Errorf("Could not decode the result from the offline wallet\n");
+	}
+
+	//Reconstruct type 0=scalar mult
+	// result := new(bn256.G1);	
+	// result.Unmarshal(baResult)
+	//Reconstruct type 1=shared secret
+	// The result is a 32 byte array
+	
+	//Store the entry in the cache
+	var sOfflineOperations OfflineOperations_t
+	sOfflineOperations.iType = iType;
+
+	sOfflineOperations.baRequest = make([]byte, len(baData))
+	copy (sOfflineOperations.baRequest, baData)
+	
+	sOfflineOperations.baResult = make([]byte, len(result))
+	copy (sOfflineOperations.baResult, result)
+	
+	saOfflineOperations = append(saOfflineOperations, sOfflineOperations)
+
+	fmt.Printf("Response checks out.\n\n");
+	return
+}
+
 // decode encrypted balance now
 // it may take a long time, its currently sing threaded, need to parallelize
 func (w *Wallet_Memory) DecodeEncryptedBalanceNow(el *crypto.ElGamal) uint64 {
+	ScalarMultResult := new(bn256.G1);
+	if (w.ViewOnly()==false) {
+		ScalarMultResult = new(bn256.G1).ScalarMult(el.Right, w.account.Keys.Secret.BigInt())
+	} else {
+		// Need to perform this operation in the offline wallet: ScalarMultResult := new(bn256.G1).ScalarMult(el.Right, Secret.BigInt())
+		baData := el.Right.Marshal();	
+		baResult,err := w.OfflineOperationWithSecretKey(0,baData)
+		if err!=nil {
+			fmt.Printf("Could not retrieve the balance\n")
+			return 0
+		}	
+		ScalarMultResult.Unmarshal(baResult)
+	}
 
-	balance_point := new(bn256.G1).Add(el.Left, new(bn256.G1).Neg(new(bn256.G1).ScalarMult(el.Right, w.account.Keys.Secret.BigInt())))
-	return Balance_lookup_table.Lookup(balance_point, w.account.Balance_Mature)
+	balance_point := new(bn256.G1).Add(  el.Left, new(bn256.G1).Neg( ScalarMultResult )  )
+	balance := Balance_lookup_table.Lookup(balance_point, w.account.Balance_Mature)
+	return balance
 }
 
 func (w *Wallet_Memory) GetSelfEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64) (r rpc.GetEncryptedBalance_Result, err error) {
@@ -365,7 +549,6 @@ func (w *Wallet_Memory) GetSelfEncryptedBalanceAtTopoHeight(scid crypto.Hash, to
 // TODO in order to stop privacy leaks we must guess this information somehow on client side itself
 // maybe the server can broadcast a bloomfilter or something else from the mempool keyimages
 func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topoheight int64, accountaddr string) (bits int, lastused uint64, blid crypto.Hash, e *crypto.ElGamal, err error) {
-
 	defer func() {
 		if r := recover(); r != nil {
 			logger.V(1).Error(nil, "Recovered while GetEncryptedBalanceAtTopoHeight", "r", r, "stack", debug.Stack())
@@ -385,12 +568,14 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 
 	//var params rpc.GetEncryptedBalance_Params
 	var result rpc.GetEncryptedBalance_Result
+	
+	var WalletAddress = w.GetAddress().String()
 
 	// Issue a call with a response.
 	if err = rpc_client.Call("DERO.GetEncryptedBalance", rpc.GetEncryptedBalance_Params{SCID: scid, Address: accountaddr, TopoHeight: topoheight}, &result); err != nil {
 		logger.Error(err, "DERO.GetEncryptedBalance Call failed:")
 
-		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errormsg.ErrAccountUnregistered.Error())) && accountaddr == w.GetAddress().String() && scid.IsZero() {
+		if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errormsg.ErrAccountUnregistered.Error())) && accountaddr == WalletAddress && scid.IsZero() {
 			w.Error = errormsg.ErrAccountUnregistered
 			//fmt.Printf("setting unregisterd111 err %s scid %s topoheight %d\n",err,scid, topoheight)
 			//fmt.Printf("debug stack %s\n",debug.Stack())
@@ -415,8 +600,8 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		return
 	}
 
-	//		fmt.Printf("GetEncryptedBalance result  %+v\n", result)
-	if scid.IsZero() && accountaddr == w.GetAddress().String() {
+	//	fmt.Printf("GetEncryptedBalance result  %+v\n", result)
+	if scid.IsZero() && accountaddr == WalletAddress {
 		if result.Status == errormsg.ErrAccountUnregistered.Error() {
 			w.Error = errormsg.ErrAccountUnregistered
 			w.account.Registered = false
@@ -425,7 +610,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		}
 	}
 
-	//	fmt.Printf("status '%s' err '%s'  %+v  %+v \n", result.Status , w.Error , result.Status == errormsg.ErrAccountUnregistered.Error()  , accountaddr == w.account.GetAddress().String())
+	//	fmt.Printf("status '%s' err '%s'  %+v  %+v \n", result.Status , w.Error , result.Status == errormsg.ErrAccountUnregistered.Error()  , accountaddr == WalletAddress)
 
 	if scid.IsZero() && result.Status == errormsg.ErrAccountUnregistered.Error() {
 		err = fmt.Errorf("%s", result.Status)
@@ -438,8 +623,8 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		w.Merkle_Balance_TreeHash = result.DMerkle_Balance_TreeHash
 	}
 
-	if topoheight == -1 && accountaddr == w.GetAddress().String() {
-		//fmt.Printf("topoheight %d accountaddr '%s' waddress '%s'\n ",topoheight,accountaddr,w.GetAddress().String())
+	if topoheight == -1 && accountaddr == WalletAddress {
+		//fmt.Printf("topoheight %d accountaddr '%s' waddress '%s'\n ",topoheight,accountaddr,WalletAddress)
 
 		w.setEncryptedBalanceresult(scid, result)
 		w.account.TopoHeight = result.Topoheight
@@ -455,7 +640,7 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 		return
 	}
 
-	if accountaddr == w.GetAddress().String() && scid.IsZero() {
+	if accountaddr == WalletAddress && scid.IsZero() {
 		w.Error = nil
 	}
 
@@ -466,8 +651,23 @@ func (w *Wallet_Memory) GetEncryptedBalanceAtTopoHeight(scid crypto.Hash, topohe
 }
 
 func (w *Wallet_Memory) DecodeEncryptedBalance_Memory(el *crypto.ElGamal, hint uint64) (balance uint64) {
+	
+        ScalarMultResult := new(bn256.G1);
+        if (w.ViewOnly()==false) {
+                ScalarMultResult = new(bn256.G1).ScalarMult(el.Right, w.account.Keys.Secret.BigInt())
+        } else {
+		// Need to perform this operation in the offline wallet: ScalarMultResult := new(bn256.G1).ScalarMult(el.Right, Secret.BigInt())
+		baData := el.Right.Marshal();   
+	        baResult,err := w.OfflineOperationWithSecretKey(0,baData)
+	        if err!=nil {
+                	fmt.Printf("Could not retrieve the balance")
+	                return 0
+	        }
+	        ScalarMultResult.Unmarshal(baResult)
+	}
+	
 	var balance_point bn256.G1
-	balance_point.Add(el.Left, new(bn256.G1).Neg(new(bn256.G1).ScalarMult(el.Right, w.account.Keys.Secret.BigInt())))
+	balance_point.Add(el.Left, new(bn256.G1).Neg( ScalarMultResult ))
 	return Balance_lookup_table.Lookup(&balance_point, hint)
 }
 
@@ -639,6 +839,13 @@ func (w *Wallet_Memory) synchistory_internal_binary_search(level int, scid crypt
 	var err error
 
 	//defer fmt.Printf("end %d start %d err %s\n", end_topo, start_topo, err)
+	
+//	fmt.Printf("end %d start %d err %s\n", end_topo, start_topo, err)
+//        _, file, no, ok := runtime.Caller(1)
+//        if ok {
+//                fmt.Printf("called from %s#%d\n", file, no)
+//        }
+	
 
 	if end_topo < 0 {
 		return fmt.Errorf("done")
@@ -706,7 +913,6 @@ func (w *Wallet_Memory) synchistory_internal_binary_search(level int, scid crypt
 // for a particular block
 // for the entire chain
 func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err error) {
-
 	var local_entries []rpc.Entry
 
 	compressed_address := w.account.Keys.Public.EncodeCompressed()
@@ -714,7 +920,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 	var previous_balance_e, current_balance_e *crypto.ElGamal
 	var previous_balance, current_balance, total_sent, total_received uint64
 
-	if topo <= 0 || w.getEncryptedBalanceresult(scid).Registration == topo {
+        if topo <= 0 || w.getEncryptedBalanceresult(scid).Registration == topo {
 		previous_balance_e = crypto.ConstructElGamal(w.account.Keys.Public.G1(), crypto.ElGamal_BASE_G)
 	} else {
 		_, _, _, previous_balance_e, err = w.GetEncryptedBalanceAtTopoHeight(scid, topo-1, w.GetAddress().String())
@@ -881,7 +1087,28 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 							for l := range tx.Payloads[t].Statement.Publickeylist_compressed {
 								rinputs = append(rinputs, tx.Payloads[t].Statement.Publickeylist_compressed[l][:]...)
 							}
-							rencrypted := new(bn256.G1).ScalarMult(crypto.HashToPoint(crypto.HashtoNumber(append([]byte(crypto.PROTOCOL_CONSTANT), rinputs...))), w.account.Keys.Secret.BigInt())
+							
+							hashtonumber := crypto.HashtoNumber(  append(   []byte(crypto.PROTOCOL_CONSTANT), rinputs... ))
+
+							rencrypted := new(bn256.G1);
+							if (w.ViewOnly()==true) {
+							        // Need to perform this operation in the offline wallet: rencrypted := new(bn256.G1).ScalarMult(crypto.HashToPoint( hashtonumber  ) , Secret.BigInt() )
+								baData := crypto.HashToPoint( hashtonumber  ).Marshal()
+							        
+							        baResult,err := w.OfflineOperationWithSecretKey(0,baData)
+							        if err!=nil {
+							                fmt.Printf("Could not retrieve the balance")
+							                continue
+							        }
+							        rencrypted = new(bn256.G1);     
+							        rencrypted.Unmarshal(baResult)
+
+							        
+							} else {
+								rencrypted = new(bn256.G1).ScalarMult(crypto.HashToPoint( hashtonumber  ) , w.account.Keys.Secret.BigInt() )
+							}
+
+
 							r := crypto.ReducedHash(rencrypted.EncodeCompressed())
 
 							//fmt.Printf("t %d r  calculated %s value amount %d burn %d\n", t, r.Text(16), entry.Amount,entry.Burn)
@@ -970,7 +1197,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 							}
 
-						case previous_balance < changed_balance: // someone sentus this amount
+						case previous_balance < changed_balance: // someone sent us this amount
 							entry.Amount = changed_balance - previous_balance
 							entry.Incoming = true
 
@@ -981,7 +1208,27 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 							blinder := &x
 
-							shared_key := crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
+							var shared_key [32]byte
+							if (w.ViewOnly()==true) {
+								//shared_key = crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
+								baData := tx.Payloads[t].Statement.D.Marshal()
+							        baResult,err := w.OfflineOperationWithSecretKey(1,baData)
+							        if err!=nil {
+							                fmt.Printf("Could not retrieve the balance")
+							                continue
+							        }       
+							        if (len(baResult)!= 32) {
+							        	fmt.Printf("Invalid lenght in result. Expected 32 bytes, found %d\n",len(baResult))
+								}
+								for t := range baResult {
+									shared_key[t] = baResult[t]
+								}
+								
+								fmt.Printf("Reassembled.\nOrig: %x\nNew : %x\n", baResult, shared_key)
+							        
+							} else {														
+								shared_key = crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
+							}
 
 							// enable receiver side proofs
 							proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))

@@ -26,7 +26,7 @@ import "sync"
 import "strings"
 import "strconv"
 import "runtime"
-
+import "encoding/hex"
 import "sync/atomic"
 
 //import "io/ioutil"
@@ -46,6 +46,8 @@ import "github.com/docopt/docopt-go"
 import "github.com/deroproject/derohe/config"
 
 //import "github.com/deroproject/derohe/crypto"
+import "github.com/deroproject/derohe/cryptography/bn256"
+import "github.com/deroproject/derohe/cryptography/crypto"
 import "github.com/deroproject/derohe/globals"
 import "github.com/deroproject/derohe/walletapi"
 import "github.com/deroproject/derohe/walletapi/mnemonics"
@@ -65,15 +67,15 @@ Usage:
   --version     Show version.
   --wallet-file=<file>  Use this file to restore or create new wallet
   --password=<password>  Use this password to unlock the wallet
-  --offline     Run the wallet in completely offline mode 
-  --offline_datafile=<file>  Use the data in offline mode default ("getoutputs.bin") in current dir
+  --offline     Run the wallet in offline (signing) mode. An online (view only) wallet is required to create the transaction & sync to the network
   --prompt      Disable menu and display prompt
   --testnet  	Run in testnet mode.
   --debug       Debug mode enabled, print log messages
   --unlocked    Keep wallet unlocked for cli commands (Does not confirm password before commands)
-  --generate-new-wallet       Generate new wallet
+  --generate-new-wallet             Generate new (random) wallet
   --restore-deterministic-wallet    Restore wallet from previously saved recovery seed
   --electrum-seed=<recovery-seed>   Seed to use while restoring wallet
+  --restore-viewonly-wallet         Restore a view only wallet. The offline (signing) wallet contains the secret key & can export the view only key
   --socks-proxy=<socks_ip:port>  Use a proxy to connect to Daemon.
   --remote      use hard coded remote daemon https://rwallet.dero.live
   --daemon-address=<host:port>    Use daemon instance at <host>:<port> or https://domain
@@ -91,8 +93,6 @@ var sync_in_progress int          //  whether sync is in progress with daemon
 var wallet *walletapi.Wallet_Disk //= &walletapi.Account{} // all account  data is available here
 // var address string
 var sync_time time.Time // used to suitable update  prompt
-
-var default_offline_datafile string = "getoutputs.bin"
 
 var logger logr.Logger = logr.Discard() // default discard all logs
 
@@ -189,7 +189,11 @@ func main() {
 		wallet_password = globals.Arguments["--password"].(string) // override with user specified settings
 	}
 
-	// lets handle the arguments one by one
+	// lets handle the arguments one by one:
+	// Mutually exclusive commands:
+	//	--restore-deterministic-wallet
+	//	--generate-new-wallet
+	//
 	if globals.Arguments["--restore-deterministic-wallet"].(bool) {
 		// user wants to recover wallet, check whether seed is provided on command line, if not prompt now
 		seed := ""
@@ -210,9 +214,12 @@ func main() {
 		password := ""
 		if wallet_password == "" {
 			password = ReadConfirmedPassword(l, "Enter password", "Confirm password")
+		} else {
+			//Use provided password from the command line
+			password = wallet_password
 		}
 
-		wallet, err = walletapi.Create_Encrypted_Wallet(wallet_file, password, account.Keys.Secret)
+		wallet, err = walletapi.Create_Encrypted_Wallet(wallet_file, password, account)
 		if err != nil {
 			logger.Error(err, "Error occurred while restoring wallet")
 			return
@@ -220,22 +227,28 @@ func main() {
 
 		logger.V(1).Info("Seed Language", "language", account.SeedLanguage)
 		logger.Info("Successfully recovered wallet from seed")
-	}
-
-	// generare new random account if requested
-	if globals.Arguments["--generate-new-wallet"] != nil && globals.Arguments["--generate-new-wallet"].(bool) {
+	} else if globals.Arguments["--generate-new-wallet"] != nil && globals.Arguments["--generate-new-wallet"].(bool) {
+		// generare new random account
 		var filename string
 		if globals.Arguments["--wallet-file"] != nil && len(globals.Arguments["--wallet-file"].(string)) > 0 {
 			filename = globals.Arguments["--wallet-file"].(string)
 		} else {
 			filename = choose_file_name(l)
 		}
+		// Check right at the beginning if the file exist
+	        if _, err = os.Stat(filename); err == nil {
+	                fmt.Printf("File '%s' already exists\n", filename)
+        	        return
+		}
 
 		// ask user a pass, if not provided on command_line
 		password := ""
 		if wallet_password == "" {
 			password = ReadConfirmedPassword(l, "Enter password", "Confirm password")
-		}
+                } else {
+                        //Use provided password from the command line
+                        password = wallet_password
+                }		
 
 		seed_language := choose_seed_language(l)
 		_ = seed_language
@@ -247,6 +260,94 @@ func main() {
 		}
 		logger.V(1).Info("Seed Language", "language", account.SeedLanguage)
 		display_seed(l, wallet)
+	} else if globals.Arguments["--restore-viewonly-wallet"]!=nil && globals.Arguments["--restore-viewonly-wallet"].(bool) {
+		// Create a 'view only' account using the details obtained from the offline (signing) wallet
+	
+		filename := choose_file_name(l)
+		// Check right at the beginning if the file exist
+	        if _, err = os.Stat(filename); err == nil {
+	                fmt.Printf("File '%s' already exists\n", filename)
+        	        return
+		}
+		
+                // ask user a pass, if not provided on command_line
+                password := ""
+                if wallet_password == "" {
+                        password = ReadConfirmedPassword(l, "Enter password", "Confirm password")
+                } else {
+                        password = wallet_password
+                }
+
+		//Format: [0] - preamble: viewkey
+		//        [1] - Address
+		//        [2] - Public key              
+		//        [3] - Public key internal data
+		//        [4] - Checksum
+                var sViewOnly = read_line_with_prompt(l, "Enter the view only key (obtained from the offline (signing) wallet): ")
+
+                //Strip off any newlines or extra spaces
+                sTmp := strings.ReplaceAll(sViewOnly,"\n","")
+                sViewOnly = strings.ReplaceAll(sTmp," ","");
+                
+                saParts := strings.Split(sViewOnly, ";")
+                if (len(saParts)!=2) {
+                	fmt.Printf("Invalid number of parts in the input. Expected 2 found %d\n",len(saParts));
+                	return	
+		}                
+		
+		sViewKey := saParts[0]
+		sProtocolChecksum := saParts[1]
+		iProtocolChecksum,err := strconv.Atoi(sProtocolChecksum)
+		if err!=nil {
+			fmt.Fprintf(l.Stderr(), "Could not convert the checksum back to an integer\n")
+			return
+		}
+						
+		//Regenerate checksum:
+		var iCalculatedChecksum=0
+		for t := range sViewKey {
+			iCalculatedChecksum = iCalculatedChecksum + (int)(sViewKey[t])
+		}
+		
+		// Check 1: Checksum
+		if (iProtocolChecksum != iCalculatedChecksum) {
+			fmt.Printf("Checksum calculation failed. Please check if you've imported the view key correctly\n");
+			return
+		}                               
+		
+		saParts = strings.Split(sViewKey,",")
+		if (len(saParts) != 4) {
+			fmt.Fprintf(l.Stderr(), "Invalid number of parts. Expected 4, found %d\n", len(saParts))
+			return
+		}
+		
+		if (saParts[0]!="viewkey") {
+			fmt.Fprintf(l.Stderr(), "Input doesn't start with 'viewkey'\n");
+			return
+		}	
+                
+		//Send: Public key, public key internals
+		account,err   := walletapi.Generate_Account_From_ViewOnly_params(saParts[2],saParts[3], globals.IsMainnet() )
+                if err != nil {
+                        logger.Error(err, "Error while recovering view only parameters.")
+                        return
+                }
+		                
+                wallet, err = walletapi.Create_Encrypted_Wallet(filename, password, account)
+                
+                if err != nil {
+                        logger.Error(err, "Error occurred while restoring wallet")
+                        return
+                }
+
+		//Double check that the restored public key generates the expected dero address
+                sAddress := fmt.Sprintf("%s",wallet.GetAddress().String() )
+		if (sAddress != saParts[1]) {
+			logger.Error(err, "The addres containted in the viewing key (%s) doesn't match the restored address (%s)\n", saParts[1], sAddress);
+			return
+		}
+
+                logger.Info("Successfully restored an online (view only) wallet\n")	 	
 	}
 
 	if globals.Arguments["--rpc-login"] != nil {
@@ -373,6 +474,16 @@ func update_prompt(l *readline.Instance) {
 	last_daemon_height := int64(0)
 	daemon_online := false
 	last_update_time := int64(0)
+
+	// show first 8 bytes of address
+	address_trim := ""
+	if wallet != nil {
+		tmp_addr := wallet.GetAddress().String()
+		address_trim = tmp_addr[0:8]
+	} else {
+		address_trim = "DERO Wallet"
+	}	
+	
 	for {
 		time.Sleep(30 * time.Millisecond) // give user a smooth running number
 
@@ -389,14 +500,7 @@ func update_prompt(l *readline.Instance) {
 
 		prompt_mutex.Lock() // do not update if we can not lock the mutex
 
-		// show first 8 bytes of address
-		address_trim := ""
-		if wallet != nil {
-			tmp_addr := wallet.GetAddress().String()
-			address_trim = tmp_addr[0:8]
-		} else {
-			address_trim = "DERO Wallet"
-		}
+
 
 		if wallet == nil {
 			l.SetPrompt(fmt.Sprintf("\033[1m\033[32m%s \033[0m"+color_green+"0/%d \033[32m>>>\033[0m ", address_trim, walletapi.Get_Daemon_Height()))
@@ -410,8 +514,9 @@ func update_prompt(l *readline.Instance) {
 		_ = daemon_online
 
 		//fmt.Printf("chekcing if update is required\n")
+		// Dero blocktime ~18 seconds. Check for new blocks every 15 seconds
 		if last_wallet_height != wallet.Get_Height() || last_daemon_height != walletapi.Get_Daemon_Height() ||
-			/*daemon_online != wallet.IsDaemonOnlineCached() ||*/ (time.Now().Unix()-last_update_time) >= 1 {
+			(time.Now().Unix()-last_update_time) >= 15 {
 			// choose color based on urgency
 			color := "\033[32m" // default is green color
 			if wallet.Get_Height() < wallet.Get_Daemon_Height() {
@@ -453,6 +558,120 @@ func update_prompt(l *readline.Instance) {
 		}
 
 		prompt_mutex.Unlock()
+		
+		//test for an incomming request to interact with the secret key
+		//The online (view only) wallet uses this to reconstruct the account balance & transaction history
+		bOffline := globals.Arguments["--offline"].(bool)
+		if (bOffline==true) {
+			sFileRequest:="./offline_request"
+			if _, err := os.Stat(sFileRequest); err == nil {
+				fmt.Printf("\nIncoming sign request\n")
+				
+		                baData, err := os.ReadFile(sFileRequest)
+		                if err!=nil {
+		                        err = fmt.Errorf("Could not read from %s. Check the file permissions.\n",sFileRequest);
+	               		        continue;
+		                }  
+		                
+		                _ = os.Remove(sFileRequest)
+		                if _, err = os.Stat(sFileRequest); err == nil {
+		                	err = fmt.Errorf("Could not delete %s\n",sFileRequest)
+		                	continue;		                    
+		                }
+		                
+		                //Parameter   [0]: header: scalar_mult
+		                //            [1]: Project - 'dero'
+				//            [2]: Version - Layout of the command fields
+		                // Version 1: [3] el.Right
+				//            [4] Checksum of all the characters in the data stream
+		                sInput := string(baData[:])
+				saParts := strings.Split(sInput," ")
+		                if (len(saParts) != 5) {
+                		        err = fmt.Errorf("Invalid number of parts in the transaction. Found %d, expected 5\n", len(saParts))
+	               		        continue;
+				}
+					
+        		        if (saParts[0] != "scalar_mult") {
+        		        	err = fmt.Errorf("Transaction doesn't start with 'sign_offline'\n")
+	               		        continue;
+				}
+
+		                if  (saParts[1] != "dero") {
+                		        err = fmt.Errorf("Expected a Dero transaction, Found %s\n",saParts[1]);
+	               		        continue;
+		                }
+
+				if (saParts[2] != "1") {
+		                        err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saParts[2])
+	               		        continue;
+		                }
+		                
+		                sProtocolChecksum := saParts[4]		                
+				fmt.Printf("Evaluate the checksum %s\n",sProtocolChecksum);				
+				
+			        sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
+			        iCalculatedChecksum:=0x01;
+			        for t := range sInput {
+			                iVal := int(sInput[t])
+			                iCalculatedChecksum = iCalculatedChecksum + iVal;
+			        }
+			        sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
+
+			        if (sProtocolChecksum!=sCalculatedChecksum) {
+			                err = fmt.Errorf("The checksum of the request data is invalid.\n")
+			                continue
+			        }       				
+		                
+		                baData,err = hex.DecodeString(saParts[3])
+		                if err!=nil {
+		                	err = fmt.Errorf("Could not hex decode the data portion\n");
+	               		        continue;		                	
+		                }
+				
+				keys := wallet.Get_Keys()
+				if (saParts[0]=="scalar_mult") {
+			                var elRight    *bn256.G1                    
+				        elRight = new(bn256.G1)       
+				        elRight.Unmarshal(baData)
+
+			                scalarMultResult := new(bn256.G1).ScalarMult(elRight, keys.Secret.BigInt())
+			                baData = scalarMultResult.Marshal()
+			                
+			                sOutput := fmt.Sprintf("scalar_mult_result dero 1 %x",baData)
+					var iCalculatedChecksum=0x01
+					for t := range sOutput {
+				                iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
+				        }
+				        sOutput = fmt.Sprintf("%s %d",sOutput, iCalculatedChecksum)
+				        baData = []byte(sOutput)
+				} else if (saParts[1]=="shared_secret") {
+					var peer_publickey    *bn256.G1                    
+				        peer_publickey = new(bn256.G1)       
+				        peer_publickey.Unmarshal(baData)
+				        
+					shared_key := crypto.GenerateSharedSecret(keys.Secret.BigInt(), peer_publickey)
+					
+	                                sOutput := fmt.Sprintf("shared_secret_result dero 1 %x",shared_key)
+                                        var iCalculatedChecksum=0x01
+                                        for t := range sOutput {
+                                                iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
+                                        }
+                                        sOutput = fmt.Sprintf("%s %d",sOutput, iCalculatedChecksum)
+                                        baData = []byte(sOutput)
+					
+				} else { 
+					err = fmt.Errorf("Unknown type request. Only scalar_mult and shared_secret supported\n");
+					continue
+				}
+		                
+				err = os.WriteFile("./offline_response", baData, 0644)
+				if err!=nil {
+					err = fmt.Errorf("Error saving file. %s\n",err)
+					continue;
+				}
+				fmt.Printf("Saved signed result in ./offline_response\n")
+        	        }
+		}
 
 	}
 
@@ -469,7 +688,7 @@ func Create_New_Wallet(l *readline.Instance) (w *walletapi.Wallet_Disk, err erro
 	account, _ := walletapi.Generate_Keys_From_Random()
 	account.SeedLanguage = choose_seed_language(l)
 
-	w, err = walletapi.Create_Encrypted_Wallet(walletpath, walletpassword, account.Keys.Secret)
+	w, err = walletapi.Create_Encrypted_Wallet(walletpath, walletpassword, account)
 
 	if err != nil {
 		return

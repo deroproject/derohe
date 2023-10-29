@@ -20,8 +20,7 @@ var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 
 // generate proof  etc
 func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int, fees uint64) *transaction.Transaction {
-
-	sender := w.account.Keys.Public.G1()
+	sender := w.account.Keys.Public.G1()	
 	sender_secret := w.account.Keys.Secret.BigInt()
 
 	var retry_count int
@@ -113,8 +112,6 @@ rebuild_tx:
 				ebalances_list[i] = new(crypto.ElGamal).Deserialize(bal)
 			}
 		}
-
-		//  fmt.Printf("len of publickeylist  %d \n", len(publickeylist))
 
 		//  revealing r will disclose the amount and the sender and receiver and separate anonymous ring members
 		// calculate r deterministically, so its different every transaction, in emergency it can be given to other, and still will not allows key attacks
@@ -211,10 +208,8 @@ rebuild_tx:
 
 		}
 
-		// decode sender (our) balance now, it might have been updated
+		// decode sender (our) balance now, it might have been updated		
 		balance := w.DecodeEncryptedBalanceNow(ebalances_list[witness_index[0]])
-
-		//fmt.Printf("t %d scid %s  balance %d\n", t, transfers[t].SCID, balance)
 
 		// time for bullets-sigma
 		fees_currentasset := uint64(0)
@@ -245,7 +240,12 @@ rebuild_tx:
 			balance = balance.Add(echanges)                                                  // homomorphic addition of changes
 			umap[transfers[t].SCID.String()+publickeylist[i].String()] = balance.Serialize() // reserialize and store
 		}
-
+		
+		//Evaluate available balance after processing the transfer[] entry:
+		if (balance < (transfers[t].Amount + fees_currentasset)) {
+			fmt.Printf("Insufficient funds to process the transaction: Balance %d < Spend amount,fees,burn value: %d+%d+%d\n", balance, transfers[t].Amount, fees_currentasset,burn_value)
+			return nil
+		}
 	}
 
 	scid_map := map[crypto.Hash]int{}

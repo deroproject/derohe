@@ -19,7 +19,10 @@ package walletapi
 import (
 	"encoding/hex"
 	"fmt"
-
+	"os"
+	"time"
+	"strings"
+	
 	"github.com/deroproject/derohe/config"
 	"github.com/deroproject/derohe/cryptography/bn256"
 	"github.com/deroproject/derohe/cryptography/crypto"
@@ -177,8 +180,8 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		total_amount_required[transfers[i].SCID] = total_amount_required[transfers[i].SCID] + transfers[i].Amount + transfers[i].Burn
 	}
 
+	var current_balance uint64
 	for i := range transfers {
-		var current_balance uint64
 		current_balance, _, err = w.GetDecryptedBalanceAtTopoHeight(transfers[i].SCID, -1, w.GetAddress().String())
 
 		if err != nil {
@@ -257,6 +260,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	// TODO, we should check nonce for base token and other tokens at the same time
 	// right now, we are probably using a bit of luck here
 	if daemon_topoheight >= int64(noncetopo)+3 { // if wallet has not been recently used, increase probability  of user's tx being successfully mined
+
 		topoheight = daemon_topoheight - 3
 	}
 
@@ -413,6 +417,314 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		}
 	}
 	max_bits += 6 // extra 6 bits
+
+
+	//If this is a view only wallet, prepare and send the transaction to the offline wallet for signing.
+	//Import the signed transaction again and continue with the normal work flow to submit the transaction
+	//to the network
+	if (w.ViewOnly()==true) {
+		// Calculate an estimate of the full transaction cost, to see if the balance has enough funds:
+		var spend uint64
+		var fees uint64		
+		spend=0
+		fees=0
+		fees_done:=false
+		
+		len_publickeylist:=len(rings[0])
+		
+		for t := range transfers {
+			spend = spend + transfers[t].Amount + transfers[t].Burn
+			
+			//From transaction builder, use the estimate fees calculator:
+			var asset transaction.AssetPayload
+
+			asset.SCID = transfers[t].SCID
+			asset.BurnValue = transfers[t].Burn
+
+			if fees == 0 && asset.SCID.IsZero() && !fees_done {
+		             fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len_publickeylist/16)+w.GetFeeMultiplier())))
+		             if data, err := scdata.MarshalBinary(); err != nil {
+                		     panic(err)
+		             } else {
+                		     fees = fees + (uint64(len(data))*15)/10
+		             }
+		             fees_done = true
+			}
+		}
+		//Fee is applied for each transfer in the transaction:
+		fees = fees * uint64(len(transfers))
+		
+//		fmt.Printf("spends: %d\n", spend);
+		if (current_balance < (spend+fees)) {
+			err = fmt.Errorf("Spend amount (%d) + estimated fees (%d) is more than your current balance: %d\n",spend,fees,current_balance)
+			return
+		}
+	
+		//Parameter   [0]: Project - Dero='dero'
+		//            [1]: Version - Layout of the command fields
+		// Version 1: [2] Array of transfers (outputs)
+		//            [3] Array of ring balances
+		//            [4] Array of rings  
+		//            [5] block_hash
+		//            [6] height
+		//            [7] Array of scdata
+		//            [8] treehash
+		//            [9] max_bits
+		//            [10] gasstorage
+		//            [11] Checksum of all the characters in the command.
+		var sReturn string 
+		var sChecksumInput string
+	  
+		sReturn="sign_offline dero 1 ";
+		sChecksumInput="dero 1 ";
+	  
+		var counter=0
+		
+//		fmt.Print("transfers: %d\n",len(transfers))
+		sChecksumInput+="transfers:";  
+		sReturn=sReturn+"'[";  
+		counter=0
+		for t := range transfers {
+			baRPC, err := transfers[t].Payload_RPC.MarshalBinary()
+			if err!=nil {
+				panic("Could not convert payload_rpc to binary")
+			}
+			hexRPC := hex.EncodeToString(baRPC)
+			sTmp:=fmt.Sprintf("{\"SCID\":\"%s\",\"Destination\":\"%s\",\"Amount\":%d,\"Burn\":%d,\"RPC\":\"%s\"}", transfers[t].SCID, transfers[t].Destination, transfers[t].Amount, transfers[t].Burn, hexRPC )
+			sReturn=sReturn+sTmp;
+			 	    
+			sTmp=fmt.Sprintf("\"%s\" \"%s\" %d %d \"%s\"", transfers[t].SCID, transfers[t].Destination, transfers[t].Amount, transfers[t].Burn, hexRPC )
+			sChecksumInput+=" "+sTmp		  
+	    
+			//Last entry: Must close the array with ]'
+			//otherwide start the next entry with a ,
+			if (counter == len(transfers)-1) {
+			      sReturn=sReturn+"]' ";
+			} else {
+			      sReturn=sReturn+",";
+			}    
+			counter++
+		}
+			
+//		fmt.Printf("rings_balances: %d\n",len(rings_balances))
+		var counter1=0
+		var counter2=0
+		
+		sChecksumInput+=" rings_balances:"
+		sReturn=sReturn+"'["
+		for t := range rings_balances {		
+		    //fmt.Printf("rings_balances{%d}:{%d} entries\n",counter1,len(rings_balances[t]))
+			sReturn=sReturn+"{";
+			counter2=0
+			for u := range rings_balances[t] {
+				sTmp := fmt.Sprintf("%x",rings_balances[t][u])
+				sReturn = sReturn + sTmp
+				sChecksumInput+=" "+sTmp
+		
+				//Last entry: Must close the array with ]'
+				//otherwide start the next entry with a ,
+				if (counter2 == len(rings_balances[t])-1) {
+					sReturn=sReturn+"}";
+				} else {
+					sReturn=sReturn+",";
+				}
+				counter2++
+			}
+		    
+			//Last entry: Must close the array with ]'
+			//otherwide start the next entry with a ,
+			if (counter1 == len(rings_balances)-1) {
+				sReturn=sReturn+"]' ";
+			} else {
+				sReturn=sReturn+",";
+			}	    
+			counter1++
+		}	
+	  
+//		fmt.Printf("rings:{%d} entries\n", len(rings))
+		sChecksumInput+=" rings:";  
+		sReturn=sReturn+"'[";
+	  
+		counter1=0
+		counter2=0
+		for t := range rings {
+			//fmt.Printf("ring{%d}:{%d} entries\n",counter1,len(rings[t]))
+			sReturn=sReturn+"{";
+			counter2=0
+			for u := range rings[t] {
+				sTmp := fmt.Sprintf("%x",rings[t][u].Marshal() )
+				sReturn = sReturn + sTmp
+				sChecksumInput+=" "+sTmp
+		
+				if (counter2 == len(rings_balances[t])-1) {
+					sReturn=sReturn+"}";
+				} else {
+					sReturn=sReturn+",";
+				}      
+				counter2++
+			}
+			
+			if (counter1 == len(rings_balances)-1) {
+				sReturn=sReturn+"]' ";
+			} else {
+				sReturn=sReturn+",";
+			}			
+			counter1++
+		}
+		
+	  
+		sTmp:=fmt.Sprintf("\"%s\" ",block_hash)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=" "+sTmp  
+
+		sTmp=fmt.Sprintf("%d ",height)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+
+		sTmp=fmt.Sprintf("'%x' ",scdata)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+
+		sTmp=fmt.Sprintf("\"%x\" ",treehash_raw)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+	  
+		sTmp=fmt.Sprintf("%d ",max_bits)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+	  
+		sTmp=fmt.Sprintf("%x",gasstorage)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+	  
+	  
+		//Parameter [12]: checksum
+		//A simple checksum of the full string, to detect copy/paste errors between the wallets
+		//The checksum equals the sum of the ASCII values of all the characters in the string:   
+		iChecksum:=0x01;
+		for t := range sChecksumInput {
+			iVal := int(sChecksumInput[t])
+			iChecksum = iChecksum + iVal;
+		}
+		sTmp = fmt.Sprintf(" %d",iChecksum)
+		sReturn=sReturn + sTmp  
+		
+	        //--------------------------------------------------------------------------------------
+		// Compiling transaction data completed. Now need to exchange it with the offline wallet
+		// to get it signed
+		  
+		_ = os.Remove("./transaction")
+	  
+		if _, err = os.Stat("./transaction"); err == nil {
+		    err = fmt.Errorf("Could not delete ./transaction")
+		    return
+		}
+		
+		//The signed file is created by the offline wallet. We may not have permissions to erase the
+		// file. Let the user perform it manually
+		_ = os.Remove("./signed")
+		if _, err = os.Stat("./signed"); err == nil {
+		    err = fmt.Errorf("Found old signed transaction at ./signed. Delete the file before starting a new transaction.\n")
+		    return
+		}
+	  
+		fmt.Printf("Saved transaction data to: ./transaction. Transfer it to the offline (signing) wallet and have it signed there.\n" )
+	  
+		baData := []byte(sReturn)
+		err = os.WriteFile("./transaction", baData, 0644)
+		if err!=nil {
+		    err = fmt.Errorf("Error saving file. %s\n",err)
+		    return
+		}
+
+		bFound:=0
+		counter=0
+		//TODO: what is the longest we can wait to submit a transaction and still have it processed by the network?		
+		fmt.Printf("Waiting 30 seconds for the signed transaction from the offline wallet at ./signed\n");
+		for counter <= 30 {  
+			if _, err := os.Stat("./signed"); err == nil {
+				bFound=1
+				break;
+			}
+			counter++
+			time.Sleep(1 * time.Second)
+		}
+	  
+		if (bFound==0) {
+		    err = fmt.Errorf("Could not find the signed transaction\n");
+		    return;
+		}
+	  
+		baData, err = os.ReadFile("./signed")
+		if err!=nil {
+			err = fmt.Errorf("Could not read from ./signed. Check the file permissions.\n");
+			return;
+		}		
+		fmt.Printf("Read %d bytes from ./signed. ",len(baData))
+
+                //Parameter   [0]: header: signed
+                //            [1]: Project - 'dero'
+                //            [2]: Version - Layout of the command fields
+                // Version 1: [3] Signed transaction
+                //            [4] Checksum of all the characters in the data stream
+                sInput := string(baData[:])
+                saParts := strings.Split(sInput," ")
+                if (len(saParts) != 5) {
+                	err = fmt.Errorf("Invalid number of parts in the transaction. Found %d, expected 14\n", len(saParts))
+			return;
+                }
+                
+                if (saParts[0] != "signed") {
+                	err = fmt.Errorf("Transaction doesn't start with 'sign_offline'\n")
+                        return
+		}
+
+		if  (saParts[1] != "dero") {
+			err = fmt.Errorf("Expected Dero communication, Found %s\n",saParts[1]);
+                        return;
+		}
+
+                if (saParts[2] != "1") {
+                	err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saParts[2])
+                        return
+		}
+		
+		sProtocolChecksum := saParts[4]	
+		sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
+		iCalculatedChecksum:=0x01;
+		for t := range sInput {
+			iVal := int(sInput[t])
+			iCalculatedChecksum = iCalculatedChecksum + iVal;
+		}
+		sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
+
+		if (sProtocolChecksum!=sCalculatedChecksum) {
+			err = fmt.Errorf("The checksum of the signed transaction data is invalid.\n")
+			tx=nil
+			return
+		}		
+		
+                                
+		tx = new(transaction.Transaction)
+		baData,err = hex.DecodeString( saParts[3] )
+		if err!= nil {
+			err = fmt.Errorf("Could not decode the signed transaction.\n")
+			return		
+		}
+		err = tx.Deserialize(baData)
+		if err!=nil {
+			err = fmt.Errorf("Could not deserialise the signed transaction.\n")
+			return
+		}
+		
+		//Remove old files
+		_ = os.Remove("./signed")
+		
+		fmt.Printf("The checksum passed. Continue to submit the transaction\n\n")	
+		
+		return;
+	}
+	
 
 	if !dry_run {
 		tx = w.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage)
