@@ -16,14 +16,16 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
-
-import "github.com/deroproject/derohe/rpc"
 
 func GetAddress(ctx context.Context) (result rpc.GetAddress_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -31,7 +33,7 @@ func GetAddress(ctx context.Context) (result rpc.GetAddress_Result, err error) {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
 		}
 	}()
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 	return rpc.GetAddress_Result{
 		Address: w.wallet.GetAddress().String(),
 	}, nil

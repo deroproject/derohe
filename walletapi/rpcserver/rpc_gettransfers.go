@@ -16,10 +16,13 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 func GetTransfers(ctx context.Context, p rpc.Get_Transfers_Params) (result rpc.Get_Transfers_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -28,7 +31,7 @@ func GetTransfers(ctx context.Context, p rpc.Get_Transfers_Params) (result rpc.G
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	result.Entries = w.wallet.Show_Transfers(p.SCID, p.Coinbase, p.In, p.Out, p.Min_Height, p.Max_Height, p.Sender, p.Receiver, p.DestinationPort, p.SourcePort)
 

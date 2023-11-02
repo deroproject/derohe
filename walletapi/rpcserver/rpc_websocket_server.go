@@ -278,6 +278,8 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 type WalletContext struct {
 	logger logr.Logger
 	wallet *walletapi.Wallet_Disk
+	// Add any extra customizable data in context
+	Extra map[string]interface{}
 } // exports daemon status and other RPC apis
 
 func WalletEcho(ctx context.Context, args []string) string {
@@ -325,7 +327,7 @@ var servicemux = handler.ServiceMap{
 	"WALLET": WalletHandler,
 }
 
-func fromContext(ctx context.Context) *WalletContext {
+func FromContext(ctx context.Context) *WalletContext {
 	u, ok := ctx.Value("wallet_context").(*WalletContext)
 	if !ok {
 		panic("cannot find wallet context")
@@ -337,5 +339,6 @@ func NewWalletContext(logger logr.Logger, wallet *walletapi.Wallet_Disk) *Wallet
 	return &WalletContext{
 		logger: logger,
 		wallet: wallet,
+		Extra:  make(map[string]interface{}),
 	}
 }

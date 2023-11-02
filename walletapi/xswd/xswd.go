@@ -156,6 +156,14 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		running:    true,
 	}
 
+	// Save the server in the context
+	xswd.context.Extra["xswd"] = xswd
+
+	// Register custom methods
+	// HasMethod for compatibility reasons in case of custom methods declared
+	xswd.SetCustomMethod("HasMethod", handler.New(HasMethod))
+	xswd.SetCustomMethod("SignData", handler.New(SignData))
+
 	mux.HandleFunc("/xswd", xswd.handleWebSocket)
 	logger.Info("Starting XSWD server", "addr", server.Addr)
 
@@ -197,6 +205,11 @@ func (x *XSWD) Stop() {
 	x.applications = make(map[*websocket.Conn]ApplicationData)
 	x.logger.Info("XSWD server stopped")
 	x = nil
+}
+
+// Register a custom method easily to be completely configurable
+func (x *XSWD) SetCustomMethod(method string, handler handler.Func) {
+	x.rpcHandler[method] = handler
 }
 
 // Get all connected Applications
@@ -373,35 +386,6 @@ func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn) {
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
-// built-in function to sign the ApplicationData with current wallet
-func (x *XSWD) handleSignData(app *ApplicationData, request *jrpc2.Request) RPCResponse {
-	app.SetIsRequesting(true)
-	perm := x.requestPermission(app, request)
-	app.SetIsRequesting(false)
-	if perm.IsPositive() {
-		x.logger.Info("Signature request accepted")
-		app.Signature = make([]byte, 0)
-		_, err := json.Marshal(app)
-		if err != nil {
-			x.logger.Error(err, "Error while marshaling application data")
-			return ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Error while marshaling application data"))
-		}
-
-		// TODO only save the signature
-		//signature := x.wallet.SignData(bytes)
-		return ResponseWithError(request, jrpc2.Errorf(code.Cancelled, "WIP"))
-		//return signature // TODO
-	} else {
-		code := PermissionDenied
-		if perm == AlwaysDeny {
-			code = PermissionAlwaysDenied
-		}
-
-		x.logger.Info("Signature request rejected")
-		return ResponseWithError(request, jrpc2.Errorf(code, "Permission not granted for signing application data"))
-	}
-}
-
 // Handle a RPC Request from a session
 // We check that the method exists, that the application has the permission to use it
 func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) interface{} {
@@ -410,11 +394,6 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 
 	// Check that the method exists
 	if handler == nil {
-		// check if its SignData method
-		if methodName == "SignData" {
-			return x.handleSignData(app, request)
-		}
-
 		// Only requests methods starting with DERO. are sent to daemon
 		if strings.HasPrefix(methodName, "DERO.") {
 			// if daemon is online, request the daemon

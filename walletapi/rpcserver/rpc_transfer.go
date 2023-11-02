@@ -16,14 +16,17 @@
 
 package rpcserver
 
-import "fmt"
-import "sync"
-import "context"
-import "runtime/debug"
-import "encoding/base64"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"runtime/debug"
+	"sync"
+
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 var lock sync.Mutex
 
@@ -38,7 +41,7 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	for _, t := range p.Transfers {
 		_, err = t.Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)

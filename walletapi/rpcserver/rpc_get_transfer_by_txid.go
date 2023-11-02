@@ -16,10 +16,13 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 func GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (result rpc.Get_Transfer_By_TXID_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -28,7 +31,7 @@ func GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	if len(p.TXID) != 64 {
 		return result, fmt.Errorf("%s not 64 hex bytes", p.TXID)
