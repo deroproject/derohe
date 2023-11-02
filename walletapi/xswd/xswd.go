@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/creachadair/jrpc2"
@@ -18,6 +19,8 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/gorilla/websocket"
 )
+
+const TIMEOUT = 10 * time.Second
 
 type ApplicationData struct {
 	Id          string                `json:"id"`
@@ -113,6 +116,18 @@ func (perm Permission) String() string {
 const PermissionDenied code.Code = -32043
 const PermissionAlwaysDenied code.Code = -32044
 
+type messageRequest struct {
+	app     *ApplicationData
+	conn    *websocket.Conn
+	request *jrpc2.Request
+}
+
+type messageRegistration struct {
+	app     *ApplicationData
+	conn    *websocket.Conn
+	request *http.Request
+}
+
 type XSWD struct {
 	// The websocket connected to and its app data
 	applications map[*websocket.Conn]ApplicationData
@@ -127,6 +142,8 @@ type XSWD struct {
 	wallet         *walletapi.Wallet_Disk
 	rpcHandler     handler.Map
 	running        bool
+	requests       chan messageRequest
+	registers      chan messageRegistration
 	// mutex for applications map
 	sync.Mutex
 }
@@ -153,6 +170,8 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		wallet:         wallet,
 		// don't create a different API, we provide the same
 		rpcHandler: rpcserver.WalletHandler,
+		requests:   make(chan messageRequest),
+		registers:  make(chan messageRegistration),
 		running:    true,
 	}
 
@@ -176,7 +195,37 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		}
 	}()
 
+	go xswd.handler_loop()
+
 	return xswd
+}
+
+func (x *XSWD) handler_loop() {
+	for {
+		select {
+		case msg := <-x.requests:
+			response := x.handleMessage(msg.app, msg.request)
+			if response != nil {
+				if err := msg.conn.WriteJSON(response); err != nil {
+					x.logger.V(2).Error(err, "Error while writing JSON", "app", msg.app.Name)
+				}
+			}
+		case msg := <-x.registers:
+			response := x.addApplication(msg.request, msg.conn, msg.app)
+			if response {
+				msg.conn.WriteJSON(AuthorizationResponse{
+					Message:  "User has authorized the application",
+					Accepted: true,
+				})
+			} else {
+				msg.conn.WriteJSON(AuthorizationResponse{
+					Message:  "User has rejected the application",
+					Accepted: false,
+				})
+				x.removeApplicationOfSession(msg.conn, msg.app)
+			}
+		}
+	}
 }
 
 func (x *XSWD) IsRunning() bool {
@@ -262,7 +311,7 @@ func (x *XSWD) HasApplicationId(app_id string) bool {
 
 // Add an application from a websocket connection
 // it verify that application is valid and add it to the list
-func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app ApplicationData) bool {
+func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app *ApplicationData) bool {
 	// Sanity check
 	{
 		id := strings.TrimSpace(app.Id)
@@ -319,7 +368,7 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 				return false
 			}
 		} else {
-			app.Permissions = make(map[string]Permission)
+			app.Permissions = map[string]Permission{}
 		}
 
 		// Signature can be optional but verify its len
@@ -356,10 +405,10 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 	// check the permission from user
 	app.OnClose = make(chan bool)
 	app.SetIsRequesting(true)
-	if x.appHandler(&app) {
+	if x.appHandler(app) {
 		app.SetIsRequesting(false)
 		x.Lock()
-		x.applications[conn] = app
+		x.applications[conn] = *app
 		x.Unlock()
 
 		x.logger.Info("Application accepted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
@@ -374,22 +423,17 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 
 // Remove an application from the list for a session
 // only used in internal
-func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn) {
-	x.Lock()
-	defer x.Unlock()
-
-	conn.Close()
-	app, found := x.applications[conn]
-	// conn was already closed
-	if !found {
-		return
-	}
-
-	delete(x.applications, conn)
-	if app.IsRequesting() {
+func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn, app *ApplicationData) {
+	if app != nil && app.IsRequesting() {
 		x.logger.Info("App is requesting prompt, closing")
 		app.OnClose <- true
 	}
+	conn.Close()
+
+	x.Lock()
+	delete(x.applications, conn)
+	x.Unlock()
+
 	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
 }
 
@@ -494,29 +538,28 @@ func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) P
 }
 
 // block until the session is closed and read all its messages
-func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
-	defer x.removeApplicationOfSession(conn)
+func (x *XSWD) readMessageFromSession(conn *websocket.Conn, app *ApplicationData) {
+	defer x.removeApplicationOfSession(conn, app)
 
-	var writerMutex sync.Mutex
 	for {
-		// acquire the lock to read
-		writerMutex.Lock()
-		writerMutex.Unlock()
-
 		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
 		if err != nil {
-			x.logger.V(2).Error(err, "Error while reading message from session")
+			x.logger.V(1).Error(err, "Error while reading message from session")
+			return
+		}
+
+		// app tried to send us a request while he was not authorized yet
+		if !x.HasApplicationId(app.Id) {
+			x.logger.Info("App is not authorized and requests us, closing")
 			return
 		}
 
 		// unmarshal the request
 		requests, err := jrpc2.ParseRequests(buff)
 		if err != nil {
-			x.logger.V(2).Error(err, "Error while parsing request")
-			writerMutex.Lock()
+			x.logger.Error(err, "Error while parsing request")
 			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Error while parsing request")))
-			writerMutex.Unlock()
 			continue
 		}
 
@@ -524,36 +567,11 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn) {
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
 			x.logger.V(2).Error(nil, "Invalid number of requests")
-			writerMutex.Lock()
 			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Batch are not supported")))
-			writerMutex.Unlock()
 			continue
 		}
 
-		x.Lock()
-		app, found := x.applications[conn]
-		x.Unlock()
-		if !found {
-			x.logger.V(2).Error(nil, "Application not found")
-			writerMutex.Lock()
-			conn.WriteJSON(ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Application not found")))
-			writerMutex.Unlock()
-			return
-		}
-
-		// handle the request in goroutine, so we can detect
-		// when the app has disconnected
-		go func(conn *websocket.Conn, app *ApplicationData, request *jrpc2.Request) {
-			response := x.handleMessage(app, request)
-			if response != nil {
-				writerMutex.Lock()
-				defer writerMutex.Unlock()
-				if err := conn.WriteJSON(response); err != nil {
-					x.logger.V(2).Error(err, "Error while writing JSON")
-					return
-				}
-			}
-		}(conn, &app, request)
+		x.requests <- messageRequest{app: app, request: request, conn: conn}
 	}
 }
 
@@ -575,20 +593,8 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		x.logger.V(1).Error(err, "Error while reading app_data")
 		return
 	}
-
-	if x.addApplication(r, conn, app_data) {
-		conn.WriteJSON(AuthorizationResponse{
-			Message:  "User has authorized the application",
-			Accepted: true,
-		})
-		// TODO we should handle the case where user open multiple tabs of the same dApp ?
-		x.readMessageFromSession(conn)
-	} else {
-		conn.WriteJSON(AuthorizationResponse{
-			Message:  "User has rejected the application",
-			Accepted: false,
-		})
-	}
+	x.registers <- messageRegistration{conn: conn, request: r, app: &app_data}
+	x.readMessageFromSession(conn, &app_data)
 }
 
 func isASCII(s string) bool {
