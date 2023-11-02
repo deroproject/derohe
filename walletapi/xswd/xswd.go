@@ -286,11 +286,18 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app Applica
 			return false
 		}
 
+		origin := r.Header.Get("Origin")
 		if len(app.Url) == 0 {
-			app.Url = r.Header.Get("Origin")
+			app.Url = origin
 			if len(app.Url) > 0 {
 				x.logger.V(1).Info("No URL passed, checking origin header")
 			}
+		}
+
+		// Verify that the website url set is the same as origin (security check)
+		if len(origin) > 0 && app.Url != origin {
+			x.logger.V(1).Info("Invalid URL compared to origin", "origin", origin, "url", app.Url)
+			return false
 		}
 
 		// URL can be optional
