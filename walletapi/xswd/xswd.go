@@ -22,13 +22,25 @@ import (
 
 const TIMEOUT = 10 * time.Second
 
+type EventType string
+
+const (
+	// When a new balance is detected
+	NewBalance = "new_balance"
+	// When a new block is detected
+	NewBlock = "new_block"
+	// When a new transaction (incoming/outgoing/coinbase) is detected
+	NewTransaction = "new_transaction"
+)
+
 type ApplicationData struct {
-	Id          string                `json:"id"`
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Url         string                `json:"url"`
-	Permissions map[string]Permission `json:"permissions"`
-	Signature   []byte                `json:"signature"`
+	Id               string                `json:"id"`
+	Name             string                `json:"name"`
+	Description      string                `json:"description"`
+	Url              string                `json:"url"`
+	Permissions      map[string]Permission `json:"permissions"`
+	Signature        []byte                `json:"signature"`
+	RegisteredEvents map[EventType]bool
 	// only init when accepted by user
 	OnClose      chan bool `json:"-"` // used to inform when the Session disconnect
 	isRequesting bool      `json:"-"`
@@ -181,6 +193,8 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 	// Register custom methods
 	// HasMethod for compatibility reasons in case of custom methods declared
 	xswd.SetCustomMethod("HasMethod", handler.New(HasMethod))
+	xswd.SetCustomMethod("Subscribe", handler.New(Subscribe))
+	xswd.SetCustomMethod("Unsubscribe", handler.New(Unsubscribe))
 	xswd.SetCustomMethod("SignData", handler.New(SignData))
 
 	mux.HandleFunc("/xswd", xswd.handleWebSocket)
@@ -200,16 +214,39 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 	return xswd
 }
 
+func (x *XSWD) IsEventTracked(event EventType) bool {
+	applications := x.GetApplications()
+	for _, app := range applications {
+		if app.RegisteredEvents[event] {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (x *XSWD) BroadcastEvent(event EventType, value interface{}) {
+	for conn, app := range x.applications {
+		if app.RegisteredEvents[event] {
+			if err := conn.WriteJSON(value); err != nil {
+				x.logger.V(2).Error(err, "Error while broadcasting event")
+			}
+		}
+	}
+}
+
 func (x *XSWD) handler_loop() {
 	for {
 		select {
 		case msg := <-x.requests:
-			response := x.handleMessage(msg.app, msg.request)
-			if response != nil {
-				if err := msg.conn.WriteJSON(response); err != nil {
-					x.logger.V(2).Error(err, "Error while writing JSON", "app", msg.app.Name)
+			go func(msg messageRequest) {
+				response := x.handleMessage(msg.app, msg.request)
+				if response != nil {
+					if err := msg.conn.WriteJSON(response); err != nil {
+						x.logger.V(2).Error(err, "Error while writing JSON", "app", msg.app.Name)
+					}
 				}
-			}
+			}(msg)
 		case msg := <-x.registers:
 			response := x.addApplication(msg.request, msg.conn, msg.app)
 			if response {
@@ -407,6 +444,10 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app *Applic
 	app.SetIsRequesting(true)
 	if x.appHandler(app) {
 		app.SetIsRequesting(false)
+
+		// Create the map
+		app.RegisteredEvents = map[EventType]bool{}
+
 		x.Lock()
 		x.applications[conn] = *app
 		x.Unlock()
@@ -500,7 +541,9 @@ func (x *XSWD) handleMessage(app *ApplicationData, request *jrpc2.Request) inter
 	perm := x.requestPermission(app, request)
 	app.SetIsRequesting(false)
 	if perm.IsPositive() {
-		ctx := context.WithValue(context.Background(), "wallet_context", x.context)
+		wallet_context := *x.context
+		wallet_context.Extra["app_data"] = app
+		ctx := context.WithValue(context.Background(), "wallet_context", &wallet_context)
 		response, err := handler.Handle(ctx, request)
 		if err != nil {
 			return ResponseWithError(request, jrpc2.Errorf(code.InternalError, "Error while handling request method %q: %v", methodName, err))
