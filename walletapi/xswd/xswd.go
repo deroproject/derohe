@@ -431,10 +431,13 @@ func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn, app *Application
 	conn.Close()
 
 	x.Lock()
+	vapp, found := x.applications[conn]
 	delete(x.applications, conn)
 	x.Unlock()
 
-	x.logger.Info("Application deleted", "id", app.Id, "name", app.Name, "description", app.Description, "url", app.Url)
+	if found {
+		x.logger.Info("Application deleted", "id", vapp.Id, "name", vapp.Name, "description", vapp.Description, "url", vapp.Url)
+	}
 }
 
 // Handle a RPC Request from a session
@@ -545,7 +548,7 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn, app *ApplicationData
 		// block and read the message bytes from session
 		_, buff, err := conn.ReadMessage()
 		if err != nil {
-			x.logger.V(1).Error(err, "Error while reading message from session")
+			x.logger.V(2).Error(err, "Error while reading message from session")
 			return
 		}
 
@@ -591,8 +594,23 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	var app_data ApplicationData
 	if err := conn.ReadJSON(&app_data); err != nil {
 		x.logger.V(1).Error(err, "Error while reading app_data")
+		conn.WriteJSON(AuthorizationResponse{
+			Message:  "Invalid app data format",
+			Accepted: false,
+		})
+
 		return
 	}
+
+	if x.HasApplicationId(app_data.Id) {
+		conn.WriteJSON(AuthorizationResponse{
+			Message:  "App ID is already used",
+			Accepted: false,
+		})
+
+		return
+	}
+
 	x.registers <- messageRegistration{conn: conn, request: r, app: &app_data}
 	x.readMessageFromSession(conn, &app_data)
 }
