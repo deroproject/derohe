@@ -3,6 +3,7 @@ package xswd
 import (
 	"context"
 
+	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/walletapi/rpcserver"
 )
 
@@ -11,7 +12,7 @@ type HasMethod_Params struct {
 }
 
 type Subscribe_Params struct {
-	Event EventType `json:"event"`
+	Event rpc.EventType `json:"event"`
 }
 
 func HasMethod(ctx context.Context, p HasMethod_Params) bool {

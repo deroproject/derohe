@@ -14,6 +14,7 @@ import (
 	"github.com/creachadair/jrpc2/code"
 	"github.com/creachadair/jrpc2/handler"
 	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/walletapi"
 	"github.com/deroproject/derohe/walletapi/rpcserver"
 	"github.com/go-logr/logr"
@@ -22,17 +23,6 @@ import (
 
 const TIMEOUT = 10 * time.Second
 
-type EventType string
-
-const (
-	// When a new balance is detected
-	NewBalance = "new_balance"
-	// When a new block is detected
-	NewBlock = "new_block"
-	// When a new transaction (incoming/outgoing/coinbase) is detected
-	NewTransaction = "new_transaction"
-)
-
 type ApplicationData struct {
 	Id               string                `json:"id"`
 	Name             string                `json:"name"`
@@ -40,7 +30,7 @@ type ApplicationData struct {
 	Url              string                `json:"url"`
 	Permissions      map[string]Permission `json:"permissions"`
 	Signature        []byte                `json:"signature"`
-	RegisteredEvents map[EventType]bool
+	RegisteredEvents map[rpc.EventType]bool
 	// only init when accepted by user
 	OnClose      chan bool `json:"-"` // used to inform when the Session disconnect
 	isRequesting bool      `json:"-"`
@@ -187,6 +177,25 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 		running:    true,
 	}
 
+	// Register event listeners
+	wallet.Wallet_Memory.AddListener(rpc.NewBalance, func(change interface{}) {
+		if xswd.IsEventTracked(rpc.NewBalance) {
+			xswd.BroadcastEvent(rpc.NewBalance, change)
+		}
+	})
+
+	wallet.Wallet_Memory.AddListener(rpc.NewTopoheight, func(topo interface{}) {
+		if xswd.IsEventTracked(rpc.NewTopoheight) {
+			xswd.BroadcastEvent(rpc.NewTopoheight, topo)
+		}
+	})
+
+	wallet.Wallet_Memory.AddListener(rpc.NewEntry, func(entry interface{}) {
+		if xswd.IsEventTracked(rpc.NewEntry) {
+			xswd.BroadcastEvent(rpc.NewEntry, entry)
+		}
+	})
+
 	// Save the server in the context
 	xswd.context.Extra["xswd"] = xswd
 
@@ -214,7 +223,7 @@ func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationDa
 	return xswd
 }
 
-func (x *XSWD) IsEventTracked(event EventType) bool {
+func (x *XSWD) IsEventTracked(event rpc.EventType) bool {
 	applications := x.GetApplications()
 	for _, app := range applications {
 		if app.RegisteredEvents[event] {
@@ -225,10 +234,10 @@ func (x *XSWD) IsEventTracked(event EventType) bool {
 	return false
 }
 
-func (x *XSWD) BroadcastEvent(event EventType, value interface{}) {
+func (x *XSWD) BroadcastEvent(event rpc.EventType, value interface{}) {
 	for conn, app := range x.applications {
 		if app.RegisteredEvents[event] {
-			if err := conn.WriteJSON(value); err != nil {
+			if err := conn.WriteJSON(ResponseWithResult(nil, rpc.EventNotification{Event: event, Value: value})); err != nil {
 				x.logger.V(2).Error(err, "Error while broadcasting event")
 			}
 		}
@@ -446,7 +455,7 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app *Applic
 		app.SetIsRequesting(false)
 
 		// Create the map
-		app.RegisteredEvents = map[EventType]bool{}
+		app.RegisteredEvents = map[rpc.EventType]bool{}
 
 		x.Lock()
 		x.applications[conn] = *app

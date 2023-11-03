@@ -22,12 +22,36 @@
 
 package rpc
 
-import "fmt"
-import "time"
-import "strings"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+	"strings"
+	"time"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
+
+// This is part of XSWD protocol
+type EventType string
+
+const (
+	// When a new balance is detected
+	NewBalance = "new_balance"
+	// When a new topoheight is detected
+	NewTopoheight = "new_topoheight"
+	// When a new transaction (incoming/outgoing/coinbase) is detected
+	NewEntry = "new_entry"
+)
+
+type EventNotification struct {
+	Event EventType   `json:"event"`
+	Value interface{} `json:"value"`
+}
+
+type BalanceChange struct {
+	Balance uint64      `json:"balance"`
+	Scid    crypto.Hash `json:"scid"`
+}
 
 // these structures are completely decoupled from blockchain and live only within the wallet
 // all inputs and outputs which modify balance are presented by this structure
