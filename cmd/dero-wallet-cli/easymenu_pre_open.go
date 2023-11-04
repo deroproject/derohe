@@ -22,7 +22,6 @@ import "time"
 import "strconv"
 import "strings"
 import "encoding/hex"
-
 import "github.com/chzyer/readline"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
@@ -224,7 +223,15 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 // sets online mode, starts RPC server etc
 func common_processing(wallet *walletapi.Wallet_Disk) {
 	if globals.Arguments["--offline"].(bool) == true {
-		//offline_mode = true
+	        // For an offline (signing) wallet, we require the secret key:
+                account := wallet.GetAccount()
+                sSecret := fmt.Sprintf("%x", account.Keys.Secret.BigInt() )
+                if ( len(sSecret)==1 ) {
+                  fmt.Printf("Your wallet doesn't have a secret key. Did you specify a view-only wallet (%s)?\n", globals.Arguments["--wallet-file"])
+                  //Exit application
+                  globals.Exit_In_Progress = true
+                  return
+                }
 	} else {
 		wallet.SetOnlineMode()
 	}
