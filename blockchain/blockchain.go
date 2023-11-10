@@ -1106,11 +1106,11 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 	// remove any txs executed
 	for _, tx_hash := range bl.Tx_hashes {
 		logger.V(2).Info("Deleting TX from mempool for being executed in chain", "tx_hash", tx_hash)
-		chain.Mempool.Mempool_Delete_TX(tx_hash)
+		if tx := chain.Mempool.Mempool_Delete_TX(tx_hash); tx == nil {
+			// TX is not present, maybe it is a registration TX
+			chain.Regpool.Regpool_Delete_TX(tx_hash)
+		}
 	}
-
-	// Give a chance to the mempool to clean itself others stale txs
-	chain.Mempool.HouseKeeping(uint64(chain.Get_Height()))
 
 	// every 2000 block print a line
 	if chain.Get_Height()%2000 == 0 {
