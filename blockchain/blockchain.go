@@ -21,38 +21,36 @@ package blockchain
 // We must not call any packages that can call panic
 // NO Panics or FATALs please
 
-import "os"
-import "fmt"
-import "sync"
-import "time"
-import "bytes"
-import "runtime/debug"
-import "strings"
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "runtime"
-import "context"
-import "golang.org/x/crypto/sha3"
-import "golang.org/x/sync/semaphore"
-import "github.com/go-logr/logr"
+	"github.com/go-logr/logr"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/sync/semaphore"
 
-import "sync/atomic"
-
-import "github.com/hashicorp/golang-lru"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/metrics"
-
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/blockchain/mempool"
-import "github.com/deroproject/derohe/blockchain/regpool"
-
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/blockchain/mempool"
+	"github.com/deroproject/derohe/blockchain/regpool"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	lru "github.com/hashicorp/golang-lru"
+)
 
 // all components requiring access to blockchain must use , this struct to communicate
 // this structure must be update while mutex
@@ -1104,6 +1102,15 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 
 		chain.Tips = new_tips
 	}
+
+	// remove any txs executed
+	for _, tx_hash := range bl.Tx_hashes {
+		logger.V(2).Info("Deleting TX from mempool for being executed in chain", "tx_hash", tx_hash)
+		chain.Mempool.Mempool_Delete_TX(tx_hash)
+	}
+
+	// Give a chance to the mempool to clean itself others stale txs
+	chain.Mempool.HouseKeeping(uint64(chain.Get_Height()))
 
 	// every 2000 block print a line
 	if chain.Get_Height()%2000 == 0 {
