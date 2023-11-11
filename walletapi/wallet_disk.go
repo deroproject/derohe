@@ -39,7 +39,7 @@ type Wallet_Disk struct {
 func Create_Encrypted_Wallet(filename string, password string, account *Account) (wd *Wallet_Disk, err error) {
 	if _, err = os.Stat(filename); err == nil {
 		err = fmt.Errorf("File '%s' already exists", filename)
-		return
+		return nil,err
 
 	} else if os.IsNotExist(err) {
 		// path/to/whatever does *not* exist
@@ -50,10 +50,17 @@ func Create_Encrypted_Wallet(filename string, password string, account *Account)
 	wd = &Wallet_Disk{filename: filename}
 
 	// generate account keys
-	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account); err != nil {
+	wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account)
+	if err != nil {
+		fmt.Printf("Could not create wallet: %s\n",err);
 		return nil, err
 	}
 	wd.Wallet_Memory.wallet_disk = wd
+
+	// Flush wallet to disk, otherwise wallet file will only be created once the
+	// user exits the wallet menu back to the shell. During that time the wallet
+	// file is not on the disk yet, which can lead to data loss.
+	wd.Save_Wallet()
 
 	return
 }
@@ -62,22 +69,30 @@ func Create_Encrypted_Wallet(filename string, password string, account *Account)
 func Create_Encrypted_Wallet_From_Recovery_Words(filename string, password string, electrum_seed string) (wd *Wallet_Disk, err error) {
 	wd = &Wallet_Disk{filename: filename}
 
-	language, seed, err := mnemonics.Words_To_Key(electrum_seed)
-	if err != nil {
-		return
+	language, seed, err2 := mnemonics.Words_To_Key(electrum_seed)
+	if err2 != nil {
+		fmt.Printf("Could not convert phrase to a key: %s\n",err2);
+		return nil,err2
 	}
 
-	account,err2 := Generate_Account_From_Seed (crypto.GetBNRed(seed))
-	if err2 != nil {
-		return
+	var account *Account
+	account,err = Generate_Account_From_Seed (crypto.GetBNRed(seed))
+	if err != nil {
+		fmt.Printf("Could not create account: %s\n",err)
+		return nil,err
 	}
 	
 	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account); err != nil {
+		fmt.Printf("Could not create wallet:\n",err)
 		return nil, err
 	}
 
 	wd.Wallet_Memory.account.SeedLanguage = language
 	wd.Wallet_Memory.wallet_disk = wd
+	
+        //Save to disk
+        wd.Save_Wallet()
+	
 	return
 }
 
@@ -85,16 +100,23 @@ func Create_Encrypted_Wallet_From_Recovery_Words(filename string, password strin
 func Create_Encrypted_Wallet_Random(filename string, password string) (wd *Wallet_Disk, err error) {
 	wd = &Wallet_Disk{filename: filename}
 
-	account,err2 := Generate_Account_From_Seed ( crypto.RandomScalarBNRed() )
-        if err2 != nil {
-                return
+	var account *Account
+	account,err = Generate_Account_From_Seed ( crypto.RandomScalarBNRed() )
+        if err != nil {
+	        fmt.Printf("Could not generate random seed: %s\n", err)
+                return nil,err
         }
 
-	if wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account ); err == nil {	
-		return wd, nil
+	wd.Wallet_Memory, err = Create_Encrypted_Wallet_Memory(password, account )
+	if err != nil {
+		fmt.Printf("Could not create wallet\n")	
+		return nil,err
 	}
 	
 	wd.Wallet_Memory.wallet_disk = wd
+ 
+        //Save to disk
+        wd.Save_Wallet()
 
 	return nil, err
 }
