@@ -226,8 +226,8 @@ func common_processing(wallet *walletapi.Wallet_Disk) {
 	        // For an offline (signing) wallet, we require the secret key:
                 account := wallet.GetAccount()
                 sSecret := fmt.Sprintf("%x", account.Keys.Secret.BigInt() )
-                if ( len(sSecret)==1 ) {
-                  fmt.Printf("Your wallet doesn't have a secret key. Did you specify a view-only wallet (%s)?\n", globals.Arguments["--wallet-file"])
+                if ( len(sSecret)<=1 ) {
+                  fmt.Printf("Your wallet doesn't have a secret key. Did you specify an online (view only) wallet (%s)?\n", globals.Arguments["--wallet-file"])
                   //Exit application
                   globals.Exit_In_Progress = true
                   return
@@ -258,7 +258,11 @@ func common_processing(wallet *walletapi.Wallet_Disk) {
 			wallet.SetSaveDuration(time.Duration(s) * time.Second)
 			logger.Info("Wallet changes will be saved every", "duration (seconds)", wallet.SetSaveDuration(-1))
 		}
+	} else {
+		//Initialise save duration to the duration in the --help menu: 300 seconds
+	        wallet.SetSaveDuration(300 * time.Second)
 	}
+	
 
 	wallet.SetNetwork(!globals.Arguments["--testnet"].(bool))
 
