@@ -1000,7 +1000,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 								
 								// if ring size is 2, the other party is the sender so mark it so
 								if uint(tx.Payloads[t].Statement.RingSize) == 2 {
-									sender_idx = 0
+									sender_idx := 0
 									if j == 0 {
 										sender_idx = 1
 									}
