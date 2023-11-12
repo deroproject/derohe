@@ -997,16 +997,13 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 								//fmt.Printf("decoding encrypted payload %x\n",tx.Payloads[t].RPCPayload)
 								crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], w.GetAddress().PublicKey.EncodeCompressed()), tx.Payloads[t].RPCPayload)
 								//fmt.Printf("decoded plaintext payload %x\n",tx.Payloads[t].RPCPayload)
-								sender_idx := uint(tx.Payloads[t].RPCPayload[0])
+								
 								// if ring size is 2, the other party is the sender so mark it so
 								if uint(tx.Payloads[t].Statement.RingSize) == 2 {
 									sender_idx = 0
 									if j == 0 {
 										sender_idx = 1
 									}
-								}
-
-								if sender_idx <= uint(tx.Payloads[t].Statement.RingSize) {
 									addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[sender_idx]))
 									addr.Mainnet = w.GetNetwork()
 									entry.Sender = addr.String()
