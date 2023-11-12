@@ -1033,13 +1033,22 @@ func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 	if (IsOffline==true) {
 		// Offline (signing) wallet
 		fmt.Printf("\nView only key - Import the complete text into the online (view only) wallet to set it up:\n")
+		display_viewing_key(wallet)
+	}
+}
+
+func display_viewing_key (wallet *walletapi.Wallet_Disk) {
+	var IsOffline = globals.Arguments["--offline"].(bool)
+	
+	if (IsOffline==true) || (wallet.ViewOnly() == false) {
+		keys := wallet.Get_Keys()
 		sViewOnlyKey := fmt.Sprintf("viewkey,%s,%s,%x",wallet.GetAddress(), keys.Public.StringHex(), keys.Public.G1().Marshal())
 
-                //Append a simple checksum to the string to detect copy/paste errors
-                //during import into the online wallet:
-                var iChecksum=0
-                for t := range sViewOnlyKey {
-                	iChecksum = iChecksum + (int)(sViewOnlyKey[t])
+	        //Append a simple checksum to the string to detect copy/paste errors
+	        //during import into the online wallet:
+	        var iChecksum=1
+	        for t := range sViewOnlyKey {
+        		iChecksum = iChecksum + (int)(sViewOnlyKey[t])
 		}
 		fmt.Printf("%s;%d\n\n",sViewOnlyKey, iChecksum)
 	}
