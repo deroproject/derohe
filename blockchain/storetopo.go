@@ -67,16 +67,18 @@ func (s *storetopofs) Count() int64 {
 // it basically represents Load_Block_Topological_order_at_index
 // reads an entry at specific location
 func (s *storetopofs) Read(index int64) (TopoRecord, error) {
-
 	var buf [TOPORECORD_SIZE]byte
 	var record TopoRecord
 
 	if n, err := s.topomapping.ReadAt(buf[:], index*TOPORECORD_SIZE); int64(n) != TOPORECORD_SIZE {
-		return record, err
+		logger.V(4).Info("cannot read topo record", "index", index, "err", err)
+		return record, fmt.Errorf("cannot read topo record at index %d", index)
 	}
+
 	copy(record.BLOCK_ID[:], buf[:])
 	record.State_Version = binary.LittleEndian.Uint64(buf[len(record.BLOCK_ID):])
 	record.Height = int64(binary.LittleEndian.Uint64(buf[len(record.BLOCK_ID)+8:]))
+
 	return record, nil
 }
 

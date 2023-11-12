@@ -200,7 +200,6 @@ func (w *Wallet_Memory) sync_loop() {
 			continue
 		}
 
-		var zerohash crypto.Hash
 		if len(w.account.EntriesNative) == 0 {
 			if err := w.Sync_Wallet_Memory_With_Daemon(); err != nil {
 				logger.Error(err, "wallet syncing err")
@@ -208,8 +207,8 @@ func (w *Wallet_Memory) sync_loop() {
 		} else {
 			for k := range w.account.EntriesNative {
 				err := w.Sync_Wallet_Memory_With_Daemon_internal(k)
-				if k == zerohash && err != nil {
-					logger.Error(err, "wallet syncing err")
+				if err != nil {
+					globals.Logger.V(3).Error(err, "Error while syncing SCID", "scid", k)
 				}
 			}
 		}
@@ -269,7 +268,7 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash
 
 		if _, _, _, e, err := w.GetEncryptedBalanceAtTopoHeight(scid, -1, w.GetAddress().String()); err == nil {
 
-			//fmt.Printf("data '%s' previous '%s' scid %s\n",w.account.Balance_Result[scid].Data , previous,scid)
+			//fmt.Printf("data '%s' previous '%s' scid %s\n", w.account.Balance_Result[scid].Data, previous, scid)
 			if w.getEncryptedBalanceresult(scid).Data != previous {
 				b := w.DecodeEncryptedBalanceNow(e) // try to decode balance
 
@@ -285,11 +284,12 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash
 					// Event sender
 					w.account.Balance_Mature = b
 				}
+				w.Lock()
 				w.account.Balance[scid] = b
+				w.Unlock()
 				w.SyncHistory(scid) // also update statement
-			} else {
-
 			}
+
 			w.save_if_disk() // save wallet
 		} else {
 			return err
