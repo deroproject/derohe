@@ -1046,6 +1046,8 @@ func (w *Wallet_Memory) handle_incoming_tx(entry *rpc.Entry, tx *transaction.Tra
 		crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], w.GetAddress().PublicKey.EncodeCompressed()), tx.Payloads[t].RPCPayload)
 		sender_idx := uint(tx.Payloads[t].RPCPayload[0])
 		// if ring size is 2, the other party is the sender so mark it so
+		// Because before this function, we check current ring member is equal to our address
+		// So if j is 0, then sender_idx is 1 and vice versa
 		if uint(tx.Payloads[t].Statement.RingSize) == 2 {
 			sender_idx = 0
 			if j == 0 {
