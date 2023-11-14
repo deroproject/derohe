@@ -392,17 +392,17 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 		}
 	}
 	
-	//Parameter   [0] action: 0=scalar mult, 1=shared secret
-	//            [1] Project - 'dero'
-	//            [2] Version - Layout of the command fields
+	//Parameter   [0] Project - 'dero'
+	//            [1] Version - Layout of the command fields
+	//            [2] action: 0=scalar mult, 1=shared secret
 	// Version 1: [3] data
 	//            [4] Checksum of all the characters in the data stream
-	sOutput := fmt.Sprintf("%s dero 1 %x",sType,baData)
+	sOutput := fmt.Sprintf("dero 1 %s %x",sType,baData)
         var iCalculatedChecksum=0x01
         for t := range sOutput {
 	        iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
         }
-        sOutput = fmt.Sprintf("%s %d",sOutput, iCalculatedChecksum)
+        sOutput = fmt.Sprintf("%s;%d",sOutput, iCalculatedChecksum)
         
         baOutput := []byte(sOutput)
         
@@ -411,7 +411,7 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 		err = fmt.Errorf("Error saving file. %s\n",err)
 		return
 	}
-	fmt.Printf("\nInteraction with offline wallet required. Saved request to: %s\nSearching for 60 seconds for the response at: %s\n",sFileRequest,sFileResponse)
+	fmt.Printf("\nInteraction with offline wallet required. Saved request to: %s\nWaiting 60 seconds for the response at: %s\n",sFileRequest,sFileResponse)
 
 	bFound:=0
 	counter:=0
@@ -425,7 +425,7 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 	}
   
 	if (bFound==0) {
-	    err = fmt.Errorf("Could not find the response file.\n");
+	    err = fmt.Errorf("Timeout: No result from the offline wallet.\n");
 	    return;
 	}
 
@@ -440,39 +440,22 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
                 return
         }
 	
-	//Parameter   [0] header  - scalar_mult_result or shared_secret_result
-	//            [1] Project - 'dero'
-	//            [2] Version - Layout of the command fields
+	//Parameter   [0] Project - 'dero'
+	//            [1] Version - Layout of the command fields
+	//            [2] header  - scalar_mult_result or shared_secret_result	
 	// Version 1: [3] scalar multiply result used to decode the balance
 	//            [4] Checksum of all the characters in the data stream
 	sInput := string(baInput[:])
-	saParts := strings.Split(sInput," ")
-	if (len(saParts) != 5) {
-		err = fmt.Errorf("Invalid number of parts in the transaction. Found %d, expected 14\n", len(saParts))
-		return;
-	}
-	
-	sCompare := fmt.Sprintf("%s_result", sType)
-	if (saParts[0] != sCompare) {
-		err = fmt.Errorf("Requested operation: '%s'. Expected back result: '%s', found: %s\n",sType, sCompare, saParts[0])
-		return
-	}
-
-	if  (saParts[1] != "dero") {
-		err = fmt.Errorf("Expected Dero communication, Found %s\n",saParts[1]);
+	saParts := strings.Split(sInput,";")
+	if (len(saParts) != 2) {
+		err = fmt.Errorf("Invalid number of parts in the transaction. Expected 2, found %d\n", len(saParts))  //14
 		return;
 	}
 
-	if (saParts[2] != "1") {
-		err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saParts[2])
-		return
-	}
-	
-	sProtocolChecksum := saParts[4]
-	sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
+	sProtocolChecksum := saParts[1]
 	iCalculatedChecksum=0x01;
-	for t := range sInput {
-		iVal := int(sInput[t])
+	for t := range saParts[0] {
+		iVal := int(saParts[0][t])
 		iCalculatedChecksum = iCalculatedChecksum + iVal;
 	}
 	sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
@@ -480,9 +463,33 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 	if (sProtocolChecksum!=sCalculatedChecksum) {
 		err = fmt.Errorf("The checksum of the signed transaction data is invalid.\n")
 		return
+	}		
+	
+	saFields := strings.Split(saParts[0]," ")
+	if (len(saFields) != 4) {
+		err = fmt.Errorf("Invalid number of parts in the transaction. Expected 4, found %d\n", len(saFields))
+		return;
 	}	
 	
-	result,err = hex.DecodeString(saParts[3])
+
+
+	if  (saFields[0] != "dero") {
+		err = fmt.Errorf("Expected Dero communication, Found %s\n",saFields[1]);
+		return;
+	}
+
+	if (saFields[1] != "1") {
+		err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saFields[2])
+		return
+	}
+	
+	sCompare := fmt.Sprintf("%s_result", sType)
+	if (saFields[2] != sCompare) {
+		err = fmt.Errorf("Requested operation: '%s'. Expected back result: '%s', found: %s\n",sType, sCompare, saFields[0])
+		return
+	}	
+	
+	result,err = hex.DecodeString(saFields[3])
 	if err!=nil {
 		err = fmt.Errorf("Could not decode the result from the offline wallet\n");
 	}
@@ -520,7 +527,7 @@ func (w *Wallet_Memory) DecodeEncryptedBalanceNow(el *crypto.ElGamal) uint64 {
 		baData := el.Right.Marshal();	
 		baResult,err := w.OfflineOperationWithSecretKey(0,baData)
 		if err!=nil {
-			fmt.Printf("Could not retrieve the balance\n")
+			fmt.Printf("Could not retrieve the balance: %s\n",err)
 			return 0
 		}	
 		ScalarMultResult.Unmarshal(baResult)
@@ -1210,7 +1217,6 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 							var shared_key [32]byte
 							if (w.ViewOnly()==true) {
-								//shared_key = crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
 								baData := tx.Payloads[t].Statement.D.Marshal()
 							        baResult,err := w.OfflineOperationWithSecretKey(1,baData)
 							        if err!=nil {
@@ -1223,9 +1229,6 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 								for t := range baResult {
 									shared_key[t] = baResult[t]
 								}
-								
-								fmt.Printf("Reassembled.\nOrig: %x\nNew : %x\n", baResult, shared_key)
-							        
 							} else {														
 								shared_key = crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
 							}
