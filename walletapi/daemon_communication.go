@@ -868,8 +868,11 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 						switch {
 						case previous_balance == changed_balance: //ring member/* handle 0 value tx but fees is deducted */
-							//fmt.Printf("Anon Ring Member in TX %s\n", bl.Tx_hashes[i].String())
-							ring_member = true
+							if tx.Payloads[t].Statement.RingSize == 2 {
+								w.handle_incoming_tx(&entry, &tx, t, j, previous_balance, changed_balance)
+							} else {
+								ring_member = true
+							}
 						case previous_balance > changed_balance: // we generated this tx
 							entry.Burn = tx.Payloads[t].BurnValue
 							entry.Amount = previous_balance - changed_balance - (tx.Payloads[t].Statement.Fees)
@@ -971,62 +974,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 							}
 
 						case previous_balance < changed_balance: // someone sentus this amount
-							entry.Amount = changed_balance - previous_balance
-							entry.Incoming = true
-
-							// we should decode the payment id
-							var x bn256.G1
-							x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(entry.Amount))) // decrease amounts
-							x.Add(new(bn256.G1).Set(&x), tx.Payloads[t].Statement.C[j])          // get the blinder
-
-							blinder := &x
-
-							shared_key := crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
-
-							// enable receiver side proofs
-							proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))
-							proof.Proof = true
-							proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount)}}
-							entry.Proof = proof.String()
-
-							entry.PayloadType = tx.Payloads[t].RPCType
-							switch tx.Payloads[t].RPCType {
-
-							case 0:
-
-								//fmt.Printf("decoding encrypted payload %x\n",tx.Payloads[t].RPCPayload)
-								crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], w.GetAddress().PublicKey.EncodeCompressed()), tx.Payloads[t].RPCPayload)
-								//fmt.Printf("decoded plaintext payload %x\n",tx.Payloads[t].RPCPayload)
-								sender_idx := uint(tx.Payloads[t].RPCPayload[0])
-								// if ring size is 2, the other party is the sender so mark it so
-								if uint(tx.Payloads[t].Statement.RingSize) == 2 {
-									sender_idx = 0
-									if j == 0 {
-										sender_idx = 1
-									}
-								}
-
-								if sender_idx <= uint(tx.Payloads[t].Statement.RingSize) {
-									addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[sender_idx]))
-									addr.Mainnet = w.GetNetwork()
-									entry.Sender = addr.String()
-								}
-
-								entry.Payload = append(entry.Payload, tx.Payloads[t].RPCPayload[1:]...)
-								entry.Data = append(entry.Data, tx.Payloads[t].RPCPayload[:]...)
-
-								args, _ := entry.ProcessPayload()
-								_ = args
-
-							//	fmt.Printf("data received %s idx %d arguments %s\n", string(entry.Payload), sender_idx, args)
-
-							default:
-								entry.PayloadError = fmt.Sprintf("unknown payload type %d", tx.Payloads[t].RPCType)
-								entry.Payload = tx.Payloads[t].RPCPayload
-							}
-
-							//fmt.Printf("Received %s amount in TX(%d) %s payment id %x Src_ID %s data %s\n", globals.FormatMoney(changed_balance-previous_balance), tx.Height, bl.Tx_hashes[i].String(),  entry.PaymentID, tx.Src_ID, tx.Data)
-							//fmt.Printf("Received  amount in TX(%d) %s payment id %x Src_ID %s data %s\n",  tx.Height, bl.Tx_hashes[i].String(),  entry.PaymentID, tx.SrcID, tx.Data)
+							w.handle_incoming_tx(&entry, &tx, t, j, previous_balance, changed_balance)
 							total_received += (changed_balance - previous_balance)
 						}
 
@@ -1071,4 +1019,53 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 	return nil
 
+}
+
+func (w *Wallet_Memory) handle_incoming_tx(entry *rpc.Entry, tx *transaction.Transaction, t int, j int, previous_balance uint64, changed_balance uint64) {
+	entry.Amount = changed_balance - previous_balance
+	entry.Incoming = true
+
+	// we should decode the payment id
+	var x bn256.G1
+	x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(entry.Amount))) // decrease amounts
+	x.Add(new(bn256.G1).Set(&x), tx.Payloads[t].Statement.C[j])          // get the blinder
+
+	blinder := &x
+
+	shared_key := crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
+
+	// enable receiver side proofs
+	proof := rpc.NewAddressFromKeys((*crypto.Point)(blinder))
+	proof.Proof = true
+	proof.Arguments = rpc.Arguments{{Name: "H", DataType: rpc.DataHash, Value: crypto.Hash(shared_key)}, {Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(entry.Amount)}}
+	entry.Proof = proof.String()
+
+	entry.PayloadType = tx.Payloads[t].RPCType
+	switch tx.Payloads[t].RPCType {
+	case 0:
+		crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], w.GetAddress().PublicKey.EncodeCompressed()), tx.Payloads[t].RPCPayload)
+		sender_idx := uint(tx.Payloads[t].RPCPayload[0])
+		// if ring size is 2, the other party is the sender so mark it so
+		if uint(tx.Payloads[t].Statement.RingSize) == 2 {
+			sender_idx = 0
+			if j == 0 {
+				sender_idx = 1
+			}
+		}
+
+		if sender_idx <= uint(tx.Payloads[t].Statement.RingSize) {
+			addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[sender_idx]))
+			addr.Mainnet = w.GetNetwork()
+			entry.Sender = addr.String()
+		}
+
+		entry.Payload = append(entry.Payload, tx.Payloads[t].RPCPayload[1:]...)
+		entry.Data = append(entry.Data, tx.Payloads[t].RPCPayload[:]...)
+
+		args, _ := entry.ProcessPayload()
+		_ = args
+	default:
+		entry.PayloadError = fmt.Sprintf("unknown payload type %d", tx.Payloads[t].RPCType)
+		entry.Payload = tx.Payloads[t].RPCPayload
+	}
 }
