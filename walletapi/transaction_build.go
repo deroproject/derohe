@@ -242,7 +242,7 @@ rebuild_tx:
 		}
 		
 		//Evaluate available balance after processing the transfer[] entry:
-		if (balance < (transfers[t].Amount + fees_currentasset)) {
+		if (balance < (transfers[t].Amount + fees_currentasset + burn_value)) {
 			fmt.Printf("Insufficient funds to process the transaction: Balance %d < Spend amount,fees,burn value: %d+%d+%d\n", balance, transfers[t].Amount, fees_currentasset,burn_value)
 			return nil
 		}
