@@ -868,10 +868,30 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 
 						switch {
 						case previous_balance == changed_balance: //ring member/* handle 0 value tx but fees is deducted */
+							// Ringsize is 2 we are obviously not a ring member
 							if tx.Payloads[t].Statement.RingSize == 2 {
 								w.handle_incoming_tx(&entry, &tx, t, j, previous_balance, changed_balance)
 							} else {
-								ring_member = true
+								set_ring_member := true
+								// let's brute force to check if we didn't received a payload
+								shared_key := crypto.GenerateSharedSecret(w.account.Keys.Secret.BigInt(), tx.Payloads[t].Statement.D)
+								if entry.Amount == entry.Burn && tx.Payloads[t].RPCType == transaction.ENCRYPTED_DEFAULT_PAYLOAD_CBOR {
+									var data_copy []byte
+									data_copy = append(data_copy, tx.Payloads[t].RPCPayload...)
+									our_key := w.GetAddress().PublicKey.EncodeCompressed()
+									crypto.EncryptDecryptUserData(crypto.Keccak256(shared_key[:], our_key), data_copy)
+
+									var args rpc.Arguments
+									if err = args.UnmarshalBinary(data_copy[1:]); err == nil {
+										// we are not a ring member
+										w.handle_incoming_tx(&entry, &tx, t, j, previous_balance, changed_balance)
+										set_ring_member = false
+									}
+								}
+
+								if set_ring_member {
+									ring_member = true
+								}
 							}
 						case previous_balance > changed_balance: // we generated this tx
 							entry.Burn = tx.Payloads[t].BurnValue
