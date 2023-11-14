@@ -462,21 +462,22 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	
 		//Parameter   [0]: Project - Dero='dero'
 		//            [1]: Version - Layout of the command fields
-		// Version 1: [2] Array of transfers (outputs)
-		//            [3] Array of ring balances
-		//            [4] Array of rings  
-		//            [5] block_hash
-		//            [6] height
-		//            [7] Array of scdata
-		//            [8] treehash
-		//            [9] max_bits
-		//            [10] gasstorage
-		//            [11] Checksum of all the characters in the command.
+		//            [2]: Command: sign_offline
+		// Version 1: [3] Array of transfers (outputs)
+		//            [4] Array of ring balances
+		//            [5] Array of rings  
+		//            [6] block_hash
+		//            [7] height
+		//            [8] Array of scdata
+		//            [9] treehash
+		//            [10] max_bits
+		//            [11] gasstorage
+		//            [12] Checksum of all the characters in the command.
 		var sReturn string 
 		var sChecksumInput string
 	  
-		sReturn="sign_offline dero 1 ";
-		sChecksumInput="dero 1 ";
+		sReturn="dero 1 sign_offline ";
+		sChecksumInput="dero 1 sign_offline ";
 	  
 		var counter=0
 		
@@ -606,7 +607,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 			iVal := int(sChecksumInput[t])
 			iChecksum = iChecksum + iVal;
 		}
-		sTmp = fmt.Sprintf(" %d",iChecksum)
+		sTmp = fmt.Sprintf(";%d",iChecksum)
 		sReturn=sReturn + sTmp  
 		
 	        //--------------------------------------------------------------------------------------
@@ -662,58 +663,65 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		}		
 		fmt.Printf("Read %d bytes from ./signed. ",len(baData))
 
-                //Parameter   [0]: header: signed
-                //            [1]: Project - 'dero'
-                //            [2]: Version - Layout of the command fields
+		tx=nil
+                //Parameter   [0]: Project - 'dero'
+                //            [1]: Version - Layout of the command fields
+                //            [2]: Command: signed
                 // Version 1: [3] Signed transaction
                 //            [4] Checksum of all the characters in the data stream
                 sInput := string(baData[:])
-                saParts := strings.Split(sInput," ")
-                if (len(saParts) != 5) {
-                	err = fmt.Errorf("Invalid number of parts in the transaction. Found %d, expected 14\n", len(saParts))
-			return;
-                }
-                
-                if (saParts[0] != "signed") {
-                	err = fmt.Errorf("Transaction doesn't start with 'sign_offline'\n")
-                        return
+                saParts := strings.Split(sInput,";")
+                                
+                if (len(saParts) != 2) {
+                	fmt.Printf("Invalid number of parts in the transaction. Expected 2, found %d\n", len(saParts))
+                	return
 		}
-
-		if  (saParts[1] != "dero") {
-			err = fmt.Errorf("Expected Dero communication, Found %s\n",saParts[1]);
-                        return;
-		}
-
-                if (saParts[2] != "1") {
-                	err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saParts[2])
-                        return
-		}
-		
-		sProtocolChecksum := saParts[4]	
-		sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
-		iCalculatedChecksum:=0x01;
-		for t := range sInput {
-			iVal := int(sInput[t])
+                                
+                sProtocolChecksum := saParts[1]
+                iCalculatedChecksum:=0x01;
+                for t := range saParts[0] {
+			iVal := int(saParts[0][t])
 			iCalculatedChecksum = iCalculatedChecksum + iVal;
 		}
 		sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
 
 		if (sProtocolChecksum!=sCalculatedChecksum) {
-			err = fmt.Errorf("The checksum of the signed transaction data is invalid.\n")
-			tx=nil
+			fmt.Printf("The checksum of the request data is invalid. Protocol: '%s', Calculates: '%s'\n", sProtocolChecksum, sCalculatedChecksum)
 			return
-		}		
+		}
+ 
+ 		saFields := strings.Split(saParts[0]," ")               
+                if (len(saFields) != 4) {
+                	err = fmt.Errorf("Invalid number of parts in the transaction. Expected 4, found %d\n", len(saFields))
+			return;
+                }
+
+		if  (saFields[0] != "dero") {
+			err = fmt.Errorf("Expected Dero communication, Found %s\n",saFields[1]);
+                        return;
+		}
+
+                if (saFields[1] != "1") {
+                	err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saFields[2])
+                        return
+		}
 		
-                                
+                if (saFields[2] != "signed") {
+                	err = fmt.Errorf("Transaction doesn't start with 'sign_offline'\n")
+                        return
+		}
+		                                
 		tx = new(transaction.Transaction)
-		baData,err = hex.DecodeString( saParts[3] )
+		baData,err = hex.DecodeString( saFields[3] )
 		if err!= nil {
 			err = fmt.Errorf("Could not decode the signed transaction.\n")
+			tx=nil
 			return		
 		}
 		err = tx.Deserialize(baData)
 		if err!=nil {
 			err = fmt.Errorf("Could not deserialise the signed transaction.\n")
+			tx=nil
 			return
 		}
 		
