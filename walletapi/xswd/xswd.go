@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -150,16 +151,24 @@ type XSWD struct {
 	sync.Mutex
 }
 
+// This is default port for XSWD
+// It can be changed for tests only
+// Production should always use 44326 as its a way to identify XSWD
+const XSWD_PORT = 44326
+
 // Create a new XSWD server which allows to connect any dApp to the wallet safely through a websocket
 // Each request done by the session will wait on the appHandler and requestHandler to be accepted
-func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) bool, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
+func NewXSWDServer(port int, wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) bool, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
+	return NewXSWDServerWithPort(XSWD_PORT, wallet, appHandler, requestHandler)
+}
+
+func NewXSWDServerWithPort(port int, wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) bool, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("XSWD server"))
 	})
 
-	server := &http.Server{Addr: ":44326", Handler: mux}
-
+	server := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: mux}
 	logger := globals.Logger.WithName("XSWD")
 
 	xswd := &XSWD{
