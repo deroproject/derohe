@@ -55,7 +55,7 @@ func display_easymenu_post_open_command(l *readline.Instance) {
         }
         if (bOffline==true) {
         	io.WriteString(w, "Offline (signing) wallet:\n")
-        	io.WriteString(w, " 1. Setup the online wallet with the exported public key\n")
+        	io.WriteString(w, " 1. Exported public key to setup the online (view only) wallet\n")
         	io.WriteString(w, " 2. Generate a registration transaction for the online wallet\n");
         	io.WriteString(w, " 3. Sign spend transactions for the online wallet\n");
         }
@@ -184,6 +184,11 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				
 				//The view only online wallet received the registration transaction from the offline wallet.
 				sRegistration := read_line_with_prompt(l, fmt.Sprintf("Enter the registration transaction (obtained from the offline (signing) wallet): "))
+				
+				if (len(sRegistration)==0) {
+					//No input provided
+					break;
+				}
 				
 				//Strip off any newlines or extra spaces
 				sTmp := strings.ReplaceAll(sRegistration,"\n","")
@@ -436,9 +441,9 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			_ = os.Remove("./transaction")
 	    
 			
-			//Parameter   [0]: header: sign_offline
-			//            [1]: Project - 'dero'
-			//            [2]: Version - Layout of the command fields
+			//Parameter   [0] Project - 'dero'
+			//            [1] Version - Layout of the command fields
+			//            [2] Command: sign_offline
 			// Version 1: [3] Array of transfers (outputs)
 			//            [4] Array of ring balances
 			//            [5] Array of rings
@@ -449,27 +454,57 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			//            [10] max_bits
 			//            [11] gasstorage
 			//            [12] Checksum of all the characters in the command.
-			saParts := strings.Split(sTransaction," ")
-			if (len(saParts)!=13) {
-				fmt.Printf("Invalid number of parts in the transaction. Found %d, expected 13\n", len(saParts))
+
+                        //Split string on ';'
+                        saParts := strings.Split(sTransaction,";")
+                        if (len(saParts) != 2) {
+                          fmt.Fprintf(l.Stderr(), "Invalid number of parts. Expected 2, found %d\n\n", len(saParts))
+                          break;
+                        }
+
+                        sTransaction = saParts[0]
+                        sProtocolChecksum := saParts[1]
+                        iProtocolChecksum,err := strconv.Atoi(sProtocolChecksum)
+                        if err!=nil {
+                          fmt.Fprintf(l.Stderr(), "Could not convert the checksum back to an integer\n\n")
+                          break
+                        }
+/*                                                                
+                        //Regenerate checksum:
+                        var iCalculatedChecksum=0x01
+                        for t := range sTransaction {
+                          iCalculatedChecksum = iCalculatedChecksum + (int)(sTransaction[t])
+                        }
+                                
+			fmt.Printf("Checksum input\n'%s'\n\n",sTransaction);
+                        // Check 1: Checksum
+                        if (iProtocolChecksum != iCalculatedChecksum) {
+                          fmt.Fprintf(l.Stderr(), "Checksum calculation failed. Please check if you've imported the transaction correctly. Protocol: %d, calculated: %d\n\n", iProtocolChecksum, iCalculatedChecksum)
+                          break
+                        }                               
+*/                                
+                        saParts = strings.Split(sTransaction," ")
+			if (len(saParts)!=12) {
+				fmt.Printf("Invalid number of parts in the transaction. Expected 13, found %d\n", len(saParts))
 				break;
 			}
 			
-			if (saParts[0] != "sign_offline") {
-				fmt.Printf("Transaction doesn't start with 'sign_offline'\n")
-				break;
-			}
-			if  (saParts[1] != "dero") {
+			if  (saParts[0] != "dero") {
 				fmt.Printf("Expected a Dero transaction, Found %s\n",saParts[1]);
 				break;
 			}
 
-			if (saParts[2] != "1") {
+			if (saParts[1] != "1") {
 				fmt.Printf("Only transaction version 1 supported. Found %s\n",saParts[2])
 				break;
 			}
                 
-                	sChecksumInput:="dero 1 ";
+			if (saParts[2] != "sign_offline") {
+				fmt.Printf("Transaction doesn't start with 'sign_offline'\n")
+				break;
+			}
+			
+                	sChecksumInput:="dero 1 sign_offline ";
 			//---------------------------------------------------------------------------------------------------------------------         
 			var transfers []rpc.Transfer
 			
@@ -720,10 +755,6 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			gasstorage, err = strconv.ParseUint(saParts[11],10,64)
 	                sChecksumInput+=" "+saParts[11]
 			
-			//[12] Checksum
-			var iProtocolChecksum int
-			iProtocolChecksum, err = strconv.Atoi(saParts[12])
-
 	                iCalculatedChecksum:=0x01;
         	        for t := range sChecksumInput {
                 	        iVal := int(sChecksumInput[t])
@@ -731,6 +762,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
         	        }
         	        
 			if (iCalculatedChecksum != iProtocolChecksum) {
+				fmt.Printf("Checksum input\n'%s'\n\n",sChecksumInput)
 				fmt.Printf("The checksum for the transaction data is invalid. Please provide the transaction again.\n\n")
 				break
 			}
@@ -742,7 +774,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			}
 			
 			sTxSerialized := tx.Serialize()
-			sOutput := fmt.Sprintf("signed dero 1 %x",sTxSerialized)
+			sOutput := fmt.Sprintf("dero 1 signed %x",sTxSerialized)
 			
 			iCalculatedChecksum=0x01;
         	        for t := range sOutput {
@@ -750,7 +782,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 	                        iCalculatedChecksum = iCalculatedChecksum + iVal;
         	        }
         	        sChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
-        	        sOutput+=" "+sChecksum	
+        	        sOutput+=";"+sChecksum	
 			
 			baData = []byte( sOutput )
 			err = os.WriteFile("./signed", baData, 0666)

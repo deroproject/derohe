@@ -68,14 +68,15 @@ Usage:
   --wallet-file=<file>  Use this file to restore or create new wallet
   --password=<password>  Use this password to unlock the wallet
   --offline     Run the wallet in offline (signing) mode. An online (view only) wallet is required to create the transaction & sync to the network
+  --viewingkey  Offline wallet: Print the viewing key and exit
   --prompt      Disable menu and display prompt
   --testnet  	Run in testnet mode.
   --debug       Debug mode enabled, print log messages
   --unlocked    Keep wallet unlocked for cli commands (Does not confirm password before commands)
-  --generate-new-wallet             Generate new (random) wallet
+  --generate-new-wallet             Create a new wallet, using a randomly generated seed
+  --restore-viewonly-wallet         Restore a view only wallet. The offline (signing) wallet contains the secret key & can export the view only key
   --restore-deterministic-wallet    Restore wallet from previously saved recovery seed
   --electrum-seed=<recovery-seed>   Seed to use while restoring wallet
-  --restore-viewonly-wallet         Restore a view only wallet. The offline (signing) wallet contains the secret key & can export the view only key
   --socks-proxy=<socks_ip:port>  Use a proxy to connect to Daemon.
   --remote      use hard coded remote daemon https://rwallet.dero.live
   --daemon-address=<host:port>    Use daemon instance at <host>:<port> or https://domain
@@ -304,7 +305,7 @@ func main() {
 		}
 						
 		//Regenerate checksum:
-		var iCalculatedChecksum=0
+		var iCalculatedChecksum=1
 		for t := range sViewKey {
 			iCalculatedChecksum = iCalculatedChecksum + (int)(sViewKey[t])
 		}
@@ -347,7 +348,13 @@ func main() {
 			return
 		}
 
-                logger.Info("Successfully restored an online (view only) wallet\n")	 	
+                fmt.Printf("Successfully restored an online (view only) wallet\n")	 	
+                fmt.Printf("  Address: %s\n",sAddress)
+                fmt.Printf("  Public key: %s\n", wallet.Get_Keys().Public.StringHex())
+
+		//Exit application so the wallet save properly to disk
+                globals.Exit_In_Progress = true
+                
 	}
 
 	if globals.Arguments["--rpc-login"] != nil {
@@ -397,6 +404,12 @@ func main() {
 		common_processing(wallet)
 	}
 	go walletapi.Keep_Connectivity() // maintain connectivity
+	
+	bOffline := globals.Arguments["--viewingkey"].(bool)
+        if (bOffline==true) {
+        	display_viewing_key(wallet)
+        	return;
+        }
 
 	//pipe_reader, pipe_writer = io.Pipe() // create pipes
 
@@ -484,6 +497,9 @@ func update_prompt(l *readline.Instance) {
 		address_trim = "DERO Wallet"
 	}	
 	
+	
+
+	
 	for {
 		time.Sleep(30 * time.Millisecond) // give user a smooth running number
 
@@ -569,66 +585,72 @@ func update_prompt(l *readline.Instance) {
 				
 		                baData, err := os.ReadFile(sFileRequest)
 		                if err!=nil {
-		                        err = fmt.Errorf("Could not read from %s. Check the file permissions.\n",sFileRequest);
+		                        fmt.Printf("Could not read from %s. Check the file permissions.\n",sFileRequest);
 	               		        continue;
 		                }  
 		                
 		                _ = os.Remove(sFileRequest)
 		                if _, err = os.Stat(sFileRequest); err == nil {
-		                	err = fmt.Errorf("Could not delete %s\n",sFileRequest)
+		                	fmt.Printf("Could not delete %s\n",sFileRequest)
 		                	continue;		                    
 		                }
 		                
-		                //Parameter   [0]: header: scalar_mult
-		                //            [1]: Project - 'dero'
-				//            [2]: Version - Layout of the command fields
+		                //Parameter   [0]: Project - 'dero'
+				//            [1]: Version - Layout of the command fields
+				//            [2]: Command scalar_mult
 		                // Version 1: [3] el.Right
 				//            [4] Checksum of all the characters in the data stream
 		                sInput := string(baData[:])
-				saParts := strings.Split(sInput," ")
-		                if (len(saParts) != 5) {
-                		        err = fmt.Errorf("Invalid number of parts in the transaction. Found %d, expected 5\n", len(saParts))
+		                sInput  = strings.TrimSpace(sInput)
+				saParts := strings.Split(sInput,";")
+				if (len(saParts) != 2) {
+					fmt.Printf("Invalid number of parts in the transaction. Expected 2, found %d\n", len(saParts))
+					continue
+				}
+				
+				sProtocolChecksum := saParts[1]
+				iCalculatedChecksum:=0x01;
+				for t := range saParts[0] {
+					iVal := int(saParts[0][t])
+					iCalculatedChecksum = iCalculatedChecksum + iVal;
+				}
+				sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
+
+				if (sProtocolChecksum!=sCalculatedChecksum) {
+					fmt.Printf("The checksum of the request data is invalid. Protocol: '%s', Calculates: '%s'\n", sProtocolChecksum, sCalculatedChecksum)
+					continue
+				}                       
+					
+				saFields := strings.Split(saParts[0]," ")
+				
+		                if (len(saFields) != 4) {
+                		        fmt.Printf("Invalid number of parts in the transaction. Expected 4, found %d\n", len(saFields))
 	               		        continue;
 				}
 					
-        		        if (saParts[0] != "scalar_mult") {
-        		        	err = fmt.Errorf("Transaction doesn't start with 'sign_offline'\n")
-	               		        continue;
-				}
-
-		                if  (saParts[1] != "dero") {
-                		        err = fmt.Errorf("Expected a Dero transaction, Found %s\n",saParts[1]);
+		                if  (saFields[0] != "dero") {
+                		        fmt.Printf("Expected a Dero transaction, Found %s\n",saFields[1]);
 	               		        continue;
 		                }
 
-				if (saParts[2] != "1") {
-		                        err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saParts[2])
+				if (saFields[1] != "1") {
+		                        fmt.Printf("Only transaction version 1 supported. Found %s\n",saFields[2])
 	               		        continue;
 		                }
 		                
-		                sProtocolChecksum := saParts[4]		                
-				
-			        sInput=fmt.Sprintf("%s %s %s %s",saParts[0], saParts[1], saParts[2], saParts[3])
-			        iCalculatedChecksum:=0x01;
-			        for t := range sInput {
-			                iVal := int(sInput[t])
-			                iCalculatedChecksum = iCalculatedChecksum + iVal;
-			        }
-			        sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
-
-			        if (sProtocolChecksum!=sCalculatedChecksum) {
-			                err = fmt.Errorf("The checksum of the request data is invalid.\n")
-			                continue
-			        }       				
+				if ((saFields[2] != "scalar_mult") && (saFields[2] != "shared_secret")) {
+                                        fmt.Printf("Transaction doesn't start with 'scalar_mult' or 'shared_secret'\n")
+                                        continue;
+                                }		                
 		                
-		                baData,err = hex.DecodeString(saParts[3])
+		                baData,err = hex.DecodeString(saFields[3])
 		                if err!=nil {
-		                	err = fmt.Errorf("Could not hex decode the data portion\n");
+		                	fmt.Printf("Could not hex decode the data portion\n");
 	               		        continue;		                	
 		                }
 				
 				keys := wallet.Get_Keys()
-				if (saParts[0]=="scalar_mult") {
+				if (saFields[2]=="scalar_mult") {
 			                var elRight    *bn256.G1                    
 				        elRight = new(bn256.G1)       
 				        elRight.Unmarshal(baData)
@@ -636,44 +658,42 @@ func update_prompt(l *readline.Instance) {
 			                scalarMultResult := new(bn256.G1).ScalarMult(elRight, keys.Secret.BigInt())
 			                baData = scalarMultResult.Marshal()
 			                
-			                sOutput := fmt.Sprintf("scalar_mult_result dero 1 %x",baData)
+			                sOutput := fmt.Sprintf("dero 1 scalar_mult_result %x",baData)
 					var iCalculatedChecksum=0x01
 					for t := range sOutput {
 				                iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
 				        }
-				        sOutput = fmt.Sprintf("%s %d",sOutput, iCalculatedChecksum)
+				        sOutput = fmt.Sprintf("%s;%d",sOutput, iCalculatedChecksum)
 				        baData = []byte(sOutput)
-				} else if (saParts[1]=="shared_secret") {
+				} else if (saFields[2]=="shared_secret") {
 					var peer_publickey    *bn256.G1                    
 				        peer_publickey = new(bn256.G1)       
 				        peer_publickey.Unmarshal(baData)
 				        
 					shared_key := crypto.GenerateSharedSecret(keys.Secret.BigInt(), peer_publickey)
 					
-	                                sOutput := fmt.Sprintf("shared_secret_result dero 1 %x",shared_key)
+	                                sOutput := fmt.Sprintf("dero 1 shared_secret_result %x",shared_key)
                                         var iCalculatedChecksum=0x01
                                         for t := range sOutput {
                                                 iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
                                         }
-                                        sOutput = fmt.Sprintf("%s %d",sOutput, iCalculatedChecksum)
+                                        sOutput = fmt.Sprintf("%s;%d",sOutput, iCalculatedChecksum)
                                         baData = []byte(sOutput)
 					
 				} else { 
-					err = fmt.Errorf("Unknown type request. Only scalar_mult and shared_secret supported\n");
+					fmt.Printf("Unknown type request. Only scalar_mult and shared_secret supported\n");
 					continue
 				}
 		                
 				err = os.WriteFile("./offline_response", baData, 0644)
 				if err!=nil {
-					err = fmt.Errorf("Error saving file. %s\n",err)
+					fmt.Printf("Error saving file. %s\n",err)
 					continue;
 				}
 				fmt.Printf("Saved result in ./offline_response\n")
         	        }
 		}
-
 	}
-
 }
 
 // create a new wallet from scratch from random numbers
