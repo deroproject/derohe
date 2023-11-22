@@ -252,6 +252,41 @@ type (
 )
 
 type (
+	GetMatchingKeysSC_Params struct {
+		SCID string `json:"scid"`
+		// Each keys support regex matching
+		// So you can basically do a search for all keys starting with "abc" or ending with "abc" or containing "abc"
+		// This only works with DVM String keys
+		Patterns   []string `json:"patterns,omitempty"`
+		TopoHeight int64    `json:"topoheight,omitempty"` // all queries are related to this topoheight
+	}
+	GetMatchingKeysSC_Result struct {
+		// Its a 2D array, first dimension is the same index as the key pattern sent,
+		// second dimension is the list of matching keys
+		Keys   [][]string `json:"keys,omitempty"`
+		Status string     `json:"status"`
+	}
+)
+
+type (
+	GetBalancesSC_Params struct {
+		SCID string `json:"scid"`
+		// Request only specific assets balances
+		Assets []crypto.Hash `json:"assets,omitempty"`
+		// Or request all assets balances
+		All        bool  `json:"all,omitempty"`
+		TopoHeight int64 `json:"topoheight,omitempty"` // all queries are related to this topoheight
+	}
+	GetBalancesSC_Result struct {
+		// If All is true, then all balances are returned
+		// If All is false, then only requested assets balances are returned
+		// But if a requested asset is not found, then it is not added in Balances map
+		Balances map[crypto.Hash]uint64 `json:"balances,omitempty"`
+		Status   string                 `json:"status"`
+	}
+)
+
+type (
 	GetRandomAddress_Params struct {
 		SCID crypto.Hash `json:"scid"`
 	}
