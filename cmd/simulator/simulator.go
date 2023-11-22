@@ -91,8 +91,8 @@ var rpcport = "127.0.0.1:20000"
 
 var TRIGGER_MINE_BLOCK string = "/dev/shm/mineblocknow"
 
-const wallet_ports_start = 30000 // all wallets will rpc activated on ports
-
+const wallet_ports_start = 30000      // all wallets will rpc activated on ports
+const wallet_ports_xswd_start = 40000 // xswd ports used by wallets if enabled
 // this is a crude function used during tests
 
 func Mine_block_single(chain *blockchain.Blockchain, miner_address rpc.Address) error {

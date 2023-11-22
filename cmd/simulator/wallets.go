@@ -123,20 +123,20 @@ func register_wallets(chain *blockchain.Blockchain) {
 
 		if v, ok := globals.Arguments["--use-xswd"]; ok && v.(bool) {
 			// XSWD server accept everything by default
-			xswd.NewXSWDServerWithPort(wallet_ports_start+i, wallets[i], func(app *xswd.ApplicationData) bool {
+			xswd.NewXSWDServerWithPort(wallet_ports_xswd_start+i, wallets[i], func(app *xswd.ApplicationData) bool {
 				return true
 			}, func(app *xswd.ApplicationData, request *jrpc2.Request) xswd.Permission {
 				return xswd.Allow
 			})
-		} else {
-			globals.Arguments["--rpc-bind"] = fmt.Sprintf("127.0.0.1:%d", wallet_ports_start+i)
+		}
 
-			if r, err := rpcserver.RPCServer_Start(wallets[i], fmt.Sprintf("wallet_%d", i)); err != nil {
-				logger.Error(err, "Error starting rpc server")
-			} else {
-				logger.Info(fmt.Sprintf("wallet %d", i), "seed", wallets_seeds[i])
-				wallets_rpcservers = append(wallets_rpcservers, r)
-			}
+		globals.Arguments["--rpc-bind"] = fmt.Sprintf("127.0.0.1:%d", wallet_ports_start+i)
+
+		if r, err := rpcserver.RPCServer_Start(wallets[i], fmt.Sprintf("wallet_%d", i)); err != nil {
+			logger.Error(err, "Error starting rpc server")
+		} else {
+			logger.Info(fmt.Sprintf("wallet %d", i), "seed", wallets_seeds[i])
+			wallets_rpcservers = append(wallets_rpcservers, r)
 		}
 
 		time.Sleep(17 * time.Millisecond) // enough delay to start a go routine
