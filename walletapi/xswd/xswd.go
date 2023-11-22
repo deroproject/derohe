@@ -158,7 +158,7 @@ const XSWD_PORT = 44326
 
 // Create a new XSWD server which allows to connect any dApp to the wallet safely through a websocket
 // Each request done by the session will wait on the appHandler and requestHandler to be accepted
-func NewXSWDServer(port int, wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) bool, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
+func NewXSWDServer(wallet *walletapi.Wallet_Disk, appHandler func(*ApplicationData) bool, requestHandler func(*ApplicationData, *jrpc2.Request) Permission) *XSWD {
 	return NewXSWDServerWithPort(XSWD_PORT, wallet, appHandler, requestHandler)
 }
 
