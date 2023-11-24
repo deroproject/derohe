@@ -52,6 +52,9 @@ func GetMatchingKeysSC(ctx context.Context, p rpc.GetMatchingKeysSC_Params) (res
 		}
 	}
 
+	// Initialize the result
+	result.Keys = make([][]string, len(p.Patterns))
+
 	toporecord, err := chain.Store.Topo_store.Read(topoheight)
 	if err == nil {
 		var ss *graviton.Snapshot
