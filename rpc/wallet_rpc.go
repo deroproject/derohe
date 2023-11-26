@@ -198,6 +198,16 @@ type (
 )
 
 type (
+	GetTrackedAssets_Params struct {
+		OnlyPositiveBalances bool `json:"only_positive_balances"`
+		SkipBalanceCheck     bool `json:"skip_balance_check"`
+	}
+	GetTrackedAssets_Result struct {
+		Balances map[crypto.Hash]uint64 `json:"balances"`
+	}
+)
+
+type (
 	GetAddress_Params struct{} // no params
 	GetAddress_Result struct {
 		Address string `json:"address"`

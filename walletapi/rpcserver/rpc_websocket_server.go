@@ -301,6 +301,8 @@ var WalletHandler = handler.Map{
 	"GetAddress":               handler.New(GetAddress),
 	"getbalance":               handler.New(GetBalance),
 	"GetBalance":               handler.New(GetBalance),
+	"get_tracked_assets":       handler.New(GetTrackedAssets),
+	"GetTrackedAssets":         handler.New(GetTrackedAssets),
 	"getheight":                handler.New(GetHeight),
 	"GetHeight":                handler.New(GetHeight),
 	"get_transfer_by_txid":     handler.New(GetTransferbyTXID),
