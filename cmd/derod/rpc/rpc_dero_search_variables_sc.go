@@ -226,6 +226,7 @@ func SearchVariablesSC(ctx context.Context, p rpc.SearchVariablesSC_Params) (res
 	return
 }
 
+// MapData maps the data according to the given mapper
 func MapData(mapper *rpc.ValueMapperSC, data string) (result string, err error) {
 	if mapper == nil {
 		return data, nil
@@ -241,6 +242,8 @@ func MapData(mapper *rpc.ValueMapperSC, data string) (result string, err error) 
 		result = addr.String()
 	case rpc.ValueMapperSC_ToHex:
 		result = fmt.Sprintf("%x", data)
+	default:
+		return data, nil
 	}
 	return
 }

@@ -286,7 +286,7 @@ type (
 	}
 	SearchVariablesSC_Result struct {
 		// index of the result is same as the index of the filter
-		Data   []FilterSC_Result `json:"data,omitempty"`
+		Data   []FilterSC_Result `json:"data"`
 		Status string            `json:"status"`
 	}
 )
@@ -303,8 +303,26 @@ type (
 	GetMatchingKeysSC_Result struct {
 		// Its a 2D array, first dimension is the same index as the key pattern sent,
 		// second dimension is the list of matching keys
-		Keys   [][]string `json:"keys,omitempty"`
+		Keys   [][]string `json:"keys"`
 		Status string     `json:"status"`
+	}
+)
+
+type (
+	KeyWithMapper struct {
+		Key         interface{}   `json:"key"`
+		ValueMapper ValueMapperSC `json:"value_mapper,omitempty"`
+	}
+
+	GetValuesFromKeysSC_Params struct {
+		SCID       string          `json:"scid"`
+		Keys       []KeyWithMapper `json:"keys,omitempty"`
+		TopoHeight int64           `json:"topoheight,omitempty"` // all queries are related to this topoheight
+	}
+	GetValuesFromKeysSC_Result struct {
+		// same index as keys
+		Values []interface{} `json:"values"`
+		Status string        `json:"status"`
 	}
 )
 
@@ -321,7 +339,7 @@ type (
 		// If All is true, then all balances are returned
 		// If All is false, then only requested assets balances are returned
 		// But if a requested asset is not found, then it is not added in Balances map
-		Balances map[crypto.Hash]uint64 `json:"balances,omitempty"`
+		Balances map[crypto.Hash]uint64 `json:"balances"`
 		Status   string                 `json:"status"`
 	}
 )
