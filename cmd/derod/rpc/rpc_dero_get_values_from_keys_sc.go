@@ -58,11 +58,25 @@ func GetValuesFromKeysSC(ctx context.Context, p rpc.GetValuesFromKeysSC_Params) 
 				for i := range p.Keys {
 					k := p.Keys[i]
 					if val, ok := k.Key.(string); ok {
+						// Special flag in case someone store in following format:
+						// STORE(SIGNER(), "value")
+						if k.IsAddress {
+							var addr rpc.Address
+							err = addr.UnmarshalText([]byte(val))
+							if err != nil {
+								return result, fmt.Errorf("key '%s' string is not an address: %s", val, err)
+							}
+							val = string(addr.Compressed())
+						}
 						variable = dvm.Variable{
 							Type:        dvm.String,
 							ValueString: val,
 						}
 					} else if val, ok := k.Key.(uint64); ok {
+						if k.IsAddress {
+							return result, fmt.Errorf("key Uint64 cannot be address type: %s", k.Key)
+						}
+
 						variable = dvm.Variable{
 							Type:        dvm.Uint64,
 							ValueUint64: val,

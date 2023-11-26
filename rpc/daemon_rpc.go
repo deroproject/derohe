@@ -310,7 +310,10 @@ type (
 
 type (
 	KeyWithMapper struct {
-		Key         interface{}   `json:"key"`
+		Key interface{} `json:"key"`
+		// if true, then key is address and will be mapped to match SIGNER() output
+		IsAddress bool `json:"is_address,omitempty"`
+		// Mapper of the returned value
 		ValueMapper ValueMapperSC `json:"value_mapper,omitempty"`
 	}
 
