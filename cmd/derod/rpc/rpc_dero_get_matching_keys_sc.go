@@ -54,6 +54,9 @@ func GetMatchingKeysSC(ctx context.Context, p rpc.GetMatchingKeysSC_Params) (res
 
 	// Initialize the result
 	result.Keys = make([][]string, len(p.Patterns))
+	for i := range result.Keys {
+		result.Keys[i] = make([]string, 0)
+	}
 
 	toporecord, err := chain.Store.Topo_store.Read(topoheight)
 	if err == nil {
@@ -66,12 +69,12 @@ func GetMatchingKeysSC(ctx context.Context, p rpc.GetMatchingKeysSC_Params) (res
 				cursor := sc_data_tree.Cursor()
 				var k []byte
 				for k, _, err = cursor.First(); err == nil; k, _, err = cursor.Next() {
-					var key, value dvm.Variable
+					var key dvm.Variable
 					// 0x3 is beginning of valid DVM types, we handle only DVM String keys here
-					if k[len(k)-1] >= 0x3 && k[len(k)-1] < 0x80 && nil == key.UnmarshalBinary(k) && key.Type == dvm.String {
+					if k[len(k)-1] >= 0x3 && k[len(k)-1] < 0x80 && nil == key.UnmarshalBinary(k) && key.Type == dvm.String && key.ValueString != "" {
 						for i := range regex_keys {
 							if regex_keys[i].MatchString(key.ValueString) {
-								result.Keys[i] = append(result.Keys[i], value.ValueString)
+								result.Keys[i] = append(result.Keys[i], key.ValueString)
 							}
 						}
 					}
