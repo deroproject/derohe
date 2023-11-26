@@ -340,6 +340,7 @@ var servicemux = handler.ServiceMap{
 		"GetSC":                      handler.New(GetSC),
 		"GetMatchingKeysSC":          handler.New(GetMatchingKeysSC),
 		"GetMatchingValuesSC":        handler.New(GetMatchingValuesSC),
+		"SearchVariablesSC":          handler.New(SearchVariablesSC),
 		"GetBalancesSC":              handler.New(GetBalancesSC),
 		"GetGasEstimate":             handler.New(GetGasEstimate),
 		"NameToAddress":              handler.New(NameToAddress),
