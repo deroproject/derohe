@@ -36,7 +36,7 @@ func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error
 
 	c.update(&request.Common) // update common information
 
-	previous_topo := request.TopoHeights[0] // used to verify the topo heights are in order
+	previous_topo := request.TopoHeights[0] - 1 // used to verify the topo heights are in order
 	// first requested topo can't be higher than chain AND can't be lower than 10 (because of connection.TopoHeight-50-max_request_topoheights < 10)
 	if previous_topo > chain.Load_TOPO_HEIGHT() || previous_topo < 10 {
 		c.logger.V(1).Info("malformed object request received, banning peer", "request", request)
