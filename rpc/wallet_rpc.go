@@ -296,3 +296,26 @@ type (
 		Entry Entry       `json:"entry,omitempty"`
 	}
 )
+
+// Sign data
+type (
+	Sign_Data struct {
+		Data  string `json:"data"`
+		Plain bool   `json:"plain"`
+	}
+	Sign_Data_Result struct {
+		SignedData string `json:"signed_data"`
+	}
+)
+
+// Check signature
+type (
+	Check_Signature struct {
+		Data  string `json:"data"`
+		Plain bool   `json:"plain"`
+	}
+	Check_Signature_Result struct {
+		Signer  string `json:"signer"`
+		Message string `json:"message"`
+	}
+)

@@ -319,6 +319,10 @@ var wallet_handler = handler.Map{
 	"Transfer":                 handler.New(Transfer),
 	"transfer_split":           handler.New(Transfer),
 	"scinvoke":                 handler.New(ScInvoke),
+	"signdata":                 handler.New(SignData),
+	"SignData":                 handler.New(SignData),
+	"checksignature":           handler.New(CheckSignature),
+	"CheckSignature":           handler.New(CheckSignature),
 }
 
 var servicemux = handler.ServiceMap{
