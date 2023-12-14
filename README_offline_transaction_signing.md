@@ -152,7 +152,7 @@ shortfalls:
    $ go build</i><br> 
    The new application is called: dero-wallet-cli
    
-3 Offline machine<br>
+3 Offline machine with the signing wallet<br>
 3.1 First run<br>
    From a terminal console, launch the application: <i>./dero-wallet-cli --help</i><br>
    We will use the following command line options:<br>
@@ -201,7 +201,7 @@ shortfalls:
      &nbsp;&nbsp;&nbsp;Found the registration transaction. Import the complete text into the online (view only) wallet:<br>
      &nbsp;&nbsp;&nbsp;registration,dero1&lt;registration text&gt;;24578</i><br>
 <br>
-4 Online machine<br>
+4 Online machine with the view only wallet<br>
 4.1 First run<br>
   From a terminal console, launch the application: <i>./dero-wallet-cli --help</i><br>
   We will use the following command line options:<br>
@@ -246,66 +246,40 @@ Select '0' to exit the wallet.<br>
      &nbsp;&nbsp;registration tx dispatched successfully</i><br>
      Note: After the account was registered, the wallet needs to synchronise your account balance. In order to accomplish this, interaction between the online & offline wallet is required.<br>
 <br>
-## Using the Online / Offline wallet configuration
-  For the demonstration to work effectively, fund your newly created address with some 
-  Dero by sending some cents (0.xx) to it, either from an online exchange or from one 
-  of your existing wallets with a balance.
-  
-1. Balance enquiry and transaction history
-  The blockchain data is received by the online (view only) wallet. The data needs
-  to be decrypted before the information can be processed. The secret key, located 
-  in the offline (signing) wallet, is required to accomplish this.
-  
-  Each time the online wallet receives a block which contains transaction information
-  for your address, a part of the information needs to be send to the offline wallet 
-  for decryption.
-  
-  The online wallet will automatically create a file called 'offline_request' in the 
-  current working directory, where the wallet is running. 
-  
-  For testing purposes, if you run the online & offline copies in the same directory,
-  on the same machine, then the file created by the online wallet (offline_request)
-  will immediately be detected by the offline (signing) wallet and automatically
-  processed. If you run a production setup where the two wallets are completely 
-  separate, then you'll have to copy the file (offline_request) from the online machine
-  to the offline machine yourself.
-  
-  The prompts are as follow:
-  Online wallet:
-  The blockchain interaction occurs in the background. After a block is detected this
-  text will appear:
-    Interaction with offline wallet required. Saved request to: ./offline_request
-    Searching for 60 seconds for the response at: ./offline_response
-  The 'offline_request' file must be copied to the offline wallet.
-    
-  Offline wallet:
-  After the 'offline_request' file is copied to its home directory, the wallet 
-  will detect the presense of the file automatically and process it automatically:
-    Found ./offline_request -- new decryption request
-    Saved result in ./offline_response
-  The 'offline_response' file must be copied back to the online wallet
-    
-  Online wallet:
-    Found a valid response
-  
-  This exchange happens for each transaction that you receive or spend on your
-  address. Your balance will be shown as part of the command prompt. You can 
-  view the transaction history under menu entry 13: Show transaction history
-    
+## Using the split Online / Offline wallet configuration
+  For the demonstration to work effectively, fund your newly created address with some Dero by sending some cents (0.xx) to it, either from an online exchange or from one of your existing wallets with a balance.<br>
+<br>  
+1. Balance enquiry and transaction history<br>
+  The online (view only) wallet connects to the remote node and retrieves the blockchain data that matches your wallet address. The data needs to be decrypted before the information can be processed. The secret key, located in the offline (signing) wallet, is required to accomplish this.<br>
+  Each time the online wallet receives a block which contains transaction information for your address, a part of the information needs to be send to the offline wallet for decryption.<br>
+  The online wallet will automatically create a file called 'offline_request' in the <i>prefix</i> directory. The prefix is specified as a command line option when the application is started, i.e.: $ <i>./dero-wallet-cli --prefix=/tmp</i>, along with the other command line options passed to the application.<br><br>
+  For testing purposes, if you run the online & offline wallets on the same machine with the same prefix, the file created by the online wallet (offline_request) will be immediately detected by the offline (signing) wallet and automatically processed. If you run a production setup where the two wallets are on separate computers, you'll have to copy the file (offline_request) manually from the online machine to the offline machine.<br>
+  The prompts are as follow:<br>
+  Online wallet:<br>
+  The blockchain interaction occurs in the background. After a transaction applicable to your address is detected this text will appear:<br>
+  &nbsp;&nbsp;<i>Interaction with offline wallet required. Saved request to: /prefix/offline_request<br>
+  &nbsp;&nbsp;Waiting 60 seconds for the response at: /prefix/offline_response</i><br>
+  The 'offline_request' file must be copied to the offline wallet.<br>
+  Offline wallet:<br>
+  After the 'offline_request' file is copied to the specified prefix directory, the wallet will detect the presense of the file automatically and process it. The wallet reports:<br>
+  &nbsp;&nbsp;<i>Found /prefix/offline_request -- new decryption request<br>
+  &nbsp;&nbsp;Saved result in /prefix/offline_response</i><br>
+  The 'offline_response' file must be copied back to the online wallet.<br>
+  Online wallet:<br>
+  As soon as the response file is detected the wallet reports:<br>
+  &nbsp;&nbsp;<i>Found a valid response</i><br>
+<br>
+  This exchange happens for each transaction that you receive or spend on your address. Your balance will be shown as part of the command prompt. You can view the transaction history under menu entry <i>13 Show transaction history</i>.<br>
+  If you use a Pirate+ hardware wallet the data exchange happens in the background. No manual copying of files are required.<br>
+<br>
 2. Spend transaction
-  In order to spend your hard earned Dero you first need to fund your address, 
-  as suggested at the top of this chapter. The online (view only) wallet will 
-  pick up the transaction from the remote node. The transaction history and 
-  account balance will be updated, after you've decrypted the data files as 
-  described above in 5.1
-  
-  The prompts are as follow:
-  Online wallet: 
-    Select option '5' to prepare the transaction.
-    Enter the destination address, amount, destination port and comment
-  After the transaction is confirmed, the wallet prepares all the data and
-  saves it to 'transaction' in the current working directory where the 
-  wallet is executing.
+  In order to spend your hard earned Dero you first need to fund your address, as suggested at the top of this chapter. The online (view only) wallet will pick up the transaction from the remote node. The transaction history and account balance will be updated, after you've decrypted the data files, as described above in 5.1.<br>
+<br>  
+  To create a transaction the prompts are as follow:<br>
+  Online wallet: <br>
+    Select option '5 Prepare (DERO) transaction (for the offline wallet to sign)' to prepare the transaction.<br>
+    Enter the destination address and amount. The destination port and comment are optional<br>
+  After the transaction is confirmed, the wallet prepares all the data and saves it to 'transaction' in the current working directory where the wallet is executing.
   
   This file must be copied to the offline wallet and placed in its working 
   directory.
