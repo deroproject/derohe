@@ -165,10 +165,52 @@ func Generate_Keys_From_Seed(Seed *crypto.BNRed) (keys _Keys) {
 // generate user account using recovery seeds
 func Generate_Account_From_Recovery_Words(words string) (user *Account, err error) {
 	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
-	language, seed, err := mnemonics.Words_To_Key(words)
-	if err != nil {
-		return
-	}
+	
+        var language string
+        var seed *big.Int
+        var baData []byte
+        
+        saParts:=strings.Split(words,";")
+        
+        if (len(saParts)==1) {
+        	//25 word mnemonic
+                language, seed, err = mnemonics.Words_To_Key(words)
+                if err != nil {
+                        return
+                }
+        } else {
+        	//raw 32 byte seed with a checksum
+                if (len(saParts)!=2) {
+                        err = fmt.Errorf("raw seed requires 2 parts.")
+                        return
+                }
+                if (len(saParts[0]) != 64) {
+                        err = fmt.Errorf("raw seed must be 64 characters long")
+                        return
+                }
+                baData, err = hex.DecodeString( saParts[0] )
+                if err!=nil {
+                        err = fmt.Errorf("Could not decode the hex seedphrase to binary")
+                        return
+                }
+                
+                iChecksum:=0x01;
+                for t := range baData {
+                        iVal := int(baData[t])
+                        iChecksum = iChecksum + iVal;
+                }
+                sCalculatedChecksum:= fmt.Sprintf("%d",iChecksum)
+                sProtocolChecksum:= saParts[1]
+                
+                if (sCalculatedChecksum!=sProtocolChecksum) {
+                        err = fmt.Errorf("Checksum mismatch for the raw seed")
+                        return
+                }
+                seed = new(big.Int)
+                seed.SetBytes(baData)
+                
+                language="English"
+        }                
 
 	user.SeedLanguage = language
 	user.Keys = Generate_Keys_From_Seed(crypto.GetBNRed(seed))

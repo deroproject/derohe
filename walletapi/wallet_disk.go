@@ -118,7 +118,7 @@ func Create_Encrypted_Wallet_Random(filename string, password string) (wd *Walle
         //Save to disk
         wd.Save_Wallet()
 
-	return nil, err
+	return wd, err
 }
 
 // wallet must already be open

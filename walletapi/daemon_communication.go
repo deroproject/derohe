@@ -32,6 +32,7 @@ import (
 	"math/big"
 	"runtime/debug"
 	"strings"
+	"strconv"
 	"sync"
 	"time"
 	
@@ -352,19 +353,25 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 		err = fmt.Errorf("OfflineOperationWithSecretKey() should only be used by view only wallets\n")
 		return
 	}
+	
+        remote_request_prefix:="."
+        if globals.Arguments["--prefix"] != nil {
+	        remote_request_prefix = globals.Arguments["--prefix"].(string) // override with user specified settings
+        } 	
+	
 	//Clean up temporary files:
-	sFileResponse:="./offline_response"
-	_ = os.Remove(sFileResponse)
-        if _, err = os.Stat(sFileResponse); err == nil {
-        	err = fmt.Errorf("Could not delete %s\n",sFileResponse)
+	sFileIn:=remote_request_prefix+"/offline_response"
+	_ = os.Remove(sFileIn)
+        if _, err = os.Stat(sFileIn); err == nil {
+        	err = fmt.Errorf("Could not delete %s\n",sFileIn)
                 return
 	}
 	err=nil	
 	
-	sFileRequest:="./offline_request"
-	_ = os.Remove(sFileRequest)
-        if _, err = os.Stat(sFileRequest); err == nil {
-        	err = fmt.Errorf("Could not delete %s\n",sFileRequest)
+	sFileOut:=remote_request_prefix+"/offline_request"
+	_ = os.Remove(sFileOut)
+        if _, err = os.Stat(sFileOut); err == nil {
+        	err = fmt.Errorf("Could not delete %s\n",sFileOut)
                 return
 	}
 	err=nil
@@ -398,25 +405,26 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 	// Version 1: [3] data
 	//            [4] Checksum of all the characters in the data stream
 	sOutput := fmt.Sprintf("dero 1 %s %x",sType,baData)
-        var iCalculatedChecksum=0x01
+        var iCalculatedChecksum uint16
+        iCalculatedChecksum=0x01
         for t := range sOutput {
-	        iCalculatedChecksum = iCalculatedChecksum + (int)(sOutput[t])
+	        iCalculatedChecksum = iCalculatedChecksum + (uint16)(sOutput[t])
         }
         sOutput = fmt.Sprintf("%s;%d",sOutput, iCalculatedChecksum)
         
         baOutput := []byte(sOutput)
         
-        err = os.WriteFile(sFileRequest, baOutput, 0644)
+        err = os.WriteFile(sFileOut, baOutput, 0644)
 	if err!=nil {
 		err = fmt.Errorf("Error saving file. %s\n",err)
 		return
 	}
-	fmt.Printf("\nInteraction with offline wallet required. Saved request to: %s\nWaiting 60 seconds for the response at: %s\n",sFileRequest,sFileResponse)
+	fmt.Printf("\nInteraction with offline wallet required. Saved request to: %s\nWaiting 60 seconds for the response at: %s\n",sFileOut,sFileIn)
 
 	bFound:=0
 	counter:=0
 	for counter <= 60 {  
-		if _, err := os.Stat(sFileResponse); err == nil {
+		if _, err := os.Stat(sFileIn); err == nil {
 			bFound=1
 			break;
 		}
@@ -429,14 +437,14 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 	    return;
 	}
 
-	baInput, err := os.ReadFile(sFileResponse)
+	baInput, err := os.ReadFile(sFileIn)
         if err!=nil {
-        	err = fmt.Errorf("Could not read from %s. Check the file permissions.\n",sFileResponse);
+        	err = fmt.Errorf("Could not read from %s. Check the file permissions.\n",sFileIn);
                 return;
 	}              
-        _ = os.Remove(sFileResponse)
-        if _, err = os.Stat(sFileResponse); err == nil {
-                err = fmt.Errorf("Could not delete %s\n",sFileResponse)
+        _ = os.Remove(sFileIn)
+        if _, err = os.Stat(sFileIn); err == nil {
+                err = fmt.Errorf("Could not delete %s\n",sFileIn)
                 return
         }
 	
@@ -453,14 +461,20 @@ func (w *Wallet_Memory) OfflineOperationWithSecretKey(iType int, baData []byte) 
 	}
 
 	sProtocolChecksum := saParts[1]
+        iTmp,err := strconv.Atoi(sProtocolChecksum)
+        if err!=nil {
+	        err = fmt.Errorf("Could not convert the checksum back to an integer:"+sProtocolChecksum+"\n")
+                return
+        }                               
+        iProtocolChecksum:=uint16(iTmp)
+	
 	iCalculatedChecksum=0x01;
 	for t := range saParts[0] {
-		iVal := int(saParts[0][t])
+		iVal := uint16(saParts[0][t])
 		iCalculatedChecksum = iCalculatedChecksum + iVal;
 	}
-	sCalculatedChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
 
-	if (sProtocolChecksum!=sCalculatedChecksum) {
+	if (iProtocolChecksum!=iCalculatedChecksum) {
 		err = fmt.Errorf("The checksum of the signed transaction data is invalid.\n")
 		return
 	}		

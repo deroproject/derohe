@@ -55,6 +55,10 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
+	var account_balance uint64
+	account_balance=0
+	balance_unassigned:=false
+	
 	for t, _ := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
@@ -132,6 +136,7 @@ rebuild_tx:
 
 		value := transfers[t].Amount
 		burn_value := transfers[t].Burn
+		
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
 			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len(publickeylist)/16)+w.GetFeeMultiplier())))
 			if data, err := scdata.MarshalBinary(); err != nil {
@@ -208,8 +213,14 @@ rebuild_tx:
 
 		}
 
-		// decode sender (our) balance now, it might have been updated		
-		balance := w.DecodeEncryptedBalanceNow(ebalances_list[witness_index[0]])
+		// decode sender (our) balance now, it might have been updated
+		// Note: As the loop iterates over []transfers, the balance is updated to reflect each spend
+		balance := w.DecodeEncryptedBalanceNow(ebalances_list[witness_index[0]])		
+		if (balance_unassigned==false) {
+			balance_unassigned=true
+			account_balance=balance
+		}
+		//fmt.Printf("balance: %u\n", balance)
 
 		// time for bullets-sigma
 		fees_currentasset := uint64(0)
@@ -221,7 +232,15 @@ rebuild_tx:
 		copy(statement.Roothash[:], roothash[:])
 		statement.Bytes_per_publickey = byte(max_bits / 8)
 
-		witness := GenerateWitness(sender_secret, r, value, balance-value-fees_currentasset-burn_value, witness_index)
+		//Evaluate available balance:
+		if (balance < (value+fees_currentasset+burn_value)) {
+			fmt.Printf("Insufficient funds to process the transaction.\nBalance %d < sum(spend amount,fees,burn value)", account_balance)
+			return nil
+		}
+		
+		//Account balance is decreases with the amount of the transfer each time w.DecodeEncryptedBalanceNow() is called.
+		remaining_balance := balance-value-fees_currentasset-burn_value
+		witness := GenerateWitness(sender_secret, r, value, remaining_balance, witness_index)
 
 		witness_list = append(witness_list, witness)
 
@@ -239,12 +258,6 @@ rebuild_tx:
 			echanges := crypto.ConstructElGamal(statement.C[i], statement.D)
 			balance = balance.Add(echanges)                                                  // homomorphic addition of changes
 			umap[transfers[t].SCID.String()+publickeylist[i].String()] = balance.Serialize() // reserialize and store
-		}
-		
-		//Evaluate available balance after processing the transfer[] entry:
-		if (balance < (transfers[t].Amount + fees_currentasset + burn_value)) {
-			fmt.Printf("Insufficient funds to process the transaction: Balance %d < Spend amount,fees,burn value: %d+%d+%d\n", balance, transfers[t].Amount, fees_currentasset,burn_value)
-			return nil
 		}
 	}
 

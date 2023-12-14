@@ -30,7 +30,6 @@ import (
 	"encoding/hex"
 	
 	"github.com/chzyer/readline"
-	"github.com/deroproject/derohe/cryptography/bn256"	
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/rpc"
@@ -203,22 +202,24 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				
 				sTransaction := saParts[0]
 				sProtocolChecksum := saParts[1]
-				iProtocolChecksum,err := strconv.Atoi(sProtocolChecksum)
+				iTmp,err := strconv.Atoi(sProtocolChecksum)
 				if err!=nil {
-					fmt.Fprintf(l.Stderr(), "Could not convert the checksum back to an integer\n\n")
+					fmt.Fprintf(l.Stderr(), "Could not convert the checksum back to an integer: "+sProtocolChecksum+"\n")
 					break
 				}
-								
+				iProtocolChecksum:=uint16(iTmp);
+
 				//Regenerate checksum:
-                                var iCalculatedChecksum=0
-                                for t := range sTransaction {
-                                        iCalculatedChecksum = iCalculatedChecksum + (int)(sTransaction[t])
-                                }
-                                
-                                // Check 1: Checksum
-                                if (iProtocolChecksum != iCalculatedChecksum) {
-                                	fmt.Fprintf(l.Stderr(), "Checksum calculation failed. Please check if you've imported the transaction correctly\n\n");
-                                	break
+				var iCalculatedChecksum uint16
+				iCalculatedChecksum=0x01
+				for t := range sTransaction {
+					iCalculatedChecksum = iCalculatedChecksum + (uint16)(sTransaction[t])
+				}
+
+				// Check 1: Checksum
+				if (iProtocolChecksum != iCalculatedChecksum) {
+					fmt.Fprintf(l.Stderr(), "Checksum calculation failed. Protocol=%d, Calculated=%d. Please check if you've imported the transaction correctly\n\n", iProtocolChecksum, iCalculatedChecksum);
+					break
 				}				
 				
 				saParts = strings.Split(sTransaction,",")
@@ -336,7 +337,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				
 				//Append a simple checksum to the string to detect copy/paste errors
 				//during import into the online wallet:
-				var iChecksum=0
+				var iChecksum=0x01
 				for t := range sTransaction {
 					iChecksum = iChecksum + (int)(sTransaction[t])
 				}
@@ -428,369 +429,37 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 				break
 			}			
 
-			_ = os.Remove("./signed")
+			remote_request_prefix="."
+			if globals.Arguments["--prefix"] != nil {
+				remote_request_prefix = globals.Arguments["--prefix"].(string) // override with user specified settings
+			}
 
-			baData, err := os.ReadFile("./transaction")
+			sFileIn:=remote_request_prefix+"/transaction"
+			sFileOut:=remote_request_prefix+"/offline_response"
+			_ = os.Remove(sFileOut)
+
+			baData, err := os.ReadFile(sFileIn)
 			if err!=nil {
-				fmt.Printf("Cant read from the transaction file: ./transaction\n\n");
+				fmt.Printf("Can't read from the transaction file: %s\n",sFileIn);
 				break;
 			}
-			fmt.Printf("Read %d bytes from ./transaction\n",len(baData))
+			fmt.Printf("Read %d bytes from %s\n",len(baData),sFileIn)
 			sTransaction := string(baData[:])
 			
-			_ = os.Remove("./transaction")
+			_ = os.Remove(sFileIn)
 	    
-			
-			//Parameter   [0] Project - 'dero'
-			//            [1] Version - Layout of the command fields
-			//            [2] Command: sign_offline
-			// Version 1: [3] Array of transfers (outputs)
-			//            [4] Array of ring balances
-			//            [5] Array of rings
-			//            [6] block_hash
-			//            [7] height
-			//            [8] Array of scdata
-			//            [9] treehash
-			//            [10] max_bits
-			//            [11] gasstorage
-			//            [12] Checksum of all the characters in the command.
-
-                        //Split string on ';'
-                        saParts := strings.Split(sTransaction,";")
-                        if (len(saParts) != 2) {
-                          fmt.Fprintf(l.Stderr(), "Invalid number of parts. Expected 2, found %d\n\n", len(saParts))
-                          break;
-                        }
-
-                        sTransaction = saParts[0]
-                        sProtocolChecksum := saParts[1]
-                        iProtocolChecksum,err := strconv.Atoi(sProtocolChecksum)
-                        if err!=nil {
-                          fmt.Fprintf(l.Stderr(), "Could not convert the checksum back to an integer\n\n")
-                          break
-                        }
-/*                                                                
-                        //Regenerate checksum:
-                        var iCalculatedChecksum=0x01
-                        for t := range sTransaction {
-                          iCalculatedChecksum = iCalculatedChecksum + (int)(sTransaction[t])
-                        }
-                                
-			fmt.Printf("Checksum input\n'%s'\n\n",sTransaction);
-                        // Check 1: Checksum
-                        if (iProtocolChecksum != iCalculatedChecksum) {
-                          fmt.Fprintf(l.Stderr(), "Checksum calculation failed. Please check if you've imported the transaction correctly. Protocol: %d, calculated: %d\n\n", iProtocolChecksum, iCalculatedChecksum)
-                          break
-                        }                               
-*/                                
-                        saParts = strings.Split(sTransaction," ")
-			if (len(saParts)!=12) {
-				fmt.Printf("Invalid number of parts in the transaction. Expected 13, found %d\n", len(saParts))
-				break;
-			}
-			
-			if  (saParts[0] != "dero") {
-				fmt.Printf("Expected a Dero transaction, Found %s\n",saParts[1]);
-				break;
-			}
-
-			if (saParts[1] != "1") {
-				fmt.Printf("Only transaction version 1 supported. Found %s\n",saParts[2])
-				break;
-			}
-                
-			if (saParts[2] != "sign_offline") {
-				fmt.Printf("Transaction doesn't start with 'sign_offline'\n")
-				break;
-			}
-			
-                	sChecksumInput:="dero 1 sign_offline ";
-			//---------------------------------------------------------------------------------------------------------------------         
-			var transfers []rpc.Transfer
-			
-			sTmp := strings.ReplaceAll(saParts[3],"'","")
-			sTmp1:= strings.ReplaceAll(sTmp, "[","")                
-			sTmp  = strings.ReplaceAll(sTmp1,"]","")
-
-			saTransfers := strings.SplitAfter(sTmp, "}")
-			//fmt.Printf("transfers:%d\n",len(saTransfers)-1);
-			sChecksumInput+="transfers:";
-			for t:=range saTransfers {
-				if len(saTransfers[t])>0 {
-					var transfer rpc.Transfer
-				
-					sTmp1 = strings.ReplaceAll(saTransfers[t], ",{","")             
-					sTmp  = strings.ReplaceAll(sTmp1, "{","")                                               
-					sTransfer := strings.ReplaceAll(sTmp,"}","")
-					
-					saParts := strings.Split(sTransfer,",")
-					if (len(saParts)!=5) {
-						fmt.Printf("Parse error. Invalid number of parts in transfers. Expected 5, found %d\n", len(saParts));
-						break;
-					}
-					
-					sTmp:=strings.ReplaceAll(saParts[0],"\"","")
-					saItemValue:=strings.Split(sTmp,":")
-					if (saItemValue[0]!="SCID") {
-						fmt.Printf("Parse error. Could not find SCID in transfers\n");
-						break;
-					}
-					err = transfer.SCID.UnmarshalText([]byte(string(saItemValue[1])))
-					if err != nil {
-						fmt.Printf("Parse error. Could not assign SCID to transfers\n");
-						break;
-					}
-		                        sChecksumInput+=" \""+saItemValue[1]+"\""
-					
-					
-					sTmp=strings.ReplaceAll(saParts[1],"\"","")
-					saItemValue=strings.Split(sTmp,":")
-					if (saItemValue[0]!="Destination") {
-						fmt.Printf("Parse error. Could not find destination in transfers\n");
-						break;
-					}
-					transfer.Destination = saItemValue[1]					
-					sChecksumInput+=" \""+saItemValue[1]+"\""
-					
-					sTmp=strings.ReplaceAll(saParts[2],"\"","")
-					saItemValue=strings.Split(sTmp,":")
-					if (saItemValue[0]!="Amount") {
-						fmt.Printf("Parse error. Could not find amount in transfers\n");
-						break;
-					}
-					transfer.Amount, err = strconv.ParseUint(saItemValue[1],10,64)					
-					sChecksumInput+=" "+saItemValue[1]
-						
-					sTmp=strings.ReplaceAll(saParts[3],"\"","")
-					saItemValue=strings.Split(sTmp,":")
-					if (saItemValue[0]!="Burn") {
-						fmt.Printf("Parse error. Could not find burn in transfers\n");
-						break;
-					}
-					transfer.Burn, err = strconv.ParseUint(saItemValue[1],10,64)					
-					sChecksumInput+=" "+saItemValue[1]
-					
-					sTmp=strings.ReplaceAll(saParts[4],"\"","")
-					saItemValue=strings.Split(sTmp,":")
-					if (saItemValue[0]!="RPC") {
-						fmt.Printf("Parse error. Could not find rpc in transfers\n");
-						break;
-					}
-					hexRPC, err2 := hex.DecodeString(saItemValue[1])
-					if err2 != nil {
-						fmt.Printf("Parse error. Could not hex decode the rpc field of the transfers\n");
-						break;
-					} 
-					err2 = transfer.Payload_RPC.UnmarshalBinary(hexRPC)
-					if err2 != nil {
-						fmt.Printf("Parse error. Could not assign the rpc field of the transfers\n");
-						break;                          
-					}
-					sChecksumInput+=" \""+saItemValue[1]+"\""
-					
-					transfers = append(transfers, transfer)
-				}
-			}
-
-			//---------------------------------------------------------------------------------------------------------------------         
-			var rings_balances [][][]byte //initialize all maps
-
-			sTmp  = strings.ReplaceAll(saParts[4],"'","")
-			sTmp1 = strings.ReplaceAll(sTmp, "[","")                
-			sTmp  = strings.ReplaceAll(sTmp1,"]","")
-
-			saRingBalances := strings.SplitAfter(sTmp, "}")
-			//fmt.Printf(":%d\n",len(saRingBalances)-1);              
-
-			sChecksumInput+=" rings_balances:"
-			for t:=range saRingBalances {
-				if len(saRingBalances[t])>0 {
-					var ring_balances  [][]byte
-				
-					sTmp1 = strings.ReplaceAll(saRingBalances[t], ",{","")          
-					sTmp  = strings.ReplaceAll(sTmp1, "{","")
-					sRingBalance := strings.ReplaceAll(sTmp,"}","")
-					
-					saRingBalances:=strings.Split(sRingBalance,",")
-					if ( len(saRingBalances)<16) {
-						fmt.Printf("Expected at least 16 ring balances. Found %d\n", len(saRingBalances))
-						break;
-					}
-					
-					for t := range saRingBalances {
-					      baData,_ := hex.DecodeString( saRingBalances[t] )
-					      ring_balances = append(ring_balances,baData)
-					      
-					      sChecksumInput+=" "+saRingBalances[t]
-					}
-					rings_balances = append(rings_balances, ring_balances)
-				}
-			}
-			/*			
-			fmt.Printf("rings_balances:{%d} entries\n",len(rings_balances))
-			var counter1=0
-			var counter2=0
-			for t := range rings_balances {         
-			    fmt.Printf("rings_balances{%d}:{%d} entries\n",counter1,len(rings_balances[t]))
-			    counter2=0
-			    for u := range rings_balances[t] {
-			      fmt.Printf("  ring balance[%d]=\"%x\"\n",counter2,rings_balances[t][u])
-			      counter2++
-			    }
-			    counter1++
-			} 
-			*/			
-			//---------------------------------------------------------------------------------------------------------------------
-			var rings [][]*bn256.G1
-			sChecksumInput+=" rings:";
-
-			sTmp  = strings.ReplaceAll(saParts[5],"'","")
-			sTmp1 = strings.ReplaceAll(sTmp, "[","")                
-			sTmp  = strings.ReplaceAll(sTmp1,"]","")
-
-			saRings := strings.SplitAfter(sTmp, "}")
-			//fmt.Printf("Rings:%d\n",len(saRings)-1);                
-
-			for t:=range saRings {
-				if len(saRings[t])>0 {
-					var ring []*bn256.G1
-					var oG1    *bn256.G1                    
-				
-					sTmp1 = strings.ReplaceAll(saRings[t], ",{","")         
-					sTmp  = strings.ReplaceAll(sTmp1, "{","")
-					sRing := strings.ReplaceAll(sTmp,"}","")
-					
-					saRing:=strings.Split(sRing,",")
-					//fmt.Printf("saRing=%d\n",len(saRing))
-					if ( len(saRing)<16) {
-						fmt.Printf("Expected at least 16 rings. Found %d\n\n", len(saRing))
-						break
-					}
-					
-					for t := range saRing {
-					    //fmt.Printf("Processing: '%s'\n", saRing[t])
-					    baData,err := hex.DecodeString( saRing[t] )
-					    if err!=nil {
-						fmt.Printf("Could not decode ring entry: %s\n\n", saRing[t])
-						break
-					    }           
-					    oG1 = new(bn256.G1);                                      
-					    _,err = oG1.Unmarshal(baData);      
-					    if err != nil { 
-						fmt.Printf("Could not assign ring data\n\n");
-						break
-					    }; 
-					    ring = append(ring,oG1)
-					    
-					    sChecksumInput+=" "+saRing[t]
-					}
-					rings = append(rings, ring)
-				}
-			}
-			/*			
-			fmt.Printf("rings:{%d} entries\n",len(rings))
-			counter1=0
-			counter2=0
-			for t := range rings {
-				fmt.Printf("ring{%d}:{%d} entries\n",counter1,len(rings[t]))
-				counter2=0
-				for u := range rings[t] {
-					fmt.Printf("  ring[%d]=\"%x\"\n",counter2,rings[t][u].Marshal() )
-					counter2++
-				}
-				counter1++
-			}       
-			*/			
-			//---------------------------------------------------------------------------------------------------------------------
-			//[6] block_hash
-			sTmp  = strings.ReplaceAll(saParts[6],"\"","")
-			block_hash := crypto.HashHexToHash(sTmp)
-	                sChecksumInput+=" "+saParts[6]
-			
-			//[7] height
-			var height uint64
-			height, err = strconv.ParseUint(saParts[7],10,64)
+			baData,err=sign_remote_transaction(sTransaction);
 			if err!=nil {
-				fmt.Printf("Parse error. Could not assign height to transfers\n\n");
-			}
-	                sChecksumInput+=" "+saParts[7]
-			
-			//[8] Array of scdata
-			var scdata rpc.Arguments
-			sTmp  = strings.ReplaceAll(saParts[8],"'","")
-			sTmp1 = strings.ReplaceAll(sTmp, "[","")                
-			sTmp  = strings.ReplaceAll(sTmp1,"]","")			
-			if (len(sTmp) > 0) {
-				hexSCData, err2 := hex.DecodeString(sTmp)
-				if err2!=nil {
-					fmt.Printf("Parse error. Could not decode the SCData\n\n");
-					break;
-				}                       
-				if (len(hexSCData)>0) {
-				      err = scdata.UnmarshalBinary(hexSCData)
-				      if err!=nil {
-					fmt.Printf("Parse error. Could not decode the SCData\n\n");
-					break;
-				      }
-				}       
-			}
-	                sChecksumInput+=" "+saParts[8]
-			
-			//[9] treehash
-			sTmp  = strings.ReplaceAll(saParts[9],"\"","")
-			treehash_raw, err := hex.DecodeString(sTmp)
-			if err != nil {
-				fmt.Printf("Parse error. Could not decode treehash_raw\n\n")
+				fmt.Printf("Error signing transaction: %s\n",err)
 				break;
 			}
-	                sChecksumInput+=" "+saParts[9]
 			
-			//[10] max_bits
-			var max_bits int
-			max_bits, err = strconv.Atoi(saParts[10])
-	                sChecksumInput+=" "+saParts[10]
-			
-			//[11] gasstorage
-			var gasstorage uint64
-			gasstorage, err = strconv.ParseUint(saParts[11],10,64)
-	                sChecksumInput+=" "+saParts[11]
-			
-	                iCalculatedChecksum:=0x01;
-        	        for t := range sChecksumInput {
-                	        iVal := int(sChecksumInput[t])
-	                        iCalculatedChecksum = iCalculatedChecksum + iVal;
-        	        }
-        	        
-			if (iCalculatedChecksum != iProtocolChecksum) {
-				fmt.Printf("Checksum input\n'%s'\n\n",sChecksumInput)
-				fmt.Printf("The checksum for the transaction data is invalid. Please provide the transaction again.\n\n")
-				break
-			}
-			
-			tx := wallet.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage)
-			if tx == nil {
-				fmt.Printf("somehow the tx could not be built, please retry\n\n")
-				break
-			}
-			
-			sTxSerialized := tx.Serialize()
-			sOutput := fmt.Sprintf("dero 1 signed %x",sTxSerialized)
-			
-			iCalculatedChecksum=0x01;
-        	        for t := range sOutput {
-                	        iVal := int(sOutput[t])
-	                        iCalculatedChecksum = iCalculatedChecksum + iVal;
-        	        }
-        	        sChecksum := fmt.Sprintf("%d",iCalculatedChecksum)
-        	        sOutput+=";"+sChecksum	
-			
-			baData = []byte( sOutput )
-			err = os.WriteFile("./signed", baData, 0666)
+			err = os.WriteFile(sFileOut, baData, 0644)
 			if err!=nil {
-			    fmt.Printf("Error saving file to ./signed: %s\n",err)
-			    break
-			}			
-			fmt.Printf("Saved signed transaction to ./signed. Return it to the online (view only) wallet to complete the transaction.\n\n")
+				err = fmt.Errorf("Error saving to %s: %s\n",sFileOut,err)
+				break;
+			}
+			fmt.Printf("Saved result in %s\n",sFileOut)			
 			break;
 		}
 
@@ -819,6 +488,7 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 			// { rpc.RPC_EXPIRY , rpc.DataTime, time.Now().Add(time.Hour).UTC()},
 			// { rpc.RPC_COMMENT , rpc.DataString, "Purchase XYZ"},
 		}
+		
 		if a.IsIntegratedAddress() { // read everything from the address
 
 			if a.Arguments.Validate_Arguments() != nil {
@@ -947,7 +617,8 @@ func handle_easymenu_post_open_command(l *readline.Instance, line string) (proce
 
 			//src_port := uint64(0xffffffffffffffff)
 
-			tx, err := wallet.TransferPayload0([]rpc.Transfer{{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, 0, false, rpc.Arguments{}, 0, false) // empty SCDATA
+			tx, err := wallet.TransferPayload0([]rpc.Transfer{{Amount: amount_to_transfer, Destination: a.String(), Payload_RPC: arguments}}, 
+			                                   0, false, rpc.Arguments{}, 0, false) // empty SCDATA
 
 			if err != nil {
 				logger.Error(err, "Error while building Transaction")

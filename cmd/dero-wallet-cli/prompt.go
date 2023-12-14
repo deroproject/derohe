@@ -999,7 +999,10 @@ func usage(w io.Writer) {
 
 // display seed to the user in his preferred language
 func display_seed(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
-
+	if (wallet==nil) {
+		fmt.Fprintf(os.Stderr,"The wallet file is uninitialised!\n")
+		os.Exit(0)
+	}
         if (wallet.ViewOnly() == false) {
         	seed := wallet.GetSeed()
         	fmt.Fprintf(l.Stderr(), color_green+"PLEASE NOTE: the following 25 words can be used to recover access to your wallet. Please write them down and store them somewhere safe and secure. Please do not store them in your email or on file storage services outside of your immediate control."+color_white+"\n")
@@ -1038,20 +1041,21 @@ func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 }
 
 func display_viewing_key (wallet *walletapi.Wallet_Disk) {
-	var IsOffline = globals.Arguments["--offline"].(bool)
-	
-	if (IsOffline==true) || (wallet.ViewOnly() == false) {
-		keys := wallet.Get_Keys()
-		sViewOnlyKey := fmt.Sprintf("viewkey,%s,%s,%x",wallet.GetAddress(), keys.Public.StringHex(), keys.Public.G1().Marshal())
+	if (wallet.ViewOnly() == true) {
+		fmt.Printf("A view only wallet cannot generate the viewing key\n");
+		return;
+	}	
 
-	        //Append a simple checksum to the string to detect copy/paste errors
-	        //during import into the online wallet:
-	        var iChecksum=1
-	        for t := range sViewOnlyKey {
-        		iChecksum = iChecksum + (int)(sViewOnlyKey[t])
-		}
-		fmt.Printf("%s;%d\n\n",sViewOnlyKey, iChecksum)
+	keys := wallet.Get_Keys()
+	sViewOnlyKey := fmt.Sprintf("viewkey,%s,%s,%x",wallet.GetAddress(), keys.Public.StringHex(), keys.Public.G1().Marshal())
+
+        //Append a simple checksum to the string to detect copy/paste errors
+        //during import into the online wallet:
+        var iChecksum=1
+        for t := range sViewOnlyKey {
+        	iChecksum = iChecksum + (int)(sViewOnlyKey[t])
 	}
+	fmt.Printf("%s;%d\n\n",sViewOnlyKey, iChecksum)
 }
 
 // start a rescan from block 0
