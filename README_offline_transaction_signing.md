@@ -198,60 +198,52 @@ Example output:<br>
 
 4 Online machine<br>
 4.1 First run<br>
-  From a terminal console, launch the application: ./dero-wallet-cli --help
-  We will use the following command line options:
-  --remote - Connect to a remote node. This is often called 'light weight mode', since you do 
-             not maintain a full copy of the blockchain.
-  --wallet-file - The name of your wallet, i.e. viewonly.db
-  --password - The password with which to encypt the wallet. It needs to 
-               be a strong password, which can withstand a password attack,
-               but note, you'll have to enter this password regularly, so it
-               still needs to be something practical to work with.
-               
-  --restore-viewonly-wallet - Set up the wallet with the viewing key obtained from the offline wallet
-
-  An example will be:
-  $ ./dero-wallet-cli --remote --wallet-file=viewonly.db --password=someexamplepw --restore-viewonly-wallet
-  
-  The software will have these 2 prompts:
-  Enter wallet filename (default viewonly.db): Just press enter to accept the default
-  Enter the view only key (obtained from the offline (signing) wallet): Paste the viewing key here, i.e.:
-  viewkey,dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201,1f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f9342290626bd4f1422affe88578e5fbdb825f1d4d6d60bd458402dc18c1614a2395b;20010
-  
-  If the key is accepted, you'll get this greeting: INFO wallet Successfully restored an online (view only) wallet
-  
-  After the wallet starts up the menu will provide you with a couple of options.
-  At the top of the menu is a greeting to show you that it is running in view only mode:
-    Online (view only) wallet:
-    1. Register you account, using registration transaction from the offline (signing) wallet.
-    2. View your account balance & transaction history
-    3. Generate transactions for the offline wallet to sign.
-    4. Submit the signed transactions to the network.
-  
-  Select '0' to exit the wallet.
-  Check to see if the wallet was saved to disk
-  $ ls
-  The output must contain your wallet file: viewonly.db
-  
+  From a terminal console, launch the application: <i>./dero-wallet-cli --help</i><br>
+  We will use the following command line options:<br>
+  <i>--remote</i> - Connect to a remote node. This is often called 'light weight mode', since you do not maintain a full copy of the blockchain.<br>
+  <i>--wallet-file</i> - The name of your wallet, i.e. viewonly.db<br>
+  <i>--password</i> - The password with which to encypt the wallet. It needs to be a strong password, which can withstand a password attack, but note, you'll have to enter this password regularly, so it still needs to be something practical to work with.<br>
+  <i>--restore-viewonly-wallet</i> - Set up the wallet with the viewing key obtained from the offline wallet<br>
+An example will be:<br>
+  <i>$ ./dero-wallet-cli --remote --wallet-file=viewonly.db --password=someexamplepw --restore-viewonly-wallet</i><br>
+  The software will have these 2 prompts:<br>
+  Enter wallet filename (default viewonly.db): Just press enter to accept the default<br>
+  Enter the view only key (obtained from the offline (signing) wallet): Paste the viewing key here, i.e.:<br>
+viewkey,dero1bcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201,1f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f9342290626bd4f1422affe88578e5fbdb825f1d4d6d60bd458402dc18c1614a2395b;20010<br>
+  <br>
+If the key was accepted, you'll get this confirmation:<br>
+&nbsp;&nbsp;&nbsp;Successfully restored an online (view only) wallet<br>
+&nbsp;&nbsp;&nbsp;Address: dero1&lt;your address&gt;<br>
+&nbsp;&nbsp;&nbsp;Public key: &lt;your public key&gt;<br>
+<br>  
+After the wallet starts up the menu will provide you with a couple of options.<br>
+At the top of the menu is a greeting to show you that it is running in view only mode:<br>
+&nbsp;&nbsp;&nbsp;Online (view only) wallet:<br>
+&nbsp;&nbsp;&nbsp;1. Register you account, using registration transaction from the offline (signing) wallet.<br>
+&nbsp;&nbsp;&nbsp;2. View your account balance & transaction history<br>
+&nbsp;&nbsp;&nbsp;3. Generate transactions for the offline wallet to sign.<br>
+&nbsp;&nbsp;&nbsp;4. Submit the signed transactions to the network.<br>
+<br>
+Select '0' to exit the wallet.<br>
+<br>
 4.2 Second run
-  Now that the wallet is already created, you don't provide the restore & seed CLI options anymore:
-  $ ./dero-wallet-cli --remote --wallet-file=viewonly.db --password=someexamplepw
-
-  Menu options:
-  1 Display account Address -- Shows your account address. Share this with people so they can pay you.
-    Note: The address must be the same as that of the offline wallet
-    Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3    
-  2 Display seed -- This option is not available in the view only wallet.
-  3 Display Keys -- Only the public key is displayed. This must match the public key in the offline wallet
-  4 Account registration to blockchain -- In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address.
-  
-    Enter the registration transaction (obtained from the offline (signing) wallet): registration,dero1...,...,...;24578
-    Registration TXID 00000057d2f1c0fa1f00849f863fe296e4933c9ed18666587f7fe0f497c03993
-    registration tx dispatched successfully
-
-  Note: After the account was registered, the wallet needs to synchronise your account balance.
-        In order to accomplish this, interaction with the offline wallet is required.
-    
+  Now that the wallet is already created, you don't provide the restore & seed CLI options anymore:<br>
+  <i>$ ./dero-wallet-cli --remote --wallet-file=viewonly.db --password=someexamplepw</i><br>
+<br>
+&nbsp;&nbsp;&nbsp;Menu options:<br>
+&nbsp;&nbsp;&nbsp;1 Display account Address -- Shows your account address. Share this with people so they can pay you.<br>
+&nbsp;&nbsp;&nbsp;Note: The address must be the same as that of the offline wallet<br>
+&nbsp;&nbsp;&nbsp;Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3<br>
+&nbsp;&nbsp;&nbsp;2 Display seed -- This option is not available in the view only wallet.<br>
+&nbsp;&nbsp;&nbsp;3 Display Keys -- Only the public key is displayed. This must match the public key in the offline wallet<br>
+&nbsp;&nbsp;&nbsp;4 Account registration to blockchain -- In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address.<br>
+<br>  
+Enter the registration transaction (obtained from the offline (signing) wallet): registration,dero1...,...,...;24578<br>
+&nbsp;&nbsp;&nbsp;Registration TXID 00000057d2f1c0fa1f00849f863fe296e4933c9ed18666587f7fe0f497c03993<br>
+&nbsp;&nbsp;&nbsp;registration tx dispatched successfully<br>
+<br>
+Note: After the account was registered, the wallet needs to synchronise your account balance. In order to accomplish this, interaction with the offline wallet is required.<br>
+<br>
 ## Using the Online / Offline wallet configuration
   For the demonstration to work effectively, fund your newly created address with some 
   Dero by sending some cents (0.xx) to it, either from an online exchange or from one 
