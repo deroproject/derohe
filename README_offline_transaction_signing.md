@@ -112,7 +112,7 @@ shortfalls:
    The authorised transaction is copied back to the online wallet and submitted to the network for processing.
    
 7. Summary
-   Pirate's Treasure Chest wallet gives you access to these features today:
+   The Dero CLI wallet gives you access to these features today:
    * BIP39 master seed 
    * Split addresses between two wallets. The offline contains the private keys
      and the online the viewing and spending keys.
