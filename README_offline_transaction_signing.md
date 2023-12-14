@@ -157,8 +157,10 @@ shortfalls:
    From a terminal console, launch the application: <i>./dero-wallet-cli --help</i><br>
    We will use the following command line options:<br>
    <i>--offline</i> - Specify that this wallet is an offline (signing) wallet<br>
-   <i>--wallet-file</i> - The name of your wallet, i.e. offline.db<br><br>
-   <i>--password</i> - The password with which to encypt the wallet. It needs to be a strong password, which can withstand a password attack, but note, you'll have to enter this password regularly, so it still needs to be something practical to work with.<br>
+   <i>--wallet-file</i> - The name of your wallet, i.e. offline.db<br>
+   <i>--password</i> - The password with which to encypt the wallet. It needs to be a strong password, 
+   which can withstand a password attack, but note, you'll have to enter this password regularly, so it
+   still needs to be something practical to work with.<br>
    <i>--generate-new-wallet</i> - Let the wallet create a new mnemonic seed phrase and address<br>
    or<br>
    <i>--restore-deterministic-wallet</i> - You'll provide the mnemonic seed phrase<br>
@@ -166,36 +168,39 @@ shortfalls:
    An example will be:<br>
    <i>$ ./dero-wallet-cli --offline --wallet-file=offline.db --password=someexamplepw --restore-deterministic-wallet --electrum-seed="your 25 seedphrase words here"</i><br>
    After the wallet starts up the menu will provide you with a couple of options. At the top of the menu is a greeting to show you that it is running in offline mode:<br>
-&nbsp;&nbsp;&nbsp;Offline (signing) wallet:<br>
+&nbsp;Offline (signing) wallet:<br>
 &nbsp;&nbsp;&nbsp;1. Setup the online wallet with the exported public key<br>
 &nbsp;&nbsp;&nbsp;2. Generate a registration transaction for the online wallet<br>
 &nbsp;&nbsp;&nbsp;3. Sign spend transactions for the online wallet<br>
    Select '0' to exit the wallet.<br>
-   Check to see if the wallet was saved to disk: <i>$ ls</i><br>
-   The output must contain your wallet file: offline.db<br>
    
 3.2 Second run<br>
    Now that the wallet is already created, you don't provide the restore & seed CLI options anymore:<br>
    <i>$ ./dero-wallet-cli --offline --wallet-file=offline.db --password=someexamplepw</i><br>
-&nbsp;&nbsp;&nbsp;Menu options:<br>
-&nbsp;&nbsp;&nbsp;1 Display account Address -- Shows your account address. Share this with people so they can send Dero to you: Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3<br>
-&nbsp;&nbsp;&nbsp;2 Display seed -- This prints your mnemonic recovery seed. If somebody obtains this seed phrase, they can restore a wallet and spend all your funds.<br>
-&nbsp;&nbsp;&nbsp;3 Display Keys -- This normally contains the public and secret keys. While you're running in offline mode, an dditional entry is display: The 'view only' key. This key is used to set up the online (view only) wallet.<br>
-&nbsp;&nbsp;&nbsp;secret key: 1234567890abcdecbd05d9e1a7f52796da7bc2d931bd0034ee6facef8f46e9be<br>
-&nbsp;&nbsp;&nbsp;public key: 1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201<br>
-&nbsp;&nbsp;&nbsp;View only key - Import the complete text into the online (view only) wallet to set it up:<br>
-&nbsp;&nbsp;&nbsp;viewkey,dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201,1f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f9342290626bd4f1422affe88578e5fbdb825f1d4d6d60bd458402dc18c1614a2395b;20010<br>
-&nbsp;&nbsp;&nbsp;4 Generate registration transaction -- In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address.<br>
-Example output:<br>
-&nbsp;&nbsp;&nbsp;Generating registration transaction for wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3<br>
-&nbsp;&nbsp;&nbsp;Searched 100000 hashes<br>
-&nbsp;&nbsp;&nbsp;...<br>
-&nbsp;&nbsp;&nbsp;...<br>
-&nbsp;&nbsp;&nbsp;Searched 24600000 hashes<br>
-&nbsp;&nbsp;&nbsp;Found transaction:<br>
-&nbsp;&nbsp;&nbsp;Found the registration transaction. Import the complete text into the online (view only) wallet:<br>
-<br>  &nbsp;&nbsp;&nbsp;registration,dero1qy0eqpxjp6prmcr67j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,010000011f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f934201001822f65724584421db9e860e740250450b8192b3036a351c343274253636e21ad69f267b3a23e0f1d271ab17c143be2019710e682d4671258bb5dacd07e958,00000057d2f1c0fa1f00849f863fe296e4933c9ed18666587f7fe0f497c03993;24578<br>
-
+   Menu options:<br>
+   1 Display account Address<br>
+     Display your account address. Share this with people so they can send Dero to you:<br>
+     &nbsp;&nbsp;<i>Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3</i><br>
+   2 Display seed<br>
+     This prints your mnemonic recovery seed. If somebody obtains this seed phrase, they can restore a wallet and spend all your funds.<br>
+   3 Display Keys<br>
+     This normally contains the public and secret keys. While you're running in offline mode, an additional entry is display, the 'view only' key. This key is used to set up the online (view only) wallet.<br>
+     &nbsp;&nbsp;<i>secret key: &lt;Your secret key&gt;</i><br>
+     &nbsp;&nbsp;<i>public key: &lt;Your public key&gt;</i><br>
+     &nbsp;&nbsp;<i>View only key - Import the complete text into the online (view only) wallet to set it up:</i><br>
+     &nbsp;&nbsp;<i>viewkey,&lt;key parts&gt;;20010</i><br>
+   4 Generate registration transaction<br>
+     In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address on it.<br>
+     Example output:<br>
+     &nbsp;&nbsp;&nbsp;<i>Generating registration transaction for wallet address : dero1&lt;Your address&gt;<br>
+     &nbsp;&nbsp;&nbsp;Searched 100000 hashes<br>
+     &nbsp;&nbsp;&nbsp;...<br>
+     &nbsp;&nbsp;&nbsp;...<br>
+     &nbsp;&nbsp;&nbsp;Searched 24600000 hashes<br>
+     &nbsp;&nbsp;&nbsp;Found transaction:<br>
+     &nbsp;&nbsp;&nbsp;Found the registration transaction. Import the complete text into the online (view only) wallet:<br>
+     &nbsp;&nbsp;&nbsp;registration,dero1&lt;registration text&gt;;24578</i><br>
+<br>
 4 Online machine<br>
 4.1 First run<br>
   From a terminal console, launch the application: <i>./dero-wallet-cli --help</i><br>
@@ -207,42 +212,39 @@ Example output:<br>
 An example will be:<br>
   <i>$ ./dero-wallet-cli --remote --wallet-file=viewonly.db --password=someexamplepw --restore-viewonly-wallet</i><br>
   The software will have these 2 prompts:<br>
-  Enter wallet filename (default viewonly.db): Just press enter to accept the default<br>
-  Enter the view only key (obtained from the offline (signing) wallet): Paste the viewing key here, i.e.:<br>
-viewkey,dero1bcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3,1234567890abcde07af49f3d257520bfb8bde93084a820f55a8e8560272f934201,1f9004d20e823de07af49f3d257520bfb8bde93084a820f55a8e8560272f9342290626bd4f1422affe88578e5fbdb825f1d4d6d60bd458402dc18c1614a2395b;20010<br>
-  <br>
+  &nbsp;&nbsp;&nbsp;<i>Enter wallet filename (default viewonly.db):</i> Just press enter to accept the default<br>
+  &nbsp;&nbsp;&nbsp;<i>Enter the view only key (obtained from the offline (signing) wallet):</i> Paste the viewing key here<br>
+<br>
 If the key was accepted, you'll get this confirmation:<br>
 &nbsp;&nbsp;&nbsp;Successfully restored an online (view only) wallet<br>
-&nbsp;&nbsp;&nbsp;Address: dero1&lt;your address&gt;<br>
-&nbsp;&nbsp;&nbsp;Public key: &lt;your public key&gt;<br>
-<br>  
-After the wallet starts up the menu will provide you with a couple of options.<br>
-At the top of the menu is a greeting to show you that it is running in view only mode:<br>
-&nbsp;&nbsp;&nbsp;Online (view only) wallet:<br>
+&nbsp;&nbsp;&nbsp;Address: dero1&lt;Your address&gt;<br>
+&nbsp;&nbsp;&nbsp;Public key: &lt;Your public key&gt;<br>
+<br>
+After the wallet starts up the menu will provide you with a couple of options. At the top of the menu is a greeting to show you that it is running in view only mode:<br>
+&nbsp;Online (view only) wallet:<br>
 &nbsp;&nbsp;&nbsp;1. Register you account, using registration transaction from the offline (signing) wallet.<br>
 &nbsp;&nbsp;&nbsp;2. View your account balance & transaction history<br>
 &nbsp;&nbsp;&nbsp;3. Generate transactions for the offline wallet to sign.<br>
 &nbsp;&nbsp;&nbsp;4. Submit the signed transactions to the network.<br>
-<br>
 Select '0' to exit the wallet.<br>
 <br>
-4.2 Second run
+4.2 Second run<br>
   Now that the wallet is already created, you don't provide the restore & seed CLI options anymore:<br>
   <i>$ ./dero-wallet-cli --remote --wallet-file=viewonly.db --password=someexamplepw</i><br>
-<br>
-&nbsp;&nbsp;&nbsp;Menu options:<br>
-&nbsp;&nbsp;&nbsp;1 Display account Address -- Shows your account address. Share this with people so they can pay you.<br>
-&nbsp;&nbsp;&nbsp;Note: The address must be the same as that of the offline wallet<br>
-&nbsp;&nbsp;&nbsp;Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3<br>
-&nbsp;&nbsp;&nbsp;2 Display seed -- This option is not available in the view only wallet.<br>
-&nbsp;&nbsp;&nbsp;3 Display Keys -- Only the public key is displayed. This must match the public key in the offline wallet<br>
-&nbsp;&nbsp;&nbsp;4 Account registration to blockchain -- In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address.<br>
-<br>  
-Enter the registration transaction (obtained from the offline (signing) wallet): registration,dero1...,...,...;24578<br>
-&nbsp;&nbsp;&nbsp;Registration TXID 00000057d2f1c0fa1f00849f863fe296e4933c9ed18666587f7fe0f497c03993<br>
-&nbsp;&nbsp;&nbsp;registration tx dispatched successfully<br>
-<br>
-Note: After the account was registered, the wallet needs to synchronise your account balance. In order to accomplish this, interaction with the offline wallet is required.<br>
+   Menu options:<br>
+   1 Display account Address<br>
+     Display your account address. Share this with people so they can pay you. This address must match the address in the offline (signing) wallet.<br>
+     &nbsp;&nbsp;<i>Wallet address : dero1abcdef12345678907j0n6ft4yzlm300fxzz2sg84t28g2cp897f5yqghyx4z3</i><br>
+   2 Display seed<br>
+     This option is not available in the view only wallet.<br>
+   3 Display Keys<br>
+     Only the public key is displayed. This must match the public key in the offline wallet<br>
+   4 Account registration to blockchain<br>
+     In order to use a remote node, i.e. running in 'light mode', where you do not download the full blockchain yourself, the node requires you to register your address.<br>
+     &nbsp;&nbsp;<i>Enter the registration transaction (obtained from the offline (signing) wallet): </i> Paste the registration transaction here<br>
+     &nbsp;&nbsp;<i>Registration TXID &lt;txid number&gt;<br>
+     &nbsp;&nbsp;registration tx dispatched successfully</i><br>
+     Note: After the account was registered, the wallet needs to synchronise your account balance. In order to accomplish this, interaction between the online & offline wallet is required.<br>
 <br>
 ## Using the Online / Offline wallet configuration
   For the demonstration to work effectively, fund your newly created address with some 
