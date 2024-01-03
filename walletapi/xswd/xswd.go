@@ -121,19 +121,43 @@ const PermissionAlwaysDenied code.Code = -32044
 
 type messageRequest struct {
 	app     *ApplicationData
-	conn    *websocket.Conn
+	conn    *Connection
 	request *jrpc2.Request
 }
 
 type messageRegistration struct {
 	app     *ApplicationData
-	conn    *websocket.Conn
+	conn    *Connection
 	request *http.Request
+}
+
+type Connection struct {
+	conn *websocket.Conn
+	w    sync.Mutex
+	r    sync.Mutex
+}
+
+func (c *Connection) Send(message interface{}) error {
+	c.w.Lock()
+	defer c.w.Unlock()
+	return c.conn.WriteJSON(message)
+}
+
+func (c *Connection) Read() (int, []byte, error) {
+	c.r.Lock()
+	defer c.r.Unlock()
+	return c.conn.ReadMessage()
+}
+
+func (c *Connection) Close() error {
+	c.w.Lock()
+	defer c.w.Unlock()
+	return c.conn.Close()
 }
 
 type XSWD struct {
 	// The websocket connected to and its app data
-	applications map[*websocket.Conn]ApplicationData
+	applications map[*Connection]ApplicationData
 	// function to request access of a dApp to wallet
 	appHandler func(*ApplicationData) bool
 	// function to request the permission
@@ -172,7 +196,7 @@ func NewXSWDServerWithPort(port int, wallet *walletapi.Wallet_Disk, appHandler f
 	logger := globals.Logger.WithName("XSWD")
 
 	xswd := &XSWD{
-		applications:   make(map[*websocket.Conn]ApplicationData),
+		applications:   make(map[*Connection]ApplicationData),
 		appHandler:     appHandler,
 		requestHandler: requestHandler,
 		logger:         logger,
@@ -246,7 +270,7 @@ func (x *XSWD) IsEventTracked(event rpc.EventType) bool {
 func (x *XSWD) BroadcastEvent(event rpc.EventType, value interface{}) {
 	for conn, app := range x.applications {
 		if app.RegisteredEvents[event] {
-			if err := conn.WriteJSON(ResponseWithResult(nil, rpc.EventNotification{Event: event, Value: value})); err != nil {
+			if err := conn.Send(ResponseWithResult(nil, rpc.EventNotification{Event: event, Value: value})); err != nil {
 				x.logger.V(2).Error(err, "Error while broadcasting event")
 			}
 		}
@@ -260,7 +284,7 @@ func (x *XSWD) handler_loop() {
 			go func(msg messageRequest) {
 				response := x.handleMessage(msg.app, msg.request)
 				if response != nil {
-					if err := msg.conn.WriteJSON(response); err != nil {
+					if err := msg.conn.Send(response); err != nil {
 						x.logger.V(2).Error(err, "Error while writing JSON", "app", msg.app.Name)
 					}
 				}
@@ -268,12 +292,12 @@ func (x *XSWD) handler_loop() {
 		case msg := <-x.registers:
 			response := x.addApplication(msg.request, msg.conn, msg.app)
 			if response {
-				msg.conn.WriteJSON(AuthorizationResponse{
+				msg.conn.Send(AuthorizationResponse{
 					Message:  "User has authorized the application",
 					Accepted: true,
 				})
 			} else {
-				msg.conn.WriteJSON(AuthorizationResponse{
+				msg.conn.Send(AuthorizationResponse{
 					Message:  "User has rejected the application",
 					Accepted: false,
 				})
@@ -306,7 +330,7 @@ func (x *XSWD) Stop() {
 
 		conn.Close()
 	}
-	x.applications = make(map[*websocket.Conn]ApplicationData)
+	x.applications = make(map[*Connection]ApplicationData)
 	x.logger.Info("XSWD server stopped")
 	x = nil
 }
@@ -366,7 +390,7 @@ func (x *XSWD) HasApplicationId(app_id string) bool {
 
 // Add an application from a websocket connection
 // it verify that application is valid and add it to the list
-func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app *ApplicationData) bool {
+func (x *XSWD) addApplication(r *http.Request, conn *Connection, app *ApplicationData) bool {
 	// Sanity check
 	{
 		id := strings.TrimSpace(app.Id)
@@ -482,7 +506,7 @@ func (x *XSWD) addApplication(r *http.Request, conn *websocket.Conn, app *Applic
 
 // Remove an application from the list for a session
 // only used in internal
-func (x *XSWD) removeApplicationOfSession(conn *websocket.Conn, app *ApplicationData) {
+func (x *XSWD) removeApplicationOfSession(conn *Connection, app *ApplicationData) {
 	if app != nil && app.IsRequesting() {
 		x.logger.Info("App is requesting prompt, closing")
 		app.OnClose <- true
@@ -602,12 +626,12 @@ func (x *XSWD) requestPermission(app *ApplicationData, request *jrpc2.Request) P
 }
 
 // block until the session is closed and read all its messages
-func (x *XSWD) readMessageFromSession(conn *websocket.Conn, app *ApplicationData) {
+func (x *XSWD) readMessageFromSession(conn *Connection, app *ApplicationData) {
 	defer x.removeApplicationOfSession(conn, app)
 
 	for {
 		// block and read the message bytes from session
-		_, buff, err := conn.ReadMessage()
+		_, buff, err := conn.Read()
 		if err != nil {
 			x.logger.V(2).Error(err, "Error while reading message from session")
 			return
@@ -623,7 +647,9 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn, app *ApplicationData
 		requests, err := jrpc2.ParseRequests(buff)
 		if err != nil {
 			x.logger.Error(err, "Error while parsing request")
-			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Error while parsing request")))
+			if err := conn.Send(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Error while parsing request"))); err != nil {
+				return
+			}
 			continue
 		}
 
@@ -631,7 +657,9 @@ func (x *XSWD) readMessageFromSession(conn *websocket.Conn, app *ApplicationData
 		// We only support one request at a time for permission request
 		if len(requests) != 1 {
 			x.logger.V(2).Error(nil, "Invalid number of requests")
-			conn.WriteJSON(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Batch are not supported")))
+			if conn.Send(ResponseWithError(nil, jrpc2.Errorf(code.ParseError, "Batch are not supported"))); err != nil {
+				return
+			}
 			continue
 		}
 
@@ -654,7 +682,7 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// first message of the session should be its ApplicationData
 	var app_data ApplicationData
 	if err := conn.ReadJSON(&app_data); err != nil {
-		x.logger.V(1).Error(err, "Error while reading app_data")
+		x.logger.V(2).Error(err, "Error while reading app_data")
 		conn.WriteJSON(AuthorizationResponse{
 			Message:  "Invalid app data format",
 			Accepted: false,
@@ -672,8 +700,10 @@ func (x *XSWD) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	x.registers <- messageRegistration{conn: conn, request: r, app: &app_data}
-	x.readMessageFromSession(conn, &app_data)
+	connection := new(Connection)
+	connection.conn = conn
+	x.registers <- messageRegistration{conn: connection, request: r, app: &app_data}
+	x.readMessageFromSession(connection, &app_data)
 }
 
 func isASCII(s string) bool {
