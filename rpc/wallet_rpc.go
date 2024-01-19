@@ -22,12 +22,14 @@
 
 package rpc
 
-import "fmt"
-import "time"
-import "strings"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+	"strings"
+	"time"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
 
 // these structures are completely decoupled from blockchain and live only within the wallet
 // all inputs and outputs which modify balance are presented by this structure
@@ -209,6 +211,16 @@ type (
 	}
 	Transfer_Result struct {
 		TXID string `json:"txid,omitempty"`
+	}
+)
+
+type (
+	EstimateFees_Params = Transfer_Params
+	EstimateFees_Result struct {
+		Gas_Fees uint64 `json:"gas_fees"`
+		Tx_Fees  uint64 `json:"tx_fees"`
+		// Gas + Tx fees
+		Total_Fees uint64 `json:"total_fees"`
 	}
 )
 

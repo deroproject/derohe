@@ -16,37 +16,34 @@
 
 package rpcserver
 
-import "io"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "io/ioutil"
-import "net"
-import "fmt"
-import "net/http"
-import "time"
-import "sync"
-import "sync/atomic"
-import "context"
-import "strings"
-import "runtime/debug"
-import "encoding/json"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/gorilla/websocket"
-
-import "github.com/go-logr/logr"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/handler"
-import "github.com/creachadair/jrpc2/channel"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/creachadair/jrpc2/handler"
+	"github.com/creachadair/jrpc2/jhttp"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/glue/rwc"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/go-logr/logr"
+	"github.com/gorilla/websocket"
+)
 
 //import "github.com/creachadair/jrpc2/server"
-import "github.com/creachadair/jrpc2/jhttp"
 
 /* this file implements the rpcserver api, so as wallet and block explorer tools can work without migration */
 
@@ -318,6 +315,8 @@ var wallet_handler = handler.Map{
 	"transfer":                 handler.New(Transfer),
 	"Transfer":                 handler.New(Transfer),
 	"transfer_split":           handler.New(Transfer),
+	"estimate_fees":            handler.New(EstimateFees),
+	"EstimateFees":             handler.New(EstimateFees),
 	"scinvoke":                 handler.New(ScInvoke),
 }
 

@@ -1,6 +1,7 @@
 package walletapi
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/big"
@@ -22,6 +23,127 @@ type GenerateProofFunc func(scid crypto.Hash, scid_index int, s *crypto.Statemen
 
 var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 
+// Estimate the size of a transaction
+// For privacy and security reasons, we don't estimate the EXACT size in bytes, but the biggest possible size
+// So no data would leak from plain text data (example: RPC Payloads exact size)
+func (w *Wallet_Memory) EstimateBytesSize(transfers_count int, ringsize int, data rpc.Arguments, tx_type transaction.TransactionType) int {
+	total_bytes := 0
+	// Transaction Prefix
+	{
+		// Those following are Uvarint, which means they are variable size
+		// But we put full max size to support any future update
+		total_bytes += 8 // Version
+		total_bytes += 8 // Source Network
+		total_bytes += 8 // Destination Network
+		total_bytes += 8 // Transaction Type
+		if tx_type == transaction.PREMINE || tx_type == transaction.SC_TX {
+			total_bytes += transfers_count * 8 // Burn Value
+		}
+
+		if tx_type == transaction.PREMINE || tx_type == transaction.COINBASE || tx_type == transaction.REGISTRATION {
+			total_bytes += 33 // Miner Address
+		}
+
+		if tx_type == transaction.REGISTRATION {
+			total_bytes += 2 * 33 // C, S (fixed size)
+		}
+
+		// This is common header
+		if tx_type == transaction.BURN_TX || tx_type == transaction.NORMAL || tx_type == transaction.SC_TX {
+			total_bytes += 8  // Height
+			total_bytes += 32 // BLID
+			// This one is a varint too (but we put max size)
+			total_bytes += transfers_count * 8 // Number of Assets (uint64)
+		}
+	}
+
+	// Common Payload
+	{
+		total_bytes += transfers_count      // RPC Type
+		total_bytes += transfers_count * 32 // SCID
+
+		// the payload max size
+		total_bytes += transfers_count * transaction.PAYLOAD_LIMIT
+	}
+
+	// Statement
+	statement_size := 0
+	{
+		// Publickeylist pointers max total size
+		// Each public key is a G1 Point compressed to 33 bytes
+		statement_size += ringsize * 33
+
+		// 1 byte for power, 1 byte for bytes per public key
+		statement_size += 2
+
+		// 8 bytes for fees (varint but max value in case)
+		statement_size += 8
+
+		// 33 bytes for D
+		statement_size += 33
+
+		// 33 bytes per C field (bn256.G1 compressed format)
+		statement_size += 33 * ringsize
+
+		// 32 bytes for roothash
+		statement_size += 32
+	}
+	total_bytes += statement_size * transfers_count
+
+	// Proof
+	proof_size := 0
+	{
+		// BA, BS, A, B, u, T_1, T_2
+		proof_size += 7 * 33
+
+		// dynamic sizes
+		m := int(math.Log2(float64(ringsize)))
+		// CLnG, CRnG, C_0G, DG, y_0G, gG, C_XG, y_XG
+		proof_size += 8 * m * 33
+
+		// FieldVector in Proof must be double of CLnG len
+		// which is m
+		// each element in vector is 32 bytes
+		proof_size += m * 2 * 32
+
+		// z_A, that, mu, c, s_sk, s_r, s_b, s_tau
+		proof_size += 8 * 32
+
+		// InnerProduct
+		{
+			// a, b (32 bytes each)
+			proof_size += 2 * 32
+			// bulletproofs are 128 bits, so its 7 elements in ls, rs
+			proof_size += 7 * 2 * 33
+		}
+	}
+	total_bytes += proof_size * transfers_count
+
+	return total_bytes
+}
+
+// Estimate fees for a transaction by estimating its size
+func (w *Wallet_Memory) EstimateTxFees(transfers_count int, ringsize int, data rpc.Arguments, tx_type transaction.TransactionType) uint64 {
+	total_bytes := w.EstimateBytesSize(transfers_count, ringsize, data, tx_type)
+	size_in_kb := total_bytes / 1024
+
+	if (total_bytes % 1024) != 0 { // for any part there of, use a full KB fee
+		size_in_kb += 1
+	}
+
+	return uint64(float64(size_in_kb) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
+}
+
+// Estimate gas fees by calling the daemon to simulate the TX
+func (w *Wallet_Memory) EstimateGasFees(params rpc.EstimateFees_Params) (uint64, error) {
+	var result rpc.GasEstimate_Result
+	if err := rpc_client.RPC.CallResult(context.Background(), "DERO.GetGasEstimate", params, &result); err != nil {
+		return 0, err
+	}
+
+	return result.GasCompute + result.GasStorage, nil
+}
+
 // generate proof  etc
 // If tx_fees are set to 0, it will be automatically calculated
 // gas_fees must be calculated before calling this function !!
@@ -31,6 +153,14 @@ func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]by
 	sender_secret := w.account.Keys.Secret.BigInt()
 
 	var retry_count int
+
+	// This is used in case we have differents ringsize per transfer
+	highest_ring_size := 0
+	for i := range rings {
+		if len(rings[i]) > highest_ring_size {
+			highest_ring_size = len(rings[i])
+		}
+	}
 
 rebuild_tx:
 
@@ -146,122 +276,9 @@ rebuild_tx:
 		// Fees are only paid on DERO transfers, not on tokens transfers
 		should_do_fees := asset.SCID.IsZero() && !fees_done && tx_fees != 0
 
+		// Compute TX fees only one time, we expect that gas fees are already calculated
 		if tx_fees == 0 && asset.SCID.IsZero() && !fees_done {
-			total_bytes := 0
-			// Transaction Prefix
-			{
-				// Those following are Uvarint, which means they are variable size
-				// But we put full max size to support any future update
-				total_bytes += 8 // Version
-				total_bytes += 8 // Source Network
-				total_bytes += 8 // Destination Network
-				total_bytes += 8 // Transaction Type
-				if tx.TransactionType == transaction.PREMINE || tx.TransactionType == transaction.SC_TX {
-					total_bytes += 8 // Burn Value
-				}
-
-				if tx.TransactionType == transaction.PREMINE || tx.TransactionType == transaction.COINBASE || tx.TransactionType == transaction.REGISTRATION {
-					total_bytes += 33 // Miner Address
-				}
-
-				if tx.TransactionType == transaction.REGISTRATION {
-					total_bytes += 2 * 33 // C, S (fixed size)
-				}
-
-				if tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.SC_TX {
-					total_bytes += 8  // Height
-					total_bytes += 32 // BLID
-					// This one is a varint too (but we put max size)
-					total_bytes += len(transfers) * 8 // Number of Assets (uint64)
-				}
-			}
-
-			for t := range transfers {
-				rings_count := len(rings[t])
-
-				// Common Payload
-				{
-					total_bytes += 1  // RPC Type
-					total_bytes += 32 // SCID
-
-					// the payload max size
-					total_bytes += transaction.PAYLOAD_LIMIT
-				}
-
-				// Statement
-				statement_size := 0
-				{
-					// Publickeylist pointers total size
-					rings_size := rings_count * (max_bits / 8)
-					statement_size += rings_size
-
-					// 1 byte for power, 1 byte for bytes per public key
-					statement_size += 2
-
-					// 8 bytes for fees (varint but max value in case)
-					statement_size += 8
-
-					// 33 bytes for D
-					statement_size += 33
-
-					// 33 bytes per C field (bn256.G1 compressed format)
-					statement_size += 33 * rings_count
-
-					// 32 bytes for roothash
-					statement_size += 32
-				}
-				total_bytes += statement_size
-
-				// Proof
-				proof_size := 0
-				{
-					// BA, BS, A, B, u, T_1, T_2
-					proof_size += 7 * 33
-
-					// dynamic sizes
-					m := int(math.Log2(float64(rings_count)))
-					// CLnG, CRnG, C_0G, DG, y_0G, gG, C_XG, y_XG
-					proof_size += 8 * m * 33
-
-					// FieldVector in Proof must be double of CLnG len
-					// which is m
-					// each element in vector is 32 bytes
-					proof_size += m * 2 * 32
-
-					// z_A, that, mu, c, s_sk, s_r, s_b, s_tau
-					proof_size += 8 * 32
-
-					// InnerProduct
-					{
-						// a, b (32 bytes each)
-						proof_size += 2 * 32
-						// bulletproofs are 128 bits, so its 7 elements in ls, rs
-						proof_size += 7 * 2 * 33
-					}
-				}
-				total_bytes += proof_size
-			}
-
-			// Add SC Data
-			if tx.TransactionType == transaction.SC_TX {
-				if data, err := scdata.MarshalBinary(); err != nil {
-					panic(err)
-				} else {
-					total_bytes += len(data) + 8 // 8 is varint max value size
-				}
-			}
-
-			// multiply total_bytes by DERO fees per KB with fee multiplier
-			{
-				size_in_kb := total_bytes / 1024
-
-				if (total_bytes % 1024) != 0 { // for any part there of, use a full KB fee
-					size_in_kb += 1
-				}
-
-				tx_fees = uint64(float64(size_in_kb) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
-			}
-
+			tx_fees = w.EstimateTxFees(len(transfers), highest_ring_size, transfers[t].Payload_RPC, tx.TransactionType)
 			should_do_fees = true
 			fees_done = true
 		}
