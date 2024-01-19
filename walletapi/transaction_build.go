@@ -23,7 +23,9 @@ type GenerateProofFunc func(scid crypto.Hash, scid_index int, s *crypto.Statemen
 var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 
 // generate proof  etc
-func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int, fees uint64) *transaction.Transaction {
+// If tx_fees are set to 0, it will be automatically calculated
+// gas_fees must be calculated before calling this function !!
+func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int, gas_fees uint64, tx_fees uint64) *transaction.Transaction {
 
 	sender := w.account.Keys.Public.G1()
 	sender_secret := w.account.Keys.Secret.BigInt()
@@ -142,9 +144,9 @@ rebuild_tx:
 
 		// If user provide fees, we will use it, otherwise we will calculate it
 		// Fees are only paid on DERO transfers, not on tokens transfers
-		should_do_fees := asset.SCID.IsZero() && !fees_done && fees != 0
+		should_do_fees := asset.SCID.IsZero() && !fees_done && tx_fees != 0
 
-		if fees == 0 && asset.SCID.IsZero() && !fees_done {
+		if tx_fees == 0 && asset.SCID.IsZero() && !fees_done {
 			total_bytes := 0
 			// Transaction Prefix
 			{
@@ -257,7 +259,7 @@ rebuild_tx:
 					size_in_kb += 1
 				}
 
-				fees = uint64(float64(size_in_kb) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
+				tx_fees = uint64(float64(size_in_kb) * (float64(config.FEE_PER_KB) * float64(w.GetFeeMultiplier())))
 			}
 
 			should_do_fees = true
@@ -270,7 +272,7 @@ rebuild_tx:
 			switch {
 			case i == witness_index[0]:
 				if asset.SCID.IsZero() && should_do_fees {
-					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(fees)-int64(burn_value))) // decrease senders balance (with fees)
+					x.ScalarMult(crypto.G, new(big.Int).SetInt64(0-int64(value)-int64(tx_fees+gas_fees)-int64(burn_value))) // decrease senders balance (with fees)
 					should_do_fees = false
 					fees_in_statement = true
 				} else {
@@ -340,7 +342,9 @@ rebuild_tx:
 		// time for bullets-sigma
 		fees_currentasset := uint64(0)
 		if asset.SCID.IsZero() && fees_in_statement {
-			fees_currentasset = fees
+			// fees are only paid on DERO transfers, not on tokens transfers
+			// Those contains gas fees and TX fees
+			fees_currentasset = tx_fees + gas_fees
 		}
 		statement := GenerateStatement(CLn, CRn, publickeylist, C, &D, fees_currentasset) // generate statement
 
