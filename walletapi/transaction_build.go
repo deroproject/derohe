@@ -141,7 +141,7 @@ func (w *Wallet_Memory) EstimateGasFees(params rpc.EstimateFees_Params) (uint64,
 		return 0, err
 	}
 
-	return result.GasCompute + result.GasStorage, nil
+	return result.GasStorage, nil
 }
 
 // generate proof  etc
