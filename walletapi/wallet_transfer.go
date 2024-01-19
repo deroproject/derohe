@@ -59,7 +59,13 @@ func (w *Wallet_Memory) Transfer_Simplified(addr string, value uint64, data []by
 // we should reply to an entry
 
 // send amount to specific addresses
+// Tx fees are not pre-computed and will be done during building tx
 func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, gasstorage uint64, dry_run bool) (tx *transaction.Transaction, err error) {
+	return w.TransferFeesPrecomputed(transfers, ringsize, transfer_all, scdata, gasstorage, 0, dry_run)
+}
+
+// Create a transfer transaction with precomputed fees
+func (w *Wallet_Memory) TransferFeesPrecomputed(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, gasstorage uint64, tx_fees uint64, dry_run bool) (tx *transaction.Transaction, err error) {
 
 	//    var  transfer_details structures.Outgoing_Transfer_Details
 	w.transfer_mutex.Lock()
@@ -395,7 +401,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	max_bits += 6 // extra 6 bits
 
 	if !dry_run {
-		tx = w.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage, 0)
+		tx = w.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage, tx_fees)
 	}
 
 	if tx == nil {
