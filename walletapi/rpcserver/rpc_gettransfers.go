@@ -28,6 +28,22 @@ func GetTransfers(ctx context.Context, p rpc.Get_Transfers_Params) (result rpc.G
 		}
 	}()
 
+	// if we have receiver param, check that its a valid address
+	if len(p.Receiver) > 0 {
+		var receiver rpc.Address
+		if err := receiver.UnmarshalText([]byte(p.Receiver)); err != nil {
+			return result, fmt.Errorf("Invalid receiver address")
+		}
+	}
+
+	// same here
+	if len(p.Sender) > 0 {
+		var sender rpc.Address
+		if err := sender.UnmarshalText([]byte(p.Sender)); err != nil {
+			return result, fmt.Errorf("Invalid sender address")
+		}
+	}
+
 	w := fromContext(ctx)
 
 	result.Entries = w.wallet.Show_Transfers(p.SCID, p.Coinbase, p.In, p.Out, p.Min_Height, p.Max_Height, p.Sender, p.Receiver, p.DestinationPort, p.SourcePort)
