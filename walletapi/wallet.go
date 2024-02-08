@@ -276,17 +276,13 @@ func (w *Wallet_Memory) Show_Transfers(scid crypto.Hash, coinbase bool, in bool,
 				continue
 			}
 
-			// Outgoing only
-			if out && (e.Incoming || e.Coinbase) {
-				continue
+			if coinbase && e.Coinbase {
+				entries = append(entries, e)
+			} else if out && !(e.Incoming || e.Coinbase) {
+				entries = append(entries, e)
+			} else if in && e.Incoming {
+				entries = append(entries, e)
 			}
-
-			// incoming only
-			if in && !e.Incoming {
-				continue
-			}
-
-			entries = append(entries, e)
 		}
 	}
 
