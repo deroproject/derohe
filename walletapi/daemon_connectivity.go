@@ -62,14 +62,14 @@ func Connect(endpoint string) (err error) {
 
 	logger.V(1).Info("Daemon endpoint ", "address", Daemon_Endpoint_Active)
 
-	if strings.HasPrefix(Daemon_Endpoint_Active, "http") {
-		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "http://")
-		daemon_uri = "ws://" + ld + "/ws"
-
-		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
-	} else if strings.HasPrefix(Daemon_Endpoint_Active, "https") {
+	if strings.HasPrefix(Daemon_Endpoint_Active, "https") {
 		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "https://")
 		daemon_uri = "wss://" + ld + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(Daemon_Endpoint_Active, "http") {
+		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "http://")
+		daemon_uri = "ws://" + ld + "/ws"
 
 		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
 	} else if strings.HasPrefix(Daemon_Endpoint_Active, "wss") {
