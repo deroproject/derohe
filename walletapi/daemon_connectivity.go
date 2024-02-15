@@ -30,17 +30,16 @@ package walletapi
 //import "fmt"
 
 //import "net/url"
-import "net/http"
+import (
+	"strings"
 
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "github.com/gorilla/websocket"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/deroproject/derohe/glue/rwc"
+	"github.com/gorilla/websocket"
+)
 
 // there should be no global variables, so multiple wallets can run at the same time with different assset
-
-var netClient *http.Client
 
 type Client struct {
 	WS  *websocket.Conn
@@ -54,23 +53,39 @@ var rpc_client = &Client{}
 // this will tell whether the wallet can connection successfully to  daemon or not
 func Connect(endpoint string) (err error) {
 
+	var daemon_uri string
 	Daemon_Endpoint_Active = get_daemon_address()
 
 	logger.V(1).Info("Daemon endpoint ", "address", Daemon_Endpoint_Active)
 
-	rpc_client.WS, _, err = websocket.DefaultDialer.Dial("ws://"+Daemon_Endpoint_Active+"/ws", nil)
+	if strings.HasPrefix(Daemon_Endpoint_Active, "https") {
+		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "https://")
+		daemon_uri = "wss://" + ld + "/ws"
+		logger.V(1).Info("will use endpoint", "endpoint", daemon_uri)
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(Daemon_Endpoint_Active, "wss") {
+		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "wss://")
+		daemon_uri = "wss://" + ld + "/ws"
+		logger.V(1).Info("will use endpoint", "endpoint", daemon_uri)
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else {
+		daemon_uri = "ws://" + Daemon_Endpoint_Active + "/ws"
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	}
 
 	// notify user of any state change
 	// if daemon connection breaks or comes live again
 	if err == nil {
 		if !Connected {
-			logger.V(1).Info("Connection to RPC server successful", "address", "ws://"+Daemon_Endpoint_Active+"/ws")
+			logger.V(1).Info("Connection to RPC server successful", "address", daemon_uri)
 			Connected = true
 		}
 	} else {
 
 		if Connected {
-			logger.V(1).Error(err, "Connection to RPC server Failed", "endpoint", "ws://"+Daemon_Endpoint_Active+"/ws")
+			logger.V(1).Error(err, "Connection to RPC server Failed", "endpoint", daemon_uri)
 		}
 		Connected = false
 		return
