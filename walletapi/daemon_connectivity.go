@@ -54,6 +54,8 @@ var rpc_client = &Client{}
 func Connect(endpoint string) (err error) {
 
 	var daemon_uri string
+
+	// Take globals arg configured daemon if endpoint param is not defined
 	if endpoint == "" {
 		Daemon_Endpoint_Active = get_daemon_address()
 	} else {
@@ -62,6 +64,7 @@ func Connect(endpoint string) (err error) {
 
 	logger.V(1).Info("Daemon endpoint ", "address", Daemon_Endpoint_Active)
 
+	// Trim off http, https, wss, ws to get endpoint to use for connecting
 	if strings.HasPrefix(Daemon_Endpoint_Active, "https") {
 		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "https://")
 		daemon_uri = "wss://" + ld + "/ws"
