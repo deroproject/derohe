@@ -54,24 +54,37 @@ var rpc_client = &Client{}
 func Connect(endpoint string) (err error) {
 
 	var daemon_uri string
-	Daemon_Endpoint_Active = get_daemon_address()
+	if endpoint == "" {
+		Daemon_Endpoint_Active = get_daemon_address()
+	} else {
+		Daemon_Endpoint_Active = endpoint
+	}
 
 	logger.V(1).Info("Daemon endpoint ", "address", Daemon_Endpoint_Active)
 
-	if strings.HasPrefix(Daemon_Endpoint_Active, "https") {
+	if strings.HasPrefix(Daemon_Endpoint_Active, "http") {
+		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "http://")
+		daemon_uri = "ws://" + ld + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(Daemon_Endpoint_Active, "https") {
 		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "https://")
 		daemon_uri = "wss://" + ld + "/ws"
-		logger.V(1).Info("will use endpoint", "endpoint", daemon_uri)
 
 		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
 	} else if strings.HasPrefix(Daemon_Endpoint_Active, "wss") {
 		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "wss://")
 		daemon_uri = "wss://" + ld + "/ws"
-		logger.V(1).Info("will use endpoint", "endpoint", daemon_uri)
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(Daemon_Endpoint_Active, "ws") {
+		ld := strings.TrimPrefix(strings.ToLower(Daemon_Endpoint_Active), "ws://")
+		daemon_uri = "ws://" + ld + "/ws"
 
 		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
 	} else {
 		daemon_uri = "ws://" + Daemon_Endpoint_Active + "/ws"
+
 		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
 	}
 
