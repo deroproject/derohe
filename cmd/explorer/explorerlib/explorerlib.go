@@ -24,36 +24,37 @@ package explorerlib
 // TODO: error handling is non-existant ( as this was built up in hrs ). Add proper error handling
 //
 
-import "time"
-import "fmt"
+import (
+	"bytes"
+	"context"
+	"embed"
+	"encoding/hex"
+	"fmt"
+	"html/template"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+	"unsafe"
 
-import "embed"
-import "bytes"
-import "unicode"
-import "unsafe" // need to avoid this, but only used by byteviewer
-import "strings"
-import "strconv"
-import "context"
-import "encoding/hex"
-import "net/http"
-import "html/template"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/glue/rwc"
+	"github.com/deroproject/derohe/proof"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/go-logr/logr"
+	"github.com/gorilla/websocket"
+)
+
+// need to avoid this, but only used by byteviewer
 
 //import "encoding/json"
 //import "io/ioutil"
-
-import "github.com/go-logr/logr"
-
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/proof"
-import "github.com/deroproject/derohe/glue/rwc"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/channel"
-import "github.com/gorilla/websocket"
 
 //go:embed templates/*.tmpl
 var tpls embed.FS
@@ -127,21 +128,50 @@ func Connect() (err error) {
 
 	//rpc_conn, err = rpcc.Dial("ws://"+ w.Daemon_Endpoint + "/ws")
 
+	var daemon_uri string
+
 	daemon_endpoint := endpoint
-	rpc_client.WS, _, err = websocket.DefaultDialer.Dial("ws://"+daemon_endpoint+"/ws", nil)
+	//rpc_client.WS, _, err = websocket.DefaultDialer.Dial("ws://"+daemon_endpoint+"/ws", nil)
+
+	// Trim off http, https, wss, ws to get endpoint to use for connecting
+	if strings.HasPrefix(daemon_endpoint, "https") {
+		ld := strings.TrimPrefix(strings.ToLower(daemon_endpoint), "https://")
+		daemon_uri = "wss://" + ld + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(daemon_endpoint, "http") {
+		ld := strings.TrimPrefix(strings.ToLower(daemon_endpoint), "http://")
+		daemon_uri = "ws://" + ld + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(daemon_endpoint, "wss") {
+		ld := strings.TrimPrefix(strings.ToLower(daemon_endpoint), "wss://")
+		daemon_uri = "wss://" + ld + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else if strings.HasPrefix(daemon_endpoint, "ws") {
+		ld := strings.TrimPrefix(strings.ToLower(daemon_endpoint), "ws://")
+		daemon_uri = "ws://" + ld + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	} else {
+		daemon_uri = "ws://" + daemon_endpoint + "/ws"
+
+		rpc_client.WS, _, err = websocket.DefaultDialer.Dial(daemon_uri, nil)
+	}
 
 	// notify user of any state change
 	// if daemon connection breaks or comes live again
 	if err == nil {
 		if !Connected {
-			logger.V(1).Info("Connection to RPC server successful", "daemon_endpoint", "ws://"+daemon_endpoint+"/ws")
+			logger.V(1).Info("Connection to RPC server successful", "daemon_endpoint", daemon_uri)
 			Connected = true
 		}
 	} else {
 		logger.Error(err, "Error connecting to daemon")
 
 		if Connected {
-			logger.Error(err, "Connection to RPC server Failed ", "daemon_endpoint", "ws://"+daemon_endpoint+"/ws")
+			logger.Error(err, "Connection to RPC server Failed ", "daemon_endpoint", daemon_uri)
 		}
 		Connected = false
 		return
