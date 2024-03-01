@@ -21,38 +21,36 @@ package blockchain
 // We must not call any packages that can call panic
 // NO Panics or FATALs please
 
-import "os"
-import "fmt"
-import "sync"
-import "time"
-import "bytes"
-import "runtime/debug"
-import "strings"
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "runtime"
-import "context"
-import "golang.org/x/crypto/sha3"
-import "golang.org/x/sync/semaphore"
-import "github.com/go-logr/logr"
+	"github.com/go-logr/logr"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/sync/semaphore"
 
-import "sync/atomic"
-
-import "github.com/hashicorp/golang-lru"
-
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/metrics"
-
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/blockchain/mempool"
-import "github.com/deroproject/derohe/blockchain/regpool"
-
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/blockchain/mempool"
+	"github.com/deroproject/derohe/blockchain/regpool"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	lru "github.com/hashicorp/golang-lru"
+)
 
 // all components requiring access to blockchain must use , this struct to communicate
 // this structure must be update while mutex
@@ -203,7 +201,11 @@ func Blockchain_Start(params map[string]interface{}) (*Blockchain, error) {
 
 	init_hard_forks(params) // hard forks must be initialized asap
 
-	chain.Initialise_Chain_From_DB() // load the chain from the disk
+	// load the chain from the disk
+	if ok := chain.Initialise_Chain_From_DB(); !ok {
+		logger.Error(fmt.Errorf("corrupted top block"), "Top block is broken, rewind 1 block")
+		chain.Rewind_Chain(1)
+	}
 
 try_again:
 	version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
@@ -334,16 +336,28 @@ func (chain *Blockchain) SetIntegratorAddress(addr rpc.Address) {
 // this function is called to read blockchain state from DB
 // It is callable at any point in time
 
-func (chain *Blockchain) Initialise_Chain_From_DB() {
+func (chain *Blockchain) Initialise_Chain_From_DB() (ok bool) {
 	chain.Lock()
 	defer chain.Unlock()
 
+	ok = true
 	chain.Pruned = chain.LocatePruneTopo()
 
 	// find the tips from the chain , first by reaching top height
 	// then downgrading to top-10 height
 	// then reworking the chain to get the tip
 	best_height := chain.Load_TOP_HEIGHT()
+
+	// load and check top block for corruption
+	blid, err := chain.Load_Block_Topological_order_at_index(best_height)
+	if err != nil {
+		panic(err)
+	} else {
+		data, err := chain.Store.Block_tx_store.ReadBlock(blid)
+		if len(data) == 0 || err != nil {
+			ok = false
+		}
+	}
 
 	chain.Tips = map[crypto.Hash]crypto.Hash{} // reset the map
 	// reload top tip from disk
@@ -352,6 +366,8 @@ func (chain *Blockchain) Initialise_Chain_From_DB() {
 	chain.Tips[top] = top // we only can load a single tip from db
 
 	logger.V(1).Info("Reloaded Chain from disk", "Tips", chain.Tips, "Height", best_height)
+
+	return
 }
 
 // before shutdown , make sure p2p is confirmed stopped
