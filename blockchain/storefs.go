@@ -18,15 +18,18 @@ package blockchain
 
 // this file implements a filesystem store which is used to store blocks/transactions directly in the file system
 
-import "io"
-import "os"
-import "fmt"
-import "strings"
-import "io/ioutil"
-import "math/big"
-import "path/filepath"
-import "encoding/hex"
-import "github.com/deroproject/derohe/globals"
+import (
+	"encoding/hex"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"math/big"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/deroproject/derohe/globals"
+)
 
 type storefs struct {
 	basedir string
@@ -285,13 +288,19 @@ func (s *storefs) ReadTX(h [32]byte) ([]byte, error) {
 		dir := s.getpath(h)
 		file := filepath.Join(dir, fmt.Sprintf("%x.tx", h[:]))
 		if data, err := ioutil.ReadFile(file); err == nil {
-			return data, err
+			return data, nil
 		}
 	}
 
 	dir := s.getpathtx(h)
 	file := filepath.Join(dir, fmt.Sprintf("%x.tx", h[:]))
-	return ioutil.ReadFile(file)
+	res, err := ioutil.ReadFile(file)
+	if err != nil {
+		logger.V(4).Info("cannot read tx", "tx", fmt.Sprintf("%x", h), "err", err)
+		return nil, fmt.Errorf("tx %x not found", h[:])
+	}
+
+	return res, nil
 }
 
 func (s *storefs) WriteTX(h [32]byte, data []byte) (err error) {

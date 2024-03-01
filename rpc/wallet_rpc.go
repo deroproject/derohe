@@ -22,12 +22,14 @@
 
 package rpc
 
-import "fmt"
-import "time"
-import "strings"
-import "math/big"
+import (
+	"fmt"
+	"math/big"
+	"strings"
+	"time"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+)
 
 // these structures are completely decoupled from blockchain and live only within the wallet
 // all inputs and outputs which modify balance are presented by this structure
@@ -286,9 +288,11 @@ type (
 // Get_Transfer_By_TXID
 type (
 	Get_Transfer_By_TXID_Params struct {
-		TXID string `json:"txid"`
+		SCID crypto.Hash `json:"scid"`
+		TXID string      `json:"txid"`
 	}
 	Get_Transfer_By_TXID_Result struct {
-		Entry Entry `json:"entry,omitempty"`
+		SCID  crypto.Hash `json:"scid,omitempty"`
+		Entry Entry       `json:"entry,omitempty"`
 	}
 )

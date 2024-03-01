@@ -16,8 +16,12 @@
 
 package p2p
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/graviton"
+import (
+	"fmt"
+
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/graviton"
+)
 
 const max_request_topoheights = 50
 
@@ -25,14 +29,30 @@ const max_request_topoheights = 50
 func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error) {
 	defer handle_connection_panic(c)
 	if len(request.TopoHeights) < 1 || len(request.TopoHeights) > max_request_topoheights { // we are expecting 1 block or 1 tx
-		c.logger.V(1).Info("malformed object request  received, banning peer", "request", request)
+		c.logger.V(1).Info("malformed object request received, banning peer", "request", request)
 		c.exit()
 		return nil
 	}
 
 	c.update(&request.Common) // update common information
 
+	previous_topo := request.TopoHeights[0] - 1 // used to verify the topo heights are in order
+	// first requested topo can't be higher than chain AND can't be lower than 10 (because of connection.TopoHeight-50-max_request_topoheights < 10)
+	if previous_topo > chain.Load_TOPO_HEIGHT() || previous_topo < 10 {
+		c.logger.V(1).Info("malformed object request received, banning peer", "request", request)
+		c.exit()
+		return fmt.Errorf("invalid topo height for change set request (chain topo = %d, first topo requested = %d)", chain.Load_TOPO_HEIGHT(), previous_topo)
+	}
+
 	for _, topo := range request.TopoHeights {
+		// Check for well formed requested
+		if topo <= previous_topo || previous_topo+1 != topo {
+			c.logger.V(1).Info("malformed object request  received, banning peer", "request", request)
+			c.exit()
+			return fmt.Errorf("invalid topo height for change set request (current = %d, previous = %d)", topo, previous_topo)
+		}
+		previous_topo = topo
+
 		var cbl Complete_Block
 
 		blid, err := chain.Load_Block_Topological_order_at_index(topo)
@@ -48,8 +68,8 @@ func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error
 				return err
 			}
 			cbl.Txs = append(cbl.Txs, tx_bytes) // append all the txs
-
 		}
+
 		cbl.Difficulty = chain.Load_Block_Difficulty(blid).String()
 
 		// now we must load all the changes the block has done to the state tree
@@ -97,14 +117,12 @@ func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error
 						}
 					}
 				}
-
 			}
 
 			if err != nil {
 				return err
-			} else {
-
 			}
+
 			response.CBlocks = append(response.CBlocks, cbl)
 		}
 	}
@@ -113,7 +131,6 @@ func (c *Connection) ChangeSet(request ChangeList, response *Changes) (err error
 	fill_common(&response.Common) // fill common info
 
 	return nil
-
 }
 
 // this will record all the changes
