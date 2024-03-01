@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unsafe"
+	"unsafe" // need to avoid this, but only used by byteviewer
 
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/channel"
@@ -50,8 +50,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/gorilla/websocket"
 )
-
-// need to avoid this, but only used by byteviewer
 
 //import "encoding/json"
 //import "io/ioutil"
