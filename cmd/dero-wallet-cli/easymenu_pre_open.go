@@ -22,7 +22,6 @@ import "time"
 import "strconv"
 import "strings"
 import "encoding/hex"
-
 import "github.com/chzyer/readline"
 
 import "github.com/deroproject/derohe/cryptography/crypto"
@@ -143,7 +142,13 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 			break
 		}
 
-		wallett, err = walletapi.Create_Encrypted_Wallet(filename, password, new(crypto.BNRed).SetBytes(seed_raw))
+		seed := new(crypto.BNRed).SetBytes(seed_raw)
+	        account,err2 := walletapi.Generate_Account_From_Seed ( seed )
+	        if err2 != nil {
+	                logger.Error(err, "Could not use the seed to create an account")
+		}
+		
+		wallett, err = walletapi.Create_Encrypted_Wallet(filename, password, account)
 		if err != nil {
 			logger.Error(err, "Error while recovering wallet using seed key")
 			break
@@ -218,7 +223,15 @@ func handle_easymenu_pre_open_command(l *readline.Instance, line string) {
 // sets online mode, starts RPC server etc
 func common_processing(wallet *walletapi.Wallet_Disk) {
 	if globals.Arguments["--offline"].(bool) == true {
-		//offline_mode = true
+	        // For an offline (signing) wallet, we require the secret key:
+                account := wallet.GetAccount()
+                sSecret := fmt.Sprintf("%x", account.Keys.Secret.BigInt() )
+                if ( len(sSecret)<=1 ) {
+                  fmt.Printf("Your wallet doesn't have a secret key. Did you specify an online (view only) wallet (%s)?\n", globals.Arguments["--wallet-file"])
+                  //Exit application
+                  globals.Exit_In_Progress = true
+                  return
+                }
 	} else {
 		wallet.SetOnlineMode()
 	}
@@ -245,7 +258,11 @@ func common_processing(wallet *walletapi.Wallet_Disk) {
 			wallet.SetSaveDuration(time.Duration(s) * time.Second)
 			logger.Info("Wallet changes will be saved every", "duration (seconds)", wallet.SetSaveDuration(-1))
 		}
+	} else {
+		//Initialise save duration to the duration in the --help menu: 300 seconds
+	        wallet.SetSaveDuration(300 * time.Second)
 	}
+	
 
 	wallet.SetNetwork(!globals.Arguments["--testnet"].(bool))
 

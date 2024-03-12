@@ -19,10 +19,15 @@ package walletapi
 import (
 	"encoding/hex"
 	"fmt"
-
+	"os"
+	"time"
+//	"strconv"
+	"strings"
+	
 	"github.com/deroproject/derohe/config"
 	"github.com/deroproject/derohe/cryptography/bn256"
 	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
 	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/transaction"
 )
@@ -177,8 +182,8 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		total_amount_required[transfers[i].SCID] = total_amount_required[transfers[i].SCID] + transfers[i].Amount + transfers[i].Burn
 	}
 
+	var current_balance uint64
 	for i := range transfers {
-		var current_balance uint64
 		current_balance, _, err = w.GetDecryptedBalanceAtTopoHeight(transfers[i].SCID, -1, w.GetAddress().String())
 
 		if err != nil {
@@ -189,7 +194,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 			return
 		}
 	}
-
+	
 	for t := range transfers {
 
 		if transfers[t].Destination == "" { // user skipped destination
@@ -257,6 +262,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 	// TODO, we should check nonce for base token and other tokens at the same time
 	// right now, we are probably using a bit of luck here
 	if daemon_topoheight >= int64(noncetopo)+3 { // if wallet has not been recently used, increase probability  of user's tx being successfully mined
+
 		topoheight = daemon_topoheight - 3
 	}
 
@@ -413,6 +419,333 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 		}
 	}
 	max_bits += 6 // extra 6 bits
+
+
+	//If this is a view only wallet, prepare and send the transaction to the offline wallet for signing.
+	//Import the signed transaction again and continue with the normal work flow to submit the transaction
+	//to the network
+	if (w.ViewOnly()==true) {
+		// Calculate an estimate of the full transaction cost, to see if the balance has enough funds:
+		var spend uint64
+		var fees uint64		
+		var burn_value uint64
+		spend=0
+		fees=0
+		burn_value=0
+		fees_done:=false
+		
+		len_publickeylist:=len(rings[0])
+		
+		for t := range transfers {
+			spend = spend + transfers[t].Amount + transfers[t].Burn
+			
+			//From transaction builder, use the estimate fees calculator:
+			var asset transaction.AssetPayload
+
+			asset.SCID = transfers[t].SCID
+			asset.BurnValue = transfers[t].Burn
+			burn_value+=asset.BurnValue
+
+			if fees == 0 && asset.SCID.IsZero() && !fees_done {
+		             fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len_publickeylist/16)+w.GetFeeMultiplier())))
+		             if data, err := scdata.MarshalBinary(); err != nil {
+                		     panic(err)
+		             } else {
+                		     fees = fees + (uint64(len(data))*15)/10
+		             }
+		             fees_done = true
+			}
+		}
+		//Fee is applied for each transfer in the transaction:
+		fees = fees * uint64(len(transfers))
+		
+//		fmt.Printf("spends: %d\n", spend);
+		if (current_balance < (spend+fees+burn_value)) {
+			err = fmt.Errorf("Spend amount (%d) + burn value (%d) + estimated fees (%d) is more than your current balance: %d\n",spend,burn_value,fees,current_balance)
+			return
+		}
+	
+		//Parameter   [0]: Project - Dero='dero'
+		//            [1]: Version - Layout of the command fields
+		//            [2]: Command: sign_offline
+		// Version 1: [3] Array of transfers (outputs)
+		//            [4] Array of ring balances
+		//            [5] Array of rings  
+		//            [6] block_hash
+		//            [7] height
+		//            [8] Array of scdata
+		//            [9] treehash
+		//            [10] max_bits
+		//            [11] gasstorage
+		//            [12] account_balance
+		//             ;   Checksum of all the characters in the command.
+		var sReturn string 
+		var sChecksumInput string
+	  
+		sReturn="dero 1 sign_offline ";
+		sChecksumInput="dero 1 sign_offline ";
+	  
+		var counter=0
+		
+		sChecksumInput+="transfers:";  
+		sReturn=sReturn+"'[";  
+		counter=0
+		for t := range transfers {
+			baRPC, err := transfers[t].Payload_RPC.MarshalBinary()
+			if err!=nil {
+				panic("Could not convert payload_rpc to binary")
+			}
+			hexRPC := hex.EncodeToString(baRPC)
+			sTmp:=fmt.Sprintf("{\"SCID\":\"%s\",\"Destination\":\"%s\",\"Amount\":%d,\"Burn\":%d,\"RPC\":\"%s\"}", transfers[t].SCID, transfers[t].Destination, transfers[t].Amount, transfers[t].Burn, hexRPC )
+			sReturn=sReturn+sTmp;
+			 	    
+			sTmp=fmt.Sprintf("\"%s\" \"%s\" %d %d \"%s\"", transfers[t].SCID, transfers[t].Destination, transfers[t].Amount, transfers[t].Burn, hexRPC )
+			sChecksumInput+=" "+sTmp		  
+	    
+			//Last entry: Must close the array with ]'
+			//otherwide start the next entry with a ,
+			if (counter == len(transfers)-1) {
+			      sReturn=sReturn+"]' ";
+			} else {
+			      sReturn=sReturn+",";
+			}    
+			counter++
+		}
+			
+		var counter1=0
+		var counter2=0
+		
+		sChecksumInput+=" rings_balances:"
+		sReturn=sReturn+"'["
+		for t := range rings_balances {		
+			//fmt.Printf("rings_balances{%d}:{%d} entries\n",counter1,len(rings_balances[t]))
+			sReturn=sReturn+"{";
+			counter2=0
+			for u := range rings_balances[t] {
+				sTmp := fmt.Sprintf("%x",rings_balances[t][u])
+				sReturn = sReturn + sTmp
+				sChecksumInput+=" "+sTmp
+		
+				//Last entry: Must close the array with ]'
+				//otherwide start the next entry with a ,
+				if (counter2 == len(rings_balances[t])-1) {
+					sReturn=sReturn+"}";
+				} else {
+					sReturn=sReturn+",";
+				}
+				counter2++
+			}
+		    
+			//Last entry: Must close the array with ]'
+			//otherwide start the next entry with a ,
+			if (counter1 == len(rings_balances)-1) {
+				sReturn=sReturn+"]' ";
+			} else {
+				sReturn=sReturn+",";
+			}	    
+			counter1++
+		}	
+	  
+		//fmt.Printf("rings:{%d} entries\n", len(rings))
+		sChecksumInput+=" rings:";  
+		sReturn=sReturn+"'[";
+	  
+		counter1=0
+		counter2=0
+		for t := range rings {
+			//fmt.Printf("ring{%d}:{%d} entries\n",counter1,len(rings[t]))
+			sReturn=sReturn+"{";
+			counter2=0
+			for u := range rings[t] {
+				sTmp := fmt.Sprintf("%x",rings[t][u].Marshal() )
+				sReturn = sReturn + sTmp
+				sChecksumInput+=" "+sTmp
+		
+				if (counter2 == len(rings_balances[t])-1) {
+					sReturn=sReturn+"}";
+				} else {
+					sReturn=sReturn+",";
+				}      
+				counter2++
+			}
+			
+			if (counter1 == len(rings_balances)-1) {
+				sReturn=sReturn+"]' ";
+			} else {
+				sReturn=sReturn+",";
+			}			
+			counter1++
+		}
+		
+	  
+		sTmp:=fmt.Sprintf("\"%s\" ",block_hash)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=" "+sTmp  
+
+		sTmp=fmt.Sprintf("%d ",height)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+
+		sTmp=fmt.Sprintf("'%x' ",scdata)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+
+		sTmp=fmt.Sprintf("\"%x\" ",treehash_raw)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+	  
+		sTmp=fmt.Sprintf("%d ",max_bits)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+	  
+		sTmp=fmt.Sprintf("%x ",gasstorage)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  
+		
+		sTmp=fmt.Sprintf("%x",current_balance)
+		sReturn=sReturn + sTmp
+		sChecksumInput+=sTmp  		
+	  
+		//Parameter [13]: checksum
+		//A simple checksum of the full string, to detect copy/paste errors between the wallets
+		//The checksum equals the sum of the ASCII values of all the characters in the string:   
+		iCalculatedChecksum:=0x01;
+		iCount:=0
+		for t := range sReturn {
+			iVal := int(sReturn[t])
+			iCalculatedChecksum = iCalculatedChecksum + iVal;
+			
+			iCount++;
+		}
+		sTmp = fmt.Sprintf(";%d", uint16(iCalculatedChecksum))
+		sReturn=sReturn + sTmp 
+		
+	        //--------------------------------------------------------------------------------------
+		// Compiling transaction data completed. Now need to exchange it with the offline wallet
+		// to get it signed
+		remote_request_prefix:="."
+		if globals.Arguments["--prefix"] != nil {
+			remote_request_prefix = globals.Arguments["--prefix"].(string) // override with user specified settings
+		}		
+		
+		sFileOut:=remote_request_prefix+"/offline_request"
+		_ = os.Remove(sFileOut) // ./transaction
+	  
+		if _, err = os.Stat(sFileOut); err == nil {
+		    err = fmt.Errorf("Could not delete "+sFileOut)
+		    return
+		}
+		
+		sFileIn:=remote_request_prefix+"/offline_response"
+		_ = os.Remove(sFileIn)
+		if _, err = os.Stat(sFileIn); err == nil {
+		    err = fmt.Errorf("Found old response file at "+sFileIn+". Delete the file before starting a new transaction.\n")
+		    return
+		}
+	  
+		fmt.Printf("Saved transaction data to: "+sFileOut+". Transfer it to the offline (signing) wallet and have it signed there.\n" )
+	  
+		baData := []byte(sReturn)
+		err = os.WriteFile(sFileOut, baData, 0644)
+		if err!=nil {
+		    err = fmt.Errorf("Error saving file. %s\n",err)
+		    return
+		}
+
+		bFound:=0
+		counter=0
+		//TODO: what is the longest we can wait to submit a transaction and still have it processed by the network?		
+		fmt.Printf("Waiting 80 seconds for the signed transaction from the offline wallet at %s\n",sFileIn);
+		for counter <= 80 {  
+			if _, err := os.Stat(sFileIn); err == nil {
+				bFound=1
+				break;
+			}
+			counter++
+			time.Sleep(1 * time.Second)
+		}
+	  
+		if (bFound==0) {
+		    err = fmt.Errorf("Could not find the signed transaction\n");
+		    return;
+		}
+	  
+		baData, err = os.ReadFile(sFileIn)
+		if err!=nil {
+			err = fmt.Errorf("Could not read from %s. Check the file permissions.\n",sFileIn);
+			return;
+		}		
+		fmt.Printf("Read %d bytes from %s\n",len(baData),sFileIn)
+		//Remove old files
+		_ = os.Remove(sFileIn)		
+
+		tx=nil
+                //Parameter   [0]: Project - 'dero'
+                //            [1]: Version - Layout of the command fields
+                //            [2]: Command: signed
+                // Version 1: [3] Signed transaction
+                //             ;  Checksum of all the characters in the data stream
+                sInput := string(baData[:])
+                saParts := strings.Split(sInput,";")
+                                
+                if (len(saParts) != 2) {
+                	fmt.Printf("Invalid number of parts in the transaction. Expected 2, found %d\n", len(saParts))
+                	return
+		}
+                                
+                sProtocolChecksum := saParts[1]
+                iCalculatedChecksum=0x01;
+                for t := range saParts[0] {
+			iVal := int(saParts[0][t])
+			iCalculatedChecksum = iCalculatedChecksum + iVal;
+		}
+		sCalculatedChecksum := fmt.Sprintf("%d", uint16(iCalculatedChecksum))
+
+		if (sProtocolChecksum!=sCalculatedChecksum) {
+			fmt.Printf("The checksum of the request data is invalid. Protocol: '%s', Calculates: '%s'\n", sProtocolChecksum, sCalculatedChecksum)
+			return
+		}
+ 
+ 		saFields := strings.Split(saParts[0]," ")               
+                if (len(saFields) != 4) {
+                	err = fmt.Errorf("Invalid number of parts in the transaction. Expected 4, found %d\n", len(saFields))
+			return;
+                }
+
+		if  (saFields[0] != "dero") {
+			err = fmt.Errorf("Expected Dero communication, Found %s\n",saFields[1]);
+                        return;
+		}
+
+                if (saFields[1] != "1") {
+                	err = fmt.Errorf("Only transaction version 1 supported. Found %s\n",saFields[2])
+                        return
+		}
+		
+                if (saFields[2] != "signed") {
+                	err = fmt.Errorf("Transaction doesn't start with 'signed'\n")
+                        return
+		}
+		                                
+		tx = new(transaction.Transaction)
+		baData,err = hex.DecodeString( saFields[3] )
+		if err!= nil {
+			err = fmt.Errorf("Could not decode the signed transaction.\n")
+			tx=nil
+			return		
+		}
+		err = tx.Deserialize(baData)
+		if err!=nil {
+			err = fmt.Errorf("Could not deserialise the signed transaction.\n")
+			tx=nil
+			return
+		}
+		
+		fmt.Printf("Ready to broadcast the transaction\n\n")
+		
+		return;
+	}
+	
 
 	if !dry_run {
 		tx = w.BuildTransaction(transfers, rings_balances, rings, block_hash, height, scdata, treehash_raw, max_bits, gasstorage)

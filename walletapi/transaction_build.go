@@ -23,8 +23,7 @@ var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 
 // generate proof  etc
 func (w *Wallet_Memory) BuildTransaction(transfers []rpc.Transfer, emap [][][]byte, rings [][]*bn256.G1, block_hash crypto.Hash, height uint64, scdata rpc.Arguments, roothash []byte, max_bits int, fees uint64) *transaction.Transaction {
-
-	sender := w.account.Keys.Public.G1()
+	sender := w.account.Keys.Public.G1()	
 	sender_secret := w.account.Keys.Secret.BigInt()
 
 	var retry_count int
@@ -59,6 +58,10 @@ rebuild_tx:
 		panic("currently we cannot use more than 240 bits")
 	}
 
+	var account_balance uint64
+	account_balance=0
+	balance_unassigned:=false
+	
 	for t, _ := range transfers {
 
 		var publickeylist, C, CLn, CRn []*bn256.G1
@@ -117,8 +120,6 @@ rebuild_tx:
 			}
 		}
 
-		//  fmt.Printf("len of publickeylist  %d \n", len(publickeylist))
-
 		//  revealing r will disclose the amount and the sender and receiver and separate anonymous ring members
 		// calculate r deterministically, so its different every transaction, in emergency it can be given to other, and still will not allows key attacks
 		rinputs := append([]byte{}, roothash[:]...)
@@ -138,6 +139,7 @@ rebuild_tx:
 
 		value := transfers[t].Amount
 		burn_value := transfers[t].Burn
+		
 		if fees == 0 && asset.SCID.IsZero() && !fees_done {
 			fees = fees + uint64(len(transfers)+2)*uint64((float64(config.FEE_PER_KB)*float64(float32(len(publickeylist)/16)+w.GetFeeMultiplier())))
 			if data, err := scdata.MarshalBinary(); err != nil {
@@ -217,9 +219,13 @@ rebuild_tx:
 		}
 
 		// decode sender (our) balance now, it might have been updated
-		balance := w.DecodeEncryptedBalanceNow(ebalances_list[witness_index[0]])
-
-		//fmt.Printf("t %d scid %s  balance %d\n", t, transfers[t].SCID, balance)
+		// Note: As the loop iterates over []transfers, the balance is updated to reflect each spend
+		balance := w.DecodeEncryptedBalanceNow(ebalances_list[witness_index[0]])		
+		if (balance_unassigned==false) {
+			balance_unassigned=true
+			account_balance=balance
+		}
+		//fmt.Printf("balance: %u\n", balance)
 
 		// time for bullets-sigma
 		fees_currentasset := uint64(0)
@@ -231,7 +237,15 @@ rebuild_tx:
 		copy(statement.Roothash[:], roothash[:])
 		statement.Bytes_per_publickey = byte(max_bits / 8)
 
-		witness := GenerateWitness(sender_secret, r, value, balance-value-fees_currentasset-burn_value, witness_index)
+		//Evaluate available balance:
+		if (balance < (value+fees_currentasset+burn_value)) {
+			fmt.Printf("Insufficient funds to process the transaction.\nBalance %d < sum(spend amount,fees,burn value)", account_balance)
+			return nil
+		}
+		
+		//Account balance is decreases with the amount of the transfer each time w.DecodeEncryptedBalanceNow() is called.
+		remaining_balance := balance-value-fees_currentasset-burn_value
+		witness := GenerateWitness(sender_secret, r, value, remaining_balance, witness_index)
 
 		witness_list = append(witness_list, witness)
 
@@ -250,7 +264,6 @@ rebuild_tx:
 			balance = balance.Add(echanges)                                                  // homomorphic addition of changes
 			umap[transfers[t].SCID.String()+publickeylist[i].String()] = balance.Serialize() // reserialize and store
 		}
-
 	}
 
 	scid_map := map[crypto.Hash]int{}

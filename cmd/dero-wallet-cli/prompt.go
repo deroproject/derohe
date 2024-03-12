@@ -344,7 +344,7 @@ func handle_prompt_command(l *readline.Instance, line string) {
 			logger.Error(err, "Error Parsing burn amount", "raw", line_parts[1])
 			return
 		}
-		if ConfirmYesNoDefaultNo(l, "Confirm Transaction (y/N)") {
+		if ConfirmYesNoDefaultNo(l, color_white+"Confirm Transaction (y/N)") {
 
 			//uid, err := wallet.PoolTransferWithBurn(addr, send_amount, burn_amount, data, rpc.Arguments{})
 
@@ -534,11 +534,13 @@ func ReadAddress(l *readline.Instance, wallet *walletapi.Wallet_Disk) (a *rpc.Ad
 
 		if len(line) >= 1 {
 			_, err := globals.ParseValidateAddress(string(line))
-			if err != nil {
+			if err == nil {
+				//Verify online, once a valid address is provided
 				if linestr, err = wallet.NameToAddress(string(strings.TrimSpace(string(line)))); err != nil {
-					error_message = " " //err.Error()
-				} else {
-
+					sTmp := fmt.Sprintf("%s", err.Error())
+					if !strings.Contains(sTmp,"leaf not found") {
+						error_message = " " //err.Error()
+					}
 				}
 			}
 		}
@@ -997,10 +999,17 @@ func usage(w io.Writer) {
 
 // display seed to the user in his preferred language
 func display_seed(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
-	seed := wallet.GetSeed()
-	fmt.Fprintf(l.Stderr(), color_green+"PLEASE NOTE: the following 25 words can be used to recover access to your wallet. Please write them down and store them somewhere safe and secure. Please do not store them in your email or on file storage services outside of your immediate control."+color_white+"\n")
-	fmt.Fprintf(os.Stderr, color_red+"%s"+color_white+"\n", seed)
-
+	if (wallet==nil) {
+		fmt.Fprintf(os.Stderr,"The wallet file is uninitialised!\n")
+		os.Exit(0)
+	}
+        if (wallet.ViewOnly() == false) {
+        	seed := wallet.GetSeed()
+        	fmt.Fprintf(l.Stderr(), color_green+"PLEASE NOTE: the following 25 words can be used to recover access to your wallet. Please write them down and store them somewhere safe and secure. Please do not store them in your email or on file storage services outside of your immediate control."+color_white+"\n")
+		fmt.Fprintf(os.Stderr, color_red+"%s"+color_white+"\n", seed)
+        } else {
+                fmt.Fprintf(os.Stderr,"This is a view only wallet. It doesn't contain the seed.\n")
+        }
 }
 
 // display spend key
@@ -1009,10 +1018,44 @@ func display_seed(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 func display_spend_key(l *readline.Instance, wallet *walletapi.Wallet_Disk) {
 
 	keys := wallet.Get_Keys()
-	h := "0000000000000000000000000000000000000000000000" + keys.Secret.Text(16)
-	fmt.Fprintf(os.Stderr, "secret key: "+color_red+"%s"+color_white+"\n", h[len(h)-64:])
+	h := "0000000000000000000000000000000000000000000000" + keys.Secret.Text(16)		
 
-	fmt.Fprintf(os.Stderr, "public key: %s\n", keys.Public.StringHex())
+	var IsOffline = globals.Arguments["--offline"].(bool)
+	if (IsOffline==true) || (wallet.ViewOnly() == false) {
+		// Offline (signing) wallet
+		// Full featured online wallet
+		fmt.Fprintf(os.Stderr, "secret key: "+color_red+"%s"+color_white+"\n", h[len(h)-64:])
+	} else {
+		// Online (view only) wallet
+		fmt.Fprintf(os.Stderr,"secret key: None -- View only wallet\n")
+	}
+	
+	// All wallets:
+	fmt.Fprintf(os.Stderr, "public key: %s\n", keys.Public.StringHex())		
+	
+	if (IsOffline==true) {
+		// Offline (signing) wallet
+		fmt.Printf("\nView only key - Import the complete text into the online (view only) wallet to set it up:\n")
+		display_viewing_key(wallet)
+	}
+}
+
+func display_viewing_key (wallet *walletapi.Wallet_Disk) {
+	if (wallet.ViewOnly() == true) {
+		fmt.Printf("A view only wallet cannot generate the viewing key\n");
+		return;
+	}	
+
+	keys := wallet.Get_Keys()
+	sViewOnlyKey := fmt.Sprintf("viewkey,%s,%s,%x",wallet.GetAddress(), keys.Public.StringHex(), keys.Public.G1().Marshal())
+
+        //Append a simple checksum to the string to detect copy/paste errors
+        //during import into the online wallet:
+        var iChecksum=1
+        for t := range sViewOnlyKey {
+        	iChecksum = iChecksum + (int)(sViewOnlyKey[t])
+	}
+	fmt.Printf("%s;%d\n\n",sViewOnlyKey, iChecksum)
 }
 
 // start a rescan from block 0

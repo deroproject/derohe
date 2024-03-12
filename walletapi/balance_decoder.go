@@ -21,7 +21,6 @@ import "fmt"
 import "sort"
 import "math/big"
 import "encoding/binary"
-
 //import "github.com/mattn/go-isatty"
 //import "github.com/cheggaaa/pb/v3"
 
@@ -178,9 +177,9 @@ func (t *LookupTable) Lookup(p *bn256.G1, previous_balance uint64) (balance uint
 		}
 		loop_counter++
 
-		//if loop_counter >= 10 {
-		//    break;
-		// }
+		if loop_counter >= 100 {
+		    break;
+		}
 
 		compressed := pcopy.EncodeCompressed()
 
@@ -225,7 +224,7 @@ func (t *LookupTable) Lookup(p *bn256.G1, previous_balance uint64) (balance uint
 
 	}
 
-	//panic(fmt.Sprintf("balance not yet found, work done  %x", balance))
+	panic(fmt.Sprintf("\nCould not decode the balance from the transaction data. Please verify that your secret key is correct\n\n"))
 	//return balance
 }
 

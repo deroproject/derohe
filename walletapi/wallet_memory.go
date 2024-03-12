@@ -90,7 +90,8 @@ type Wallet_Memory struct {
 // when smart contracts are implemented, each will have it's own universe to track and maintain transactions
 
 // this file implements the encrypted data store at rest
-func Create_Encrypted_Wallet_Memory(password string, seed *crypto.BNRed) (w *Wallet_Memory, err error) {
+// By providing the Account as input, both full and view-only wallet types are supported
+func Create_Encrypted_Wallet_Memory(password string, account *Account) (w *Wallet_Memory, err error) {
 	w = &Wallet_Memory{}
 	w.Version = config.Version
 
@@ -98,12 +99,8 @@ func Create_Encrypted_Wallet_Memory(password string, seed *crypto.BNRed) (w *Wal
 		return
 	}
 
-	// generate account keys
-	w.account, err = Generate_Account_From_Seed(seed)
-	if err != nil {
-		return
-	}
-
+	w.account = account
+	
 	// generate a 64 byte key to be used as master Key
 	w.master_password = make([]byte, 32, 32)
 	_, err = rand.Read(w.master_password)
@@ -133,8 +130,14 @@ func Create_Encrypted_Wallet_From_Recovery_Words_Memory(password string, electru
 	if err != nil {
 		return
 	}
-	w, err = Create_Encrypted_Wallet_Memory(password, crypto.GetBNRed(seed))
 
+	//Prepare account with private&public key	
+	account,err2 := Generate_Account_From_Seed ( crypto.GetBNRed(seed) )
+        if err2 != nil {
+                return
+        }
+	
+	w, err = Create_Encrypted_Wallet_Memory(password, account)	
 	if err != nil {
 		return
 	}
@@ -145,11 +148,16 @@ func Create_Encrypted_Wallet_From_Recovery_Words_Memory(password string, electru
 
 // create an encrypted wallet using using random data
 func Create_Encrypted_Wallet_Random_Memory(password string) (w *Wallet_Memory, err error) {
-	w, err = Create_Encrypted_Wallet_Memory(password, crypto.RandomScalarBNRed())
+        account,err2 := Generate_Account_From_Seed ( crypto.RandomScalarBNRed() )
+        if err2 != nil {
+                return
+        }
 
+	w, err = Create_Encrypted_Wallet_Memory(password, account)	
 	if err != nil {
 		return
 	}
+	
 	// TODO setup seed language, default is already english
 	return
 }

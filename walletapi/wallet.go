@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"encoding/hex"
 
 	"github.com/deroproject/derohe/cryptography/bn256"
 	"github.com/deroproject/derohe/cryptography/crypto"
@@ -164,10 +165,52 @@ func Generate_Keys_From_Seed(Seed *crypto.BNRed) (keys _Keys) {
 // generate user account using recovery seeds
 func Generate_Account_From_Recovery_Words(words string) (user *Account, err error) {
 	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
-	language, seed, err := mnemonics.Words_To_Key(words)
-	if err != nil {
-		return
-	}
+	
+        var language string
+        var seed *big.Int
+        var baData []byte
+        
+        saParts:=strings.Split(words,";")
+        
+        if (len(saParts)==1) {
+        	//25 word mnemonic
+                language, seed, err = mnemonics.Words_To_Key(words)
+                if err != nil {
+                        return
+                }
+        } else {
+        	//raw 32 byte seed with a checksum
+                if (len(saParts)!=2) {
+                        err = fmt.Errorf("raw seed requires 2 parts.")
+                        return
+                }
+                if (len(saParts[0]) != 64) {
+                        err = fmt.Errorf("raw seed must be 64 characters long")
+                        return
+                }
+                baData, err = hex.DecodeString( saParts[0] )
+                if err!=nil {
+                        err = fmt.Errorf("Could not decode the hex seedphrase to binary")
+                        return
+                }
+                
+                iChecksum:=0x01;
+                for t := range baData {
+                        iVal := int(baData[t])
+                        iChecksum = iChecksum + iVal;
+                }
+                sCalculatedChecksum:= fmt.Sprintf("%d",iChecksum)
+                sProtocolChecksum:= saParts[1]
+                
+                if (sCalculatedChecksum!=sProtocolChecksum) {
+                        err = fmt.Errorf("Checksum mismatch for the raw seed")
+                        return
+                }
+                seed = new(big.Int)
+                seed.SetBytes(baData)
+                
+                language="English"
+        }                
 
 	user.SeedLanguage = language
 	user.Keys = Generate_Keys_From_Seed(crypto.GetBNRed(seed))
@@ -183,6 +226,58 @@ func Generate_Account_From_Seed(Seed *crypto.BNRed) (user *Account, err error) {
 
 	return
 }
+
+func Generate_Account_From_ViewOnly_params(sPublicKey string, sPublicKeyG1 string, IsMainnet bool ) (user *Account, err error) {
+	user = &Account{Ringsize: 16, FeesMultiplier: 2.0}
+
+	user.mainnet=IsMainnet
+
+        //Secret:
+        var biSecret,ok = new(big.Int).SetString("0000000000000000000000000000000000000000000000000000000000000000",0)
+        if !ok {
+                err = fmt.Errorf("Cant assign secret")
+                return
+        }
+        user.Keys.Secret = crypto.GetBNRed(biSecret)
+
+        //Public:
+        //Initialise the structure:
+        user.Keys.Public = crypto.GPoint.ScalarMult( user.Keys.Secret )
+
+        //Apply the imported public key:
+        baData, err := hex.DecodeString( sPublicKeyG1 )
+        if err!=nil {
+		err = fmt.Errorf("Could not decode the hex input")
+		return
+	}
+        _, err = user.Keys.Public.G1().Unmarshal(baData)
+        if err!=nil {
+		err = fmt.Errorf("Could not process the public key")
+		return
+	}
+
+	sDerivedPublic := fmt.Sprintf("%x",user.Keys.Public)
+	if (sDerivedPublic != sPublicKey) {
+		err = fmt.Errorf("The derived public key (%s) doesn't match the provided public key (%s) from the input\n", sDerivedPublic, sPublicKey)
+		return
+	}
+
+        fmt.Printf("  Restored public key: %x\n", user.Keys.Public)
+	return
+}
+
+
+// Is this a 'view only' wallet?
+// Return true: view only wallet with only a public key
+//        false: full function wallet with public & private key
+func (w *Wallet_Memory) ViewOnly() bool {
+	if (len(w.account.Keys.Secret.String()) > 1) {
+		return false
+	} else {
+		return true
+	}
+}
+
 
 // convert key to seed using language
 func (w *Wallet_Memory) GetSeed() (str string) {
