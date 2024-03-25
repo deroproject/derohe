@@ -67,7 +67,7 @@ func EstimateFees(ctx context.Context, p rpc.EstimateFees_Params) (result rpc.Es
 		tx_type = transaction.SC_TX
 	}
 
-	result.Tx_Fees = w.wallet.EstimateTxFees(len(p.Transfers), int(p.Ringsize), p.SC_RPC, tx_type)
+	result.Tx_Fees = w.wallet.EstimateTxFees(len(p.Transfers), int(p.Ringsize), tx_type)
 	// Compute gas fees if necessary
 	if tx_type == transaction.SC_TX {
 		if !w.wallet.GetMode() {

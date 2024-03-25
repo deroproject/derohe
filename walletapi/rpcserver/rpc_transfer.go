@@ -16,14 +16,17 @@
 
 package rpcserver
 
-import "fmt"
-import "sync"
-import "context"
-import "runtime/debug"
-import "encoding/base64"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"runtime/debug"
+	"sync"
+
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 var lock sync.Mutex
 
@@ -76,7 +79,17 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 
 	var tx *transaction.Transaction
 	for tries := 0; tries < 2; tries++ {
-		tx, err = w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, p.Fees, false)
+		// We have no fees set, precompute them
+		if p.Fees == 0 {
+			gas_fees := uint64(0)
+			if tx.TransactionType == transaction.SC_TX {
+				gas_fees, _ = w.wallet.EstimateGasFees(p)
+			}
+			tx, err = w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, gas_fees, false)
+		} else {
+			// We have fees already precomputed, use it
+			tx, err = w.wallet.TransferFeesPrecomputed(p.Transfers, p.Ringsize, false, p.SC_RPC, 0, p.Fees, false)
+		}
 		if err != nil {
 			w.logger.V(1).Error(err, "Error building tx")
 			return result, err

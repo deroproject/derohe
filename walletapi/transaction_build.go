@@ -26,7 +26,7 @@ var GenerateProoffuncptr GenerateProofFunc = crypto.GenerateProof
 // Estimate the size of a transaction
 // For privacy and security reasons, we don't estimate the EXACT size in bytes, but the biggest possible size
 // So no data would leak from plain text data (example: RPC Payloads exact size)
-func (w *Wallet_Memory) EstimateBytesSize(transfers_count int, ringsize int, data rpc.Arguments, tx_type transaction.TransactionType) int {
+func (w *Wallet_Memory) EstimateBytesSize(transfers_count int, ringsize int, tx_type transaction.TransactionType) int {
 	total_bytes := 0
 	// Transaction Prefix
 	{
@@ -123,8 +123,8 @@ func (w *Wallet_Memory) EstimateBytesSize(transfers_count int, ringsize int, dat
 }
 
 // Estimate fees for a transaction by estimating its size
-func (w *Wallet_Memory) EstimateTxFees(transfers_count int, ringsize int, data rpc.Arguments, tx_type transaction.TransactionType) uint64 {
-	total_bytes := w.EstimateBytesSize(transfers_count, ringsize, data, tx_type)
+func (w *Wallet_Memory) EstimateTxFees(transfers_count int, ringsize int, tx_type transaction.TransactionType) uint64 {
+	total_bytes := w.EstimateBytesSize(transfers_count, ringsize, tx_type)
 	size_in_kb := total_bytes / 1024
 
 	if (total_bytes % 1024) != 0 { // for any part there of, use a full KB fee
@@ -278,7 +278,7 @@ rebuild_tx:
 
 		// Compute TX fees only one time, we expect that gas fees are already calculated
 		if tx_fees == 0 && asset.SCID.IsZero() && !fees_done {
-			tx_fees = w.EstimateTxFees(len(transfers), highest_ring_size, transfers[t].Payload_RPC, tx.TransactionType)
+			tx_fees = w.EstimateTxFees(len(transfers), highest_ring_size, tx.TransactionType)
 			should_do_fees = true
 			fees_done = true
 		}
