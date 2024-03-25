@@ -16,21 +16,24 @@
 
 package rpc
 
-import "fmt"
-import "context"
-import "encoding/hex"
-import "encoding/binary"
-import "runtime/debug"
+import (
+	"context"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+)
 
 //import "github.com/romana/rlog"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/blockchain"
 
 func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rpc.GetTransaction_Result, err error) {
 
@@ -58,6 +61,10 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 						related.Block_Height = -1 // not mined
 						related.In_pool = true
 
+						// retrieve fees
+						related.Fees = tx.Fees()
+						related.Size = len(tx.Serialize())
+
 						result.Txs_as_hex = append(result.Txs_as_hex, hex.EncodeToString(tx.Serialize()))
 						result.Txs = append(result.Txs, related)
 					} else {
@@ -80,6 +87,10 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 					var related rpc.Tx_Related_Info
 
 					// check whether tx is orphan
+
+					// retrieve fees
+					related.Fees = tx.Fees()
+					related.Size = len(tx_bytes)
 
 					//if chain.Is_TX_Orphan(hash) {
 					//	result.Txs_as_hex = append(result.Txs_as_hex, "") // given empty data
@@ -164,6 +175,7 @@ func GetTransaction(ctx context.Context, p rpc.GetTransaction_Params) (result rp
 							}
 						}
 					}
+
 					for i := range invalid_blid {
 						related.InvalidBlock = append(related.InvalidBlock, invalid_blid[i].String())
 					}
