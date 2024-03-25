@@ -82,7 +82,7 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 		// We have no fees set, precompute them
 		if p.Fees == 0 {
 			gas_fees := uint64(0)
-			if tx.TransactionType == transaction.SC_TX {
+			if p.SC_RPC != nil && len(p.SC_RPC) >= 1 {
 				gas_fees, _ = w.wallet.EstimateGasFees(p)
 			}
 			tx, err = w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, gas_fees, false)
