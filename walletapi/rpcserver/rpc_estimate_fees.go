@@ -34,7 +34,7 @@ func EstimateFees(ctx context.Context, p rpc.EstimateFees_Params) (result rpc.Es
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	for _, t := range p.Transfers {
 		_, err = t.Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)
