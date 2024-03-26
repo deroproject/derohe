@@ -16,10 +16,13 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 func GetHeight(ctx context.Context) (result rpc.GetHeight_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -28,7 +31,7 @@ func GetHeight(ctx context.Context) (result rpc.GetHeight_Result, err error) {
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 	return rpc.GetHeight_Result{
 		Height: w.wallet.Get_Height(),
 	}, nil

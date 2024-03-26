@@ -16,14 +16,16 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
-
-import "github.com/deroproject/derohe/rpc"
 
 func MakeIntegratedAddress(ctx context.Context, p rpc.Make_Integrated_Address_Params) (result rpc.Make_Integrated_Address_Result, err error) {
 
@@ -33,7 +35,7 @@ func MakeIntegratedAddress(ctx context.Context, p rpc.Make_Integrated_Address_Pa
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 	var addr *rpc.Address
 
 	if p.Address != "" {

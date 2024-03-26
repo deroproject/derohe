@@ -16,23 +16,23 @@
 
 package main
 
-import "os"
+import (
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
-import "fmt"
-
-import "time"
-
-//import "math/big"
-import "encoding/hex"
-import "path/filepath"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/rpcserver"
+	"github.com/creachadair/jrpc2"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/deroproject/derohe/walletapi/rpcserver"
+	"github.com/deroproject/derohe/walletapi/xswd"
+) //import "math/big"
 
 const WALLET_PASSWORD = ""
 
@@ -66,6 +66,7 @@ var wallets_seeds = []string{
 var genesis_wallet *walletapi.Wallet_Disk
 var wallets []*walletapi.Wallet_Disk
 var wallets_rpcservers []*rpcserver.RPCServer
+var wallets_xswdservers []*xswd.XSWD
 
 func create_wallet(name string, seed string) (wallet *walletapi.Wallet_Disk) {
 
@@ -120,6 +121,15 @@ func register_wallets(chain *blockchain.Blockchain) {
 		wallets[i].SetDaemonAddress(rpcport)
 		wallets[i].SetOnlineMode() // make wallet connect to daemon
 
+		if v, ok := globals.Arguments["--use-xswd"]; ok && v.(bool) {
+			// XSWD server accept everything by default
+			xswd.NewXSWDServerWithPort(wallet_ports_xswd_start+i, wallets[i], func(app *xswd.ApplicationData) bool {
+				return true
+			}, func(app *xswd.ApplicationData, request *jrpc2.Request) xswd.Permission {
+				return xswd.Allow
+			})
+		}
+
 		globals.Arguments["--rpc-bind"] = fmt.Sprintf("127.0.0.1:%d", wallet_ports_start+i)
 
 		if r, err := rpcserver.RPCServer_Start(wallets[i], fmt.Sprintf("wallet_%d", i)); err != nil {
@@ -128,6 +138,7 @@ func register_wallets(chain *blockchain.Blockchain) {
 			logger.Info(fmt.Sprintf("wallet %d", i), "seed", wallets_seeds[i])
 			wallets_rpcservers = append(wallets_rpcservers, r)
 		}
+
 		time.Sleep(17 * time.Millisecond) // enough delay to start a go routine
 	}
 }
@@ -135,5 +146,9 @@ func register_wallets(chain *blockchain.Blockchain) {
 func stop_rpcs() {
 	for _, r := range wallets_rpcservers {
 		go r.RPCServer_Stop()
+	}
+
+	for _, r := range wallets_xswdservers {
+		go r.Stop()
 	}
 }

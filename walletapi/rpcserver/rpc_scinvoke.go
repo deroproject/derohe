@@ -16,12 +16,14 @@
 
 package rpcserver
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
 
-import "context"
-import "runtime/debug"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/rpc"
+)
 
 func ScInvoke(ctx context.Context, p rpc.SC_Invoke_Params) (result rpc.Transfer_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -30,7 +32,7 @@ func ScInvoke(ctx context.Context, p rpc.SC_Invoke_Params) (result rpc.Transfer_
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 	if !w.wallet.GetMode() { // if wallet is in online mode, use the fees, provided by the daemon, else we need to use what is provided by the user
 		return result, fmt.Errorf("Wallet is in offline mode")
 	}

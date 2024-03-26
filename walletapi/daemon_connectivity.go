@@ -112,3 +112,7 @@ func Connect(endpoint string) (err error) {
 
 	return test_connectivity()
 }
+
+func GetRPCClient() *Client {
+	return rpc_client
+}
