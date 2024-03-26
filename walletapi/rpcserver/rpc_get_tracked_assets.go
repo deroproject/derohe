@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/rpc"
 )
 
-func GetBalance(ctx context.Context, p rpc.GetBalance_Params) (result rpc.GetBalance_Result, err error) {
+func GetTrackedAssets(ctx context.Context, p rpc.GetTrackedAssets_Params) (result rpc.GetTrackedAssets_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -32,14 +33,25 @@ func GetBalance(ctx context.Context, p rpc.GetBalance_Params) (result rpc.GetBal
 	}()
 
 	w := FromContext(ctx)
+	result.Balances = make(map[crypto.Hash]uint64)
 
-	if err := w.wallet.Sync_Wallet_Memory_With_Daemon_internal(p.SCID); err != nil {
-		return result, err
+	acc := w.wallet.GetAccount()
+	for scid := range acc.Balance {
+		if !p.SkipBalanceCheck {
+			// Be sure that the balance is up to date
+			if err := w.wallet.Sync_Wallet_Memory_With_Daemon_internal(scid); err != nil {
+				continue
+			}
+		}
+
+		mature, locked := w.wallet.Get_Balance_scid(scid)
+		balance := mature + locked
+		if p.OnlyPositiveBalances && balance == 0 {
+			continue
+		}
+
+		result.Balances[scid] = balance
 	}
 
-	mature, locked := w.wallet.Get_Balance_scid(p.SCID)
-	return rpc.GetBalance_Result{
-		Balance:          mature + locked,
-		Unlocked_Balance: mature,
-	}, nil
+	return result, nil
 }

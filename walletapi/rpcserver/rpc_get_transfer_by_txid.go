@@ -31,7 +31,7 @@ func GetTransferbyTXID(ctx context.Context, p rpc.Get_Transfer_By_TXID_Params) (
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	if len(p.TXID) != 64 {
 		return result, fmt.Errorf("%s not 64 hex bytes", p.TXID)

@@ -41,7 +41,7 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	for _, t := range p.Transfers {
 		_, err = t.Payload_RPC.CheckPack(transaction.PAYLOAD0_LIMIT)

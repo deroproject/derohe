@@ -18,37 +18,36 @@ package main
 
 /// this file implements the wallet and rpc wallet
 
-import "io"
-import "os"
-import "fmt"
-import "time"
-import "sync"
-import "strings"
-import "strconv"
-import "runtime"
+import (
+	"fmt"
+	"io"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "sync/atomic"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/deroproject/derohe/walletapi/mnemonics"
+	"github.com/docopt/docopt-go"
+	"github.com/go-logr/logr"
+)
 
 //import "io/ioutil"
 //import "bufio"
 //import "bytes"
 //import "net/http"
 
-import "github.com/go-logr/logr"
-
-import "github.com/chzyer/readline"
-import "github.com/docopt/docopt-go"
-
 //import "github.com/vmihailenco/msgpack"
 
 //import "github.com/deroproject/derosuite/address"
 
-import "github.com/deroproject/derohe/config"
-
 //import "github.com/deroproject/derohe/crypto"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/deroproject/derohe/walletapi/mnemonics"
 
 //import "encoding/json"
 
@@ -341,7 +340,8 @@ func main() {
 			}
 		} else if err == io.EOF {
 			//			break
-			time.Sleep(time.Second)
+			//time.Sleep(time.Second)
+			continue
 		}
 
 		// pass command to suitable handler
@@ -359,6 +359,7 @@ func main() {
 		}
 
 	}
+
 	prompt_mutex.Lock()
 	globals.Exit_In_Progress = true
 	prompt_mutex.Unlock()

@@ -16,15 +16,17 @@
 
 package rpcserver
 
-import "fmt"
-import "context"
-import "strings"
-import "runtime/debug"
+import (
+	"context"
+	"fmt"
+	"runtime/debug"
+	"strings"
+
+	"github.com/deroproject/derohe/rpc"
+)
 
 //import	"log"
 //import 	"net/http"
-
-import "github.com/deroproject/derohe/rpc"
 
 func QueryKey(ctx context.Context, p rpc.Query_Key_Params) (result rpc.Query_Key_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
@@ -33,7 +35,7 @@ func QueryKey(ctx context.Context, p rpc.Query_Key_Params) (result rpc.Query_Key
 		}
 	}()
 
-	w := fromContext(ctx)
+	w := FromContext(ctx)
 
 	// NOTE: can we give the user the spend key Secret
 	// this is because we are give away the mnemonic which can anyways recreate the full wallet

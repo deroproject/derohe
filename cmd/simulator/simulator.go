@@ -16,59 +16,56 @@
 
 package main
 
-import "io"
-import "os"
-import "time"
-import "fmt"
-import "bytes"
-import "errors"
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"runtime"
+	"runtime/pprof"
+	"strconv"
+	"strings"
+	"time"
 
-import "strings"
-import "strconv"
-import "runtime"
-import "os/signal"
+	"github.com/chzyer/readline"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/p2p"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/docopt/docopt-go"
+	"github.com/go-logr/logr"
+	"gopkg.in/natefinch/lumberjack.v2"
 
-//import "crypto/sha1"
-import "encoding/hex"
-import "encoding/json"
-import "path/filepath"
-import "runtime/pprof"
+	//import "crypto/sha1"
 
-import "github.com/go-logr/logr"
+	//import "golang.org/x/crypto/sha3"
 
-//import "golang.org/x/crypto/sha3"
-
-import "github.com/chzyer/readline"
-import "github.com/docopt/docopt-go"
-import "gopkg.in/natefinch/lumberjack.v2"
-
-import "github.com/deroproject/derohe/p2p"
-import "github.com/deroproject/derohe/globals"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/blockchain"
-
-//import "github.com/deroproject/derohe/transaction"
-import derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+	//import "github.com/deroproject/derohe/transaction"
+	derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
+	"github.com/deroproject/derohe/cmd/explorer/explorerlib"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/walletapi"
+)
 
 //import "github.com/deroproject/derosuite/checkpoints"
-import "github.com/deroproject/derohe/cryptography/crypto"
 
 //import "github.com/deroproject/derosuite/cryptonight"
 
 //import "github.com/deroproject/derosuite/crypto/ringct"
 //import "github.com/deroproject/derohe/blockchain/rpcserver"
-import "github.com/deroproject/derohe/walletapi"
-
-import "github.com/deroproject/derohe/cmd/explorer/explorerlib"
 
 var command_line string = `simulator 
 DERO : A secure, private blockchain with smart-contracts
 Simulates DERO block single node which helps in development and tests
 
 Usage:
-  simulator [--help] [--version] [--testnet] [--debug] [--noautomine] [--sync-node] [--data-dir=<directory>] [--rpc-bind=<127.0.0.1:9999>] [--http-address=<0.0.0.0:8080>] [--clog-level=1] [--flog-level=1]
+  simulator [--help] [--version] [--testnet] [--debug] [--noautomine] [--use-xswd] [--sync-node] [--data-dir=<directory>] [--rpc-bind=<127.0.0.1:9999>] [--http-address=<0.0.0.0:8080>] [--clog-level=1] [--flog-level=1]
   simulator -h | --help
   simulator --version
 
@@ -78,6 +75,7 @@ Options:
   --testnet  	Run in testnet mode.
   --debug       Debug mode enabled, print more log messages
   --noautomine  No blocks will be mined (except genesis), used for testing, supported only on linux
+  --use-xswd    Use xswd for wallet rpcs
   --clog-level=1	Set console log level (0 to 127) 
   --flog-level=1	Set file log level (0 to 127)
   --data-dir=<directory>    Store blockchain data at this location
@@ -93,8 +91,8 @@ var rpcport = "127.0.0.1:20000"
 
 var TRIGGER_MINE_BLOCK string = "/dev/shm/mineblocknow"
 
-const wallet_ports_start = 30000 // all wallets will rpc activated on ports
-
+const wallet_ports_start = 30000      // all wallets will rpc activated on ports
+const wallet_ports_xswd_start = 40000 // xswd ports used by wallets if enabled
 // this is a crude function used during tests
 
 func Mine_block_single(chain *blockchain.Blockchain, miner_address rpc.Address) error {

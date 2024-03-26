@@ -128,7 +128,7 @@ func hasbasicauthfailed(rpcserver *RPCServer, w http.ResponseWriter, r *http.Req
 // setup handlers
 func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 
-	var wallet_apis WALLET_CONTEXT
+	var wallet_apis WalletContext
 
 	wallet_apis.logger = rpcserver.logger
 	wallet_apis.wallet = wallet
@@ -162,7 +162,7 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 	rpcserver.Unlock()
 
 	// Bridge HTTP to the JSON-RPC server.
-	var bridge = jhttp.NewBridge(wallet_handler, &jhttp.BridgeOptions{Server: options})
+	var bridge = jhttp.NewBridge(WalletHandler, &jhttp.BridgeOptions{Server: options})
 
 	translate_http_to_jsonrpc_and_vice_versa := func(w http.ResponseWriter, r *http.Request) {
 
@@ -275,10 +275,11 @@ func hello(w http.ResponseWriter, r *http.Request) {
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }} // use default options
 
-type WALLET_CONTEXT struct {
-	r      *RPCServer
+type WalletContext struct {
 	logger logr.Logger
 	wallet *walletapi.Wallet_Disk
+	// Add any extra customizable data in context
+	Extra map[string]interface{}
 } // exports daemon status and other RPC apis
 
 func WalletEcho(ctx context.Context, args []string) string {
@@ -294,12 +295,14 @@ func Echo(ctx context.Context, args []string) string {
 	return "DERO " + strings.Join(args, " ")
 }
 
-var wallet_handler = handler.Map{
+var WalletHandler = handler.Map{
 	"Echo":                     handler.New(WalletEcho),
 	"getaddress":               handler.New(GetAddress),
 	"GetAddress":               handler.New(GetAddress),
 	"getbalance":               handler.New(GetBalance),
 	"GetBalance":               handler.New(GetBalance),
+	"get_tracked_assets":       handler.New(GetTrackedAssets),
+	"GetTrackedAssets":         handler.New(GetTrackedAssets),
 	"getheight":                handler.New(GetHeight),
 	"GetHeight":                handler.New(GetHeight),
 	"get_transfer_by_txid":     handler.New(GetTransferbyTXID),
@@ -325,13 +328,21 @@ var servicemux = handler.ServiceMap{
 		"Echo": handler.New(Echo),
 		"Ping": handler.New(Ping),
 	},
-	"WALLET": wallet_handler,
+	"WALLET": WalletHandler,
 }
 
-func fromContext(ctx context.Context) *WALLET_CONTEXT {
-	u, ok := ctx.Value("wallet_context").(*WALLET_CONTEXT)
+func FromContext(ctx context.Context) *WalletContext {
+	u, ok := ctx.Value("wallet_context").(*WalletContext)
 	if !ok {
 		panic("cannot find wallet context")
 	}
 	return u
+}
+
+func NewWalletContext(logger logr.Logger, wallet *walletapi.Wallet_Disk) *WalletContext {
+	return &WalletContext{
+		logger: logger,
+		wallet: wallet,
+		Extra:  make(map[string]interface{}),
+	}
 }
