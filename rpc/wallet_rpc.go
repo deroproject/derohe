@@ -298,9 +298,11 @@ type (
 // Get_Transfer_By_TXID
 type (
 	Get_Transfer_By_TXID_Params struct {
-		TXID string `json:"txid"`
+		SCID crypto.Hash `json:"scid"`
+		TXID string      `json:"txid"`
 	}
 	Get_Transfer_By_TXID_Result struct {
-		Entry Entry `json:"entry,omitempty"`
+		SCID  crypto.Hash `json:"scid,omitempty"`
+		Entry Entry       `json:"entry,omitempty"`
 	}
 )

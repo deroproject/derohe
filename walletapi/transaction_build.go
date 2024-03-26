@@ -323,7 +323,9 @@ rebuild_tx:
 
 				shared_key := crypto.GenerateSharedSecret(r, publickeylist[i])
 
-				asset.RPCPayload = append([]byte{byte(uint(witness_index[1]))}, data...)
+				// witness_index[0] is sender, witness_index[1] is receiver
+				asset.RPCPayload = append([]byte{byte(uint(witness_index[0]))}, data...)
+
 				//fmt.Printf("buulding shared_key %x  index of receiver %d\n",shared_key,i)
 				//fmt.Printf("building plaintext payload %x\n",asset.RPCPayload)
 
