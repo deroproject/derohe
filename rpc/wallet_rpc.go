@@ -215,6 +215,16 @@ type (
 )
 
 type (
+	EstimateFees_Params = Transfer_Params
+	EstimateFees_Result struct {
+		Gas_Fees uint64 `json:"gas_fees"`
+		Tx_Fees  uint64 `json:"tx_fees"`
+		// Gas + Tx fees
+		Total_Fees uint64 `json:"total_fees"`
+	}
+)
+
+type (
 	SC_Invoke_Params struct {
 		SC_ID            string    `json:"scid"`
 		SC_RPC           Arguments `json:"sc_rpc"`

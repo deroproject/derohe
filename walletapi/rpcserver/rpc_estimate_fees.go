@@ -21,20 +21,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"runtime/debug"
-	"sync"
 
 	"github.com/deroproject/derohe/cryptography/crypto"
 	"github.com/deroproject/derohe/rpc"
 	"github.com/deroproject/derohe/transaction"
 )
 
-var lock sync.Mutex
-
-func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_Result, err error) {
-
-	lock.Lock()
-	defer lock.Unlock()
-
+func EstimateFees(ctx context.Context, p rpc.EstimateFees_Params) (result rpc.EstimateFees_Result, err error) {
 	defer func() { // safety so if anything wrong happens, we return error
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic occured. stack trace %s", debug.Stack())
@@ -50,58 +43,44 @@ func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_R
 		}
 	}
 
-	if !w.wallet.GetMode() { // if wallet is in online mode, use the fees, provided by the daemon, else we need to use what is provided by the user
-		return result, fmt.Errorf("Wallet is in offline mode")
-	}
-
-	// translate rpc to arguments
-
-	//fmt.Printf("incoming transfer params %+v\n", p)
-
 	if len(p.SC_Code) >= 1 { // decode SC from base64 if possible, since json has limitations
 		if sc, err := base64.StdEncoding.DecodeString(p.SC_Code); err == nil {
 			p.SC_Code = string(sc)
 		}
 	}
 
+	var tx_type transaction.TransactionType = transaction.NORMAL
+	// if we have SC code, we need to install it
 	if p.SC_Code != "" && p.SC_ID == "" {
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_INSTALL)})
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCCODE, DataType: rpc.DataString, Value: p.SC_Code})
+		tx_type = transaction.SC_TX
 	}
 
+	// It's a SC Call
 	if p.SC_ID != "" {
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCACTION, DataType: rpc.DataUint64, Value: uint64(rpc.SC_CALL)})
 		p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCID, DataType: rpc.DataHash, Value: crypto.HashHexToHash(p.SC_ID)})
 		if p.SC_Code != "" {
 			p.SC_RPC = append(p.SC_RPC, rpc.Argument{Name: rpc.SCCODE, DataType: rpc.DataString, Value: p.SC_Code})
 		}
+		tx_type = transaction.SC_TX
 	}
 
-	var tx *transaction.Transaction
-	for tries := 0; tries < 2; tries++ {
-		// We have no fees set, precompute them
-		if p.Fees == 0 {
-			gas_fees := uint64(0)
-			if p.SC_RPC != nil && len(p.SC_RPC) >= 1 {
-				gas_fees, _ = w.wallet.EstimateGasFees(p)
-			}
-			tx, err = w.wallet.TransferPayload0(p.Transfers, p.Ringsize, false, p.SC_RPC, gas_fees, false)
-		} else {
-			// We have fees already precomputed, use it
-			tx, err = w.wallet.TransferFeesPrecomputed(p.Transfers, p.Ringsize, false, p.SC_RPC, 0, p.Fees, false)
+	result.Tx_Fees = w.wallet.EstimateTxFees(len(p.Transfers), int(p.Ringsize), tx_type, p.SC_RPC)
+	// Compute gas fees if necessary
+	if tx_type == transaction.SC_TX {
+		if !w.wallet.GetMode() {
+			return result, fmt.Errorf("wallet is in offline mode, cannot estimate gas fees")
 		}
+
+		result.Gas_Fees, err = w.wallet.EstimateGasFees(p)
 		if err != nil {
-			w.logger.V(1).Error(err, "Error building tx")
 			return result, err
 		}
-
-		err = w.wallet.SendTransaction(tx)
-		if err == nil {
-			break
-		}
 	}
 
-	// we must return a txid if everything went alright
-	result.TXID = tx.GetHash().String()
+	result.Total_Fees = result.Tx_Fees + result.Gas_Fees
+
 	return result, nil
 }
