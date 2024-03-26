@@ -10,48 +10,98 @@
 
 package main
 
-import "os"
-import "fmt"
-import "time"
-import "crypto/sha1"
+import (
+	"crypto/sha1"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"time"
 
-import "go.etcd.io/bbolt"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/walletapi"
+	"github.com/go-logr/logr"
+	"github.com/google/uuid"
+	"github.com/ybbus/jsonrpc"
+	"go.etcd.io/bbolt"
+	"gopkg.in/natefinch/lumberjack.v2"
+)
 
-import "github.com/go-logr/logr"
-import "gopkg.in/natefinch/lumberjack.v2"
-import "github.com/deroproject/derohe/globals" // needed for logs
+// Define your username and password
+const (
+	DeroUsername = "secret"
+	DeroPassword = "pass"
+	DeroEndpoint = "http://127.0.0.1:10103/json_rpc"
+	PLUGIN_NAME  = "pong_server"
+	PONG_AMOUNT  = uint64(10)
+	DEST_PORT    = uint64(1337)
+)
 
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/walletapi"
-import "github.com/ybbus/jsonrpc"
+var (
+	// needed for logs
+	logger logr.Logger = logr.Discard() // default discard all logs
 
-var logger logr.Logger = logr.Discard() // default discard all logs
-
-const PLUGIN_NAME = "pong_server"
-
-const DEST_PORT = uint64(0x1234567812345678)
-
-var expected_arguments = rpc.Arguments{
-	{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: DEST_PORT},
-	// { Name:rpc.RPC_EXPIRY , DataType:rpc.DataTime, Value:time.Now().Add(time.Hour).UTC()},
-	{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: "Purchase PONG"},
-	//{"float64", rpc.DataFloat64, float64(0.12345)},          // in atomic units
-	{Name: rpc.RPC_NEEDS_REPLYBACK_ADDRESS, DataType: rpc.DataUint64, Value: uint64(0)}, // this service will reply to incoming request,so needs the senders address
-	{Name: rpc.RPC_VALUE_TRANSFER, DataType: rpc.DataUint64, Value: uint64(12345)},      // in atomic units
-
-}
-
-// currently the interpreter seems to have a glitch if this gets initialized within the code
-// see limitations github.com/traefik/yaegi
-var response = rpc.Arguments{
-	{Name: rpc.RPC_DESTINATION_PORT, DataType: rpc.DataUint64, Value: uint64(0)},
-	{Name: rpc.RPC_SOURCE_PORT, DataType: rpc.DataUint64, Value: DEST_PORT},
-	{Name: rpc.RPC_COMMENT, DataType: rpc.DataString, Value: "Successfully purchased pong (this could be serial/license key or download link or further)"},
-}
-
-var rpcClient = jsonrpc.NewClient("http://127.0.0.1:40403/json_rpc")
-
-// empty place holder
+	// currently the interpreter seems to have a glitch if this gets initialized within the code
+	// see limitations github.com/traefik/yaegi
+	response = rpc.Arguments{
+		{
+			Name:     rpc.RPC_DESTINATION_PORT,
+			DataType: rpc.DataUint64,
+			Value:    uint64(0),
+		},
+		{
+			Name:     rpc.RPC_SOURCE_PORT,
+			DataType: rpc.DataUint64,
+			Value:    DEST_PORT,
+		},
+		{
+			Name:     rpc.RPC_COMMENT,
+			DataType: rpc.DataString,
+			Value:    "Successfully purchased pong (this could be serial/license key or download link or further)",
+		},
+	}
+	expected_arguments = rpc.Arguments{
+		{
+			Name:     rpc.RPC_DESTINATION_PORT,
+			DataType: rpc.DataUint64,
+			Value:    DEST_PORT,
+		},
+		// {
+		// 	Name:     rpc.RPC_EXPIRY,
+		// 	DataType: rpc.DataTime,
+		// 	Value:    time.Now().Add(time.Hour).UTC(),
+		// },
+		{
+			Name:     rpc.RPC_COMMENT,
+			DataType: rpc.DataString,
+			Value:    "Purchase PONG",
+		},
+		// {
+		// 	Name:     "float64",
+		// 	DataType: rpc.DataFloat64,
+		// 	Value:    float64(0.12345),
+		// 	// in atomic units
+		// },
+		{
+			// this service will reply to incoming request,
+			Name:     rpc.RPC_NEEDS_REPLYBACK_ADDRESS,
+			DataType: rpc.DataUint64,
+			Value:    uint64(0),
+		},
+		{
+			Name:     rpc.RPC_VALUE_TRANSFER,
+			DataType: rpc.DataUint64,
+			Value:    PONG_AMOUNT, // in atomic units
+		},
+	}
+	// Create options for the JSON-RPC client
+	opts = &jsonrpc.RPCClientOpts{
+		CustomHeaders: map[string]string{
+			"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(DeroUsername+":"+DeroPassword)),
+		},
+	}
+	rpcClient = jsonrpc.NewClientWithOpts(DeroEndpoint, opts)
+)
 
 func main() {
 	var err error
@@ -125,19 +175,32 @@ func processing_thread(db *bbolt.DB) {
 		time.Sleep(time.Second)
 
 		var transfers rpc.Get_Transfers_Result
-		err = rpcClient.CallFor(&transfers, "GetTransfers", rpc.Get_Transfers_Params{In: true, DestinationPort: DEST_PORT})
+		err = rpcClient.CallFor(
+			&transfers, "GetTransfers",
+			rpc.Get_Transfers_Params{
+				In:              true,
+				DestinationPort: DEST_PORT,
+			},
+		)
 		if err != nil {
 			logger.Error(err, "Could not obtain gettransfers from wallet")
 			continue
 		}
 
 		for _, e := range transfers.Entries {
-			if e.Coinbase || !e.Incoming { // skip coinbase or outgoing, self generated transactions
+			if e.Coinbase || // skip coinbase
+				!e.Incoming || // skip all outgoing transfers
+				e.Amount != PONG_AMOUNT || // skip all but desired amount
+				e.DestinationPort != DEST_PORT || // skip all but desired port
+				!e.Payload_RPC.Has(rpc.RPC_DESTINATION_PORT, rpc.DataUint64) || // skip when it doesn't have dest port
+				DEST_PORT != e.Payload_RPC.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64) { // and skip when DEST_PORT doesn't match the transactions's dest port value
 				continue
 			}
 
 			// check whether the entry has been processed before, if yes skip it
 			var already_processed bool
+
+			// SALE = e.TXID , uuid
 			db.View(func(tx *bbolt.Tx) error {
 				if b := tx.Bucket([]byte("SALE")); b != nil {
 					if ok := b.Get([]byte(e.TXID)); ok != nil { // if existing in bucket
@@ -149,13 +212,6 @@ func processing_thread(db *bbolt.DB) {
 
 			if already_processed { // if already processed skip it
 				continue
-			}
-
-			// check whether this service should handle the transfer
-			if !e.Payload_RPC.Has(rpc.RPC_DESTINATION_PORT, rpc.DataUint64) ||
-				DEST_PORT != e.Payload_RPC.Value(rpc.RPC_DESTINATION_PORT, rpc.DataUint64).(uint64) { // this service is expecting value to be specfic
-				continue
-
 			}
 
 			logger.V(1).Info("tx should be processed", "txid", e.TXID)
@@ -178,16 +234,16 @@ func processing_thread(db *bbolt.DB) {
 					logger.Error(err, "err while while parsing incoming addr")
 					continue
 				}
-				addr.Mainnet = false // convert addresses to testnet form, by default it's expected to be mainnnet
+				addr.Mainnet = true // convert addresses to testnet form, by default it's expected to be mainnnet
 				destination_expected = addr.String()
 
 				logger.V(1).Info("tx should be replied", "txid", e.TXID, "replyback_address", destination_expected)
 
-				//destination_expected := e.Sender
+				uuid := uuid.New().String()
 
 				// value received is what we are expecting, so time for response
 				response[0].Value = e.SourcePort // source port now becomes destination port, similar to TCP
-				response[2].Value = fmt.Sprintf("Sucessfully purchased pong (could be serial, license or download link or anything).You sent %s at height %d", walletapi.FormatMoney(e.Amount), e.Height)
+				response[2].Value = fmt.Sprintf("Sucessfully purchased access to %s .You sent %s at height %d", uuid, walletapi.FormatMoney(e.Amount), e.Height)
 
 				//_, err :=  response.CheckPack(transaction.PAYLOAD0_LIMIT)) //  we only have 144 bytes for RPC
 
@@ -202,7 +258,7 @@ func processing_thread(db *bbolt.DB) {
 
 				err = db.Update(func(tx *bbolt.Tx) error {
 					b := tx.Bucket([]byte("SALE"))
-					return b.Put([]byte(e.TXID), []byte("done"))
+					return b.Put([]byte(e.TXID), []byte(uuid))
 				})
 				if err != nil {
 					logger.Error(err, "err updating db")
