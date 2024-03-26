@@ -35,7 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
+	"unicode" // need to avoid this, but only used by byteviewer
 	"unsafe"
 
 	"github.com/creachadair/jrpc2"
@@ -50,8 +50,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/gorilla/websocket"
 )
-
-// need to avoid this, but only used by byteviewer
 
 //import "encoding/json"
 //import "io/ioutil"
