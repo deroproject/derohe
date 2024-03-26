@@ -65,6 +65,7 @@ func (w *Wallet_Memory) TransferPayload0(transfers []rpc.Transfer, ringsize uint
 }
 
 // Create a transfer transaction with precomputed fees
+// If its zero, fees will be calculated based on TX size and wallet fee multiplier
 func (w *Wallet_Memory) TransferFeesPrecomputed(transfers []rpc.Transfer, ringsize uint64, transfer_all bool, scdata rpc.Arguments, gasstorage uint64, tx_fees uint64, dry_run bool) (tx *transaction.Transaction, err error) {
 
 	//    var  transfer_details structures.Outgoing_Transfer_Details
