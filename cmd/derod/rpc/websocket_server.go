@@ -16,36 +16,36 @@
 
 package rpc
 
-import "io"
-import "os"
-import "net"
-import "fmt"
-import "net/http"
-import "net/http/pprof"
-import "time"
-import "sort"
-import "sync"
-import "sync/atomic"
-import "context"
-import "strings"
-import "runtime/debug"
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/pprof"
+	"os"
+	"runtime/debug"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/glue/rwc"
-import "github.com/deroproject/derohe/metrics"
-
-import "github.com/go-logr/logr"
-import "github.com/gorilla/websocket"
-
-import "github.com/creachadair/jrpc2"
-import "github.com/creachadair/jrpc2/handler"
-import "github.com/creachadair/jrpc2/channel"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
+	"github.com/creachadair/jrpc2/handler"
+	"github.com/creachadair/jrpc2/jhttp"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/glue/rwc"
+	"github.com/deroproject/derohe/metrics"
+	"github.com/go-logr/logr"
+	"github.com/gorilla/websocket"
+)
 
 //import "github.com/creachadair/jrpc2/server"
-import "github.com/creachadair/jrpc2/jhttp"
 
 /* this file implements the rpcserver api, so as wallet and block explorer tools can work without migration */
 
@@ -313,6 +313,9 @@ var historical_apis = handler.Map{"getinfo": handler.New(GetInfo),
 	"getblocktemplate":           handler.New(GetBlockTemplate),
 	"getencryptedbalance":        handler.New(GetEncryptedBalance),
 	"getsc":                      handler.New(GetSC),
+	"getmatchingkeyssc":          handler.New(GetMatchingKeysSC),
+	"getmatchingvaluessc":        handler.New(GetMatchingValuesSC),
+	"getbalancessc":              handler.New(GetBalancesSC),
 	"getgasestimate":             handler.New(GetGasEstimate),
 	"nametoaddress":              handler.New(NameToAddress)}
 
@@ -335,6 +338,11 @@ var servicemux = handler.ServiceMap{
 		"GetBlockTemplate":           handler.New(GetBlockTemplate),
 		"GetEncryptedBalance":        handler.New(GetEncryptedBalance),
 		"GetSC":                      handler.New(GetSC),
+		"GetMatchingKeysSC":          handler.New(GetMatchingKeysSC),
+		"GetMatchingValuesSC":        handler.New(GetMatchingValuesSC),
+		"SearchVariablesSC":          handler.New(SearchVariablesSC),
+		"GetValuesFromKeysSC":        handler.New(GetValuesFromKeysSC),
+		"GetBalancesSC":              handler.New(GetBalancesSC),
 		"GetGasEstimate":             handler.New(GetGasEstimate),
 		"NameToAddress":              handler.New(NameToAddress),
 	},

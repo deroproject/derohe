@@ -251,6 +251,102 @@ type (
 	}
 )
 
+type ValueMapperSC string
+
+const (
+	ValueMapperSC_Address ValueMapperSC = "to_address"
+	ValueMapperSC_ToHex   ValueMapperSC = "to_hex"
+)
+
+type (
+	FilterSC struct {
+		// Both key and value support regex matching
+		// If set together, it play as AND
+		KeyPattern   string `json:"key_pattern"`
+		ValuePattern string `json:"value_pattern"`
+		IsOr         bool   `json:"is_or"` // if true, then it plays as OR
+
+		// Allow to map a key/value before matching (work only on string keys/values)
+		BeforeKeyMapper   ValueMapperSC `json:"before_key_mapper,omitempty"`
+		BeforeValueMapper ValueMapperSC `json:"before_value_mapper,omitempty"`
+		// NOTE: You can't have a mapper for Before AND After. It is either Before or After
+		// Allow to map a key/value result easily (work only on string keys/values)
+		AfterKeyMapper   ValueMapperSC `json:"after_key_mapper,omitempty"`
+		AfterValueMapper ValueMapperSC `json:"after_value_mapper,omitempty"`
+	}
+	FilterSC_Result struct {
+		// index of the key is the same as the one for value
+		Keys   []interface{} `json:"keys"`
+		Values []interface{} `json:"values"`
+	}
+	SearchVariablesSC_Params struct {
+		SCID       string     `json:"scid"`
+		TopoHeight int64      `json:"topoheight,omitempty"` // all queries are related to this topoheight
+		Filters    []FilterSC `json:"filters,omitempty"`
+	}
+	SearchVariablesSC_Result struct {
+		// index of the result is same as the index of the filter
+		Data   []FilterSC_Result `json:"data"`
+		Status string            `json:"status"`
+	}
+)
+
+type (
+	GetMatchingKeysSC_Params struct {
+		SCID string `json:"scid"`
+		// Each keys support regex matching
+		// So you can basically do a search for all keys starting with "abc" or ending with "abc" or containing "abc"
+		// This only works with DVM String keys
+		Patterns   []string `json:"patterns,omitempty"`
+		TopoHeight int64    `json:"topoheight,omitempty"` // all queries are related to this topoheight
+	}
+	GetMatchingKeysSC_Result struct {
+		// Its a 2D array, first dimension is the same index as the key pattern sent,
+		// second dimension is the list of matching keys
+		Keys   [][]string `json:"keys"`
+		Status string     `json:"status"`
+	}
+)
+
+type (
+	KeyWithMapper struct {
+		Key interface{} `json:"key"`
+		// if true, then key is address and will be mapped to match SIGNER() output
+		IsAddress bool `json:"is_address,omitempty"`
+		// Mapper of the returned value
+		ValueMapper ValueMapperSC `json:"value_mapper,omitempty"`
+	}
+
+	GetValuesFromKeysSC_Params struct {
+		SCID       string          `json:"scid"`
+		Keys       []KeyWithMapper `json:"keys,omitempty"`
+		TopoHeight int64           `json:"topoheight,omitempty"` // all queries are related to this topoheight
+	}
+	GetValuesFromKeysSC_Result struct {
+		// same index as keys
+		Values []interface{} `json:"values"`
+		Status string        `json:"status"`
+	}
+)
+
+type (
+	GetBalancesSC_Params struct {
+		SCID string `json:"scid"`
+		// Request only specific assets balances
+		Assets []crypto.Hash `json:"assets,omitempty"`
+		// Or request all assets balances
+		All        bool  `json:"all,omitempty"`
+		TopoHeight int64 `json:"topoheight,omitempty"` // all queries are related to this topoheight
+	}
+	GetBalancesSC_Result struct {
+		// If All is true, then all balances are returned
+		// If All is false, then only requested assets balances are returned
+		// But if a requested asset is not found, then it is not added in Balances map
+		Balances map[crypto.Hash]uint64 `json:"balances"`
+		Status   string                 `json:"status"`
+	}
+)
+
 type (
 	GetRandomAddress_Params struct {
 		SCID crypto.Hash `json:"scid"`
