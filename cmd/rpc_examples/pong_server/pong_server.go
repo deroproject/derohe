@@ -29,9 +29,9 @@ import (
 
 // Define your username and password
 const (
-	DeroUsername = "secret"
-	DeroPassword = "pass"
-	DeroEndpoint = "http://127.0.0.1:10103/json_rpc"
+	deroUsername = "secret"
+	deroPassword = "pass"
+	deroEndpoint = "http://127.0.0.1:10103/json_rpc"
 	PLUGIN_NAME  = "pong_server"
 	PONG_AMOUNT  = uint64(10)
 	DEST_PORT    = uint64(1337)
@@ -97,10 +97,10 @@ var (
 	// Create options for the JSON-RPC client
 	opts = &jsonrpc.RPCClientOpts{
 		CustomHeaders: map[string]string{
-			"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(DeroUsername+":"+DeroPassword)),
+			"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte(deroUsername+":"+deroPassword)),
 		},
 	}
-	rpcClient = jsonrpc.NewClientWithOpts(DeroEndpoint, opts)
+	rpcClient = jsonrpc.NewClientWithOpts(deroEndpoint, opts)
 )
 
 func main() {
