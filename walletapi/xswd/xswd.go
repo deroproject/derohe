@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 
 	"github.com/creachadair/jrpc2"
@@ -21,8 +20,6 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/gorilla/websocket"
 )
-
-const TIMEOUT = 10 * time.Second
 
 type ApplicationData struct {
 	Id               string                `json:"id"`
