@@ -659,3 +659,61 @@ hard_way:
 
 	return true
 }
+
+// IsAddressHashValidAtTips validates miner addresses against the candidate block's maturity window.
+func (chain *Blockchain) IsAddressHashValidAtTips(tips []crypto.Hash, hashes ...crypto.Hash) (found bool) {
+	if len(hashes) == 0 {
+		return true
+	}
+
+	chainTopo := chain.Load_TOPO_HEIGHT()
+	candidateTopo := chainTopo
+	if len(tips) > 0 {
+		tipTopo := chain.Load_Block_Topological_order(tips[0])
+		if tipTopo >= 0 {
+			candidateTopo = tipTopo + 1
+		}
+	}
+
+	maxTopo := addressValidationLookupTopo(chainTopo, candidateTopo)
+
+	toporecord, err := chain.Store.Topo_store.Read(maxTopo)
+	if err != nil {
+		return false
+	}
+
+	ss, err := chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
+	if err != nil {
+		return false
+	}
+
+	balanceTree, err := ss.GetTree(config.BALANCE_TREE)
+	if err != nil {
+		return false
+	}
+
+	for _, hash := range hashes {
+		bits, _, _, err := balanceTree.GetKeyValueFromHash(hash[:16])
+		if err != nil || bits >= 120 {
+			return false
+		}
+	}
+	return true
+}
+
+func addressValidationLookupTopo(chainTopo, candidateTopo int64) int64 {
+	if candidateTopo < 0 {
+		candidateTopo = 0
+	}
+	lookupTopo := candidateTopo
+	if lookupTopo > 25 {
+		lookupTopo -= 25
+	}
+	if lookupTopo > chainTopo {
+		lookupTopo = chainTopo
+	}
+	if lookupTopo < 0 {
+		return 0
+	}
+	return lookupTopo
+}

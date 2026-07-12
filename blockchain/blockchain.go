@@ -592,7 +592,7 @@ func (chain *Blockchain) Add_Complete_Block(cbl *block.Complete_Block) (err erro
 		for _, mbl := range bl.MiniBlocks {
 			var miner_hash crypto.Hash
 			copy(miner_hash[:], mbl.KeyHash[:])
-			if mbl.Final == false && !chain.IsAddressHashValid(true, miner_hash) {
+			if mbl.Final == false && !chain.IsAddressHashValidAtTips(bl.Tips, miner_hash) {
 				err = fmt.Errorf("miner address not registered")
 				return err, false
 			}
