@@ -18,6 +18,7 @@ package logr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -383,8 +384,8 @@ func TestContext(t *testing.T) {
 	}
 
 	out := FromContextOrDiscard(ctx)
-	if _, ok := out.sink.(discardLogSink); !ok {
-		t.Errorf("expected a discardLogSink, got %#v", out)
+	if out.sink != nil {
+		t.Errorf("expected a nil sink, got %#v", out)
 	}
 
 	sink := &testLogSink{}
@@ -399,4 +400,42 @@ func TestContext(t *testing.T) {
 	if p, _ := out.sink.(*testLogSink); p != sink {
 		t.Errorf("expected output to be the same as input, got in=%p, out=%p", sink, p)
 	}
+}
+
+func TestIsZero(t *testing.T) {
+	var l Logger
+	if !l.IsZero() {
+		t.Errorf("expected IsZero")
+	}
+	sink := &testLogSink{}
+	l = New(sink)
+	if l.IsZero() {
+		t.Errorf("expected not IsZero")
+	}
+	// Discard is the same as a nil sink.
+	l = Discard()
+	if !l.IsZero() {
+		t.Errorf("expected IsZero")
+	}
+}
+
+func TestZeroValue(t *testing.T) {
+	// Make sure that the zero value is useful and equivalent to a Discard logger.
+	var l Logger
+	if l.Enabled() {
+		t.Errorf("expected not Enabled")
+	}
+	if !l.IsZero() {
+		t.Errorf("expected IsZero")
+	}
+	// Make sure that none of these methods cause a crash
+	l.Info("foo")
+	l.Error(errors.New("bar"), "some error")
+	if l.GetSink() != nil {
+		t.Errorf("expected nil from GetSink")
+	}
+	l2 := l.WithName("some-name").V(2).WithValues("foo", 1).WithCallDepth(1)
+	l2.Info("foo")
+	l2.Error(errors.New("bar"), "some error")
+	_, _ = l.WithCallStackHelper()
 }

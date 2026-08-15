@@ -282,6 +282,7 @@ type (
 		Height                     int64   `json:"height"`
 		StableHeight               int64   `json:"stableheight"`
 		TopoHeight                 int64   `json:"topoheight"`
+		PrunedHeight               int64   `json:"prunedheight"`
 		Merkle_Balance_TreeHash    string  `json:"treehash"`
 		AverageBlockTime50         float32 `json:"averageblocktime50"`
 		Incoming_connections_count uint64  `json:"incoming_connections_count"`

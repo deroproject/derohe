@@ -271,7 +271,7 @@ func (w *Wallet_Memory) Sync_Wallet_Memory_With_Daemon_internal(scid crypto.Hash
 
 			//fmt.Printf("data '%s' previous '%s' scid %s\n", w.account.Balance_Result[scid].Data, previous, scid)
 			if w.getEncryptedBalanceresult(scid).Data != previous {
-				b := w.DecodeEncryptedBalanceNow(e) // try to decode balance
+				b := w.DecodeEncryptedBalance_Memory(e, w.account.Balance[scid]) // try to decode balance
 
 				// Call all listeners registered
 				// TODO scid
@@ -586,19 +586,17 @@ func (w *Wallet_Memory) SyncHistory(scid crypto.Hash) (balance uint64) {
 		if entries[i].BlockHash != result.Block_Header.Hash {
 			logger.Info("syncing loop header mismatch ", "i", i, "block_hash", entries[i].BlockHash)
 			skip := 1
-			if i >= 1 && last_topo_height == entries[i-1].TopoHeight { // skipping any entries withing same block
-				for ; i >= 1; i-- {
-					if last_topo_height == entries[i-1].TopoHeight {
-						skip++
-					} else {
-						break
-					}
+			for ; i > 0; i-- { // skipping any entries within same block
+				if last_topo_height == entries[i-1].TopoHeight {
+					skip++
+				} else {
+					break
 				}
 			}
-			entries = entries[:i-skip]
+			entries = entries[:i]
+			i--
 			w.account.EntriesNative[scid] = entries
 			logger.Info("syncing loop skipped ", "i", i, "skip", skip)
-			continue
 		}
 
 		if i <= 0 {
@@ -1073,7 +1071,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 									}
 								}
 
-								if sender_idx <= uint(tx.Payloads[t].Statement.RingSize) {
+								if sender_idx < uint(tx.Payloads[t].Statement.RingSize) { // off-by-one fix: valid indices are 0..RingSize-1
 									addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[sender_idx]))
 									addr.Mainnet = w.GetNetwork()
 									entry.Sender = addr.String()
@@ -1112,7 +1110,7 @@ func (w *Wallet_Memory) synchistory_block(scid crypto.Hash, topo int64) (err err
 									}
 								}
 
-								if sender_idx <= uint(tx.Payloads[t].Statement.RingSize) {
+								if sender_idx < uint(tx.Payloads[t].Statement.RingSize) { // off-by-one fix: valid indices are 0..RingSize-1
 									addr := rpc.NewAddressFromKeys((*crypto.Point)(tx.Payloads[t].Statement.Publickeylist[sender_idx]))
 									addr.Mainnet = w.GetNetwork()
 									entry.Sender = addr.String()

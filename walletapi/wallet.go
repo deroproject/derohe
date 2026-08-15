@@ -153,6 +153,14 @@ func (w *Wallet_Memory) TokenAdd(scid crypto.Hash) (err error) {
 	w.Lock()
 	defer w.Unlock()
 
+	// Guard against a nil map on a freshly created/restored, not-yet-synced
+	// wallet (EntriesNative is populated lazily during sync). Without this the
+	// assignment below panics with "assignment to entry in nil map". Mirrors the
+	// guard already present in InsertReplace.
+	if w.account.EntriesNative == nil {
+		w.account.EntriesNative = map[crypto.Hash][]rpc.Entry{}
+	}
+
 	if _, ok := w.account.EntriesNative[scid]; !ok {
 		w.account.EntriesNative[scid] = []rpc.Entry{}
 	} else {
@@ -264,8 +272,8 @@ func (w *Wallet_Memory) Get_Balance() (mature_balance uint64, locked_balance uin
 // if payment_id is true, only entries with payment ids are returned
 // min_height/max height represent topoheight
 func (w *Wallet_Memory) Show_Transfers(scid crypto.Hash, coinbase bool, in bool, out bool, min_height, max_height uint64, sender, receiver string, dstport, srcport uint64) []rpc.Entry {
-	w.Lock()
-	defer w.Unlock()
+	w.RLock()
+	defer w.RUnlock()
 
 	var entries []rpc.Entry
 
@@ -310,8 +318,8 @@ func (w *Wallet_Memory) Get_Payments_Payment_ID(scid crypto.Hash, dst_port uint6
 // gets all the payments  done to specific payment ID and filtered by specific block height
 // we do need better rpc
 func (w *Wallet_Memory) Get_Payments_DestinationPort(scid crypto.Hash, port uint64, min_height uint64) (entries []rpc.Entry) {
-	w.Lock()
-	defer w.Unlock()
+	w.RLock()
+	defer w.RUnlock()
 	all_entries := w.account.EntriesNative[scid]
 	if all_entries == nil || len(all_entries) < 1 {
 		return
@@ -331,8 +339,8 @@ func (w *Wallet_Memory) Get_Payments_DestinationPort(scid crypto.Hash, port uint
 // ZERO SCID will also search in all other tokens
 // NOTE: what about multiple payments
 func (w *Wallet_Memory) Get_Payments_TXID(scid crypto.Hash, txid string) (crypto.Hash, rpc.Entry) {
-	w.Lock()
-	defer w.Unlock()
+	w.RLock()
+	defer w.RUnlock()
 
 	all_entries := w.account.EntriesNative[scid]
 	if (all_entries == nil || len(all_entries) < 1) && !scid.IsZero() {
@@ -600,8 +608,8 @@ func (w *Wallet_Memory) sign() (c, s *big.Int) {
 
 // retrieve secret key for any tx we may have created
 func (w *Wallet_Memory) GetTXKey(txhash string) string {
-	w.Lock()
-	defer w.Unlock()
+	w.RLock()
+	defer w.RUnlock()
 
 	for _, entries := range w.account.EntriesNative {
 		for _, e := range entries {

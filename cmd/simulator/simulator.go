@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -46,10 +47,10 @@ import (
 
 	//import "golang.org/x/crypto/sha3"
 
-	//import "github.com/deroproject/derohe/transaction"
 	derodrpc "github.com/deroproject/derohe/cmd/derod/rpc"
 	"github.com/deroproject/derohe/cmd/explorer/explorerlib"
 	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/transaction"
 	"github.com/deroproject/derohe/walletapi"
 )
 
@@ -132,7 +133,10 @@ func main() {
 		rpcport = globals.Arguments["--rpc-bind"].(string)
 	}
 	globals.Arguments["--rpc-bind"] = rpcport
-	globals.Arguments["--testnet"] = true
+	// Only set --testnet if user explicitly provided it, otherwise default to mainnet
+	if globals.Arguments["--testnet"] == nil {
+		globals.Arguments["--testnet"] = false
+	}
 	globals.Arguments["--simulator"] = true
 	globals.Arguments["--daemon-address"] = rpcport // feed it for wallets
 
@@ -163,7 +167,7 @@ func main() {
 		MaxBackups: 2,
 	})
 
-	logger = globals.Logger.WithName("derod")
+	logger = globals.Logger.WithName("simulator")
 
 	logger.Info("DERO HE Simulator :  It is an alpha version, use it for testing/evaluations purpose only.")
 	logger.Info("Copyright 2017-2021 DERO Project. All rights reserved.")
@@ -200,6 +204,13 @@ func main() {
 
 	register_wallets(chain)                               // setup 22 wallets
 	Mine_block_single(chain, genesis_wallet.GetAddress()) //mine single block to confirm all 22 registrations
+
+	// Display genesis wallet information
+	logger.Info("genesis wallet", "address", genesis_wallet.GetAddress().String())
+	logger.Info("genesis wallet", "seed", genesis_seed)
+	logger.Info("genesis wallet", "balance", "~1.12 Dero")
+	logger.Info("To restore any wallet:")
+	logger.Info("dero-wallet-cli --daemon-address=localhost:20000 --restore-deterministic-wallet --electrum-seed=<SEED>")
 
 	go walletapi.Keep_Connectivity() // all wallets maintain connectivity
 
@@ -332,7 +343,7 @@ func main() {
 		}
 
 		switch {
-		case line == "help":
+		case command == "help":
 			usage(l.Stderr())
 
 		case command == "profile": // writes cpu and memory profile
@@ -412,72 +423,166 @@ func main() {
 		case command == "print_block":
 
 			fmt.Printf("printing block\n")
+			var hash crypto.Hash
+
 			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
 				bl_raw, err := hex.DecodeString(strings.ToLower(line_parts[1]))
-
 				if err != nil {
-					fmt.Printf("err while decoding txid err %s\n", err)
+					fmt.Printf("err while decoding blid err %s\n", err)
 					continue
 				}
-				var hash crypto.Hash
 				copy(hash[:32], []byte(bl_raw))
-
-				bl, err := chain.Load_BL_FROM_ID(hash)
-				if err == nil {
-					fmt.Printf("Block ID : %s\n", hash)
-					fmt.Printf("Block : %x\n", bl.Serialize())
-					fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
-					//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
-
-					json_bytes, err := json.Marshal(bl)
-
-					fmt.Printf("%s  err : %s\n", string(prettyprint_json(json_bytes)), err)
-				} else {
-					fmt.Printf("Err %s\n", err)
-				}
 			} else if len(line_parts) == 2 {
 				if s, err := strconv.ParseInt(line_parts[1], 10, 64); err == nil {
 					_ = s
 					// first load block id from topo height
 
-					hash, err := chain.Load_Block_Topological_order_at_index(s)
+					hash, err = chain.Load_Block_Topological_order_at_index(s)
 					if err != nil {
 						fmt.Printf("Skipping block at topo height %d due to error %s\n", s, err)
 						continue
 					}
-					bl, err := chain.Load_BL_FROM_ID(hash)
-					if err == nil {
-						fmt.Printf("Block ID : %s\n", hash)
-						fmt.Printf("Block : %x\n", bl.Serialize())
-						fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
-						fmt.Printf("Height: %d\n", chain.Load_Height_for_BL_ID(hash))
-						fmt.Printf("TopoHeight: %d\n", s)
-
-						version, err := chain.ReadBlockSnapshotVersion(hash)
-						if err != nil {
-							panic(err)
-						}
-
-						bhash, err := chain.Load_Merkle_Hash(version)
-
-						if err != nil {
-							panic(err)
-						}
-
-						fmt.Printf("BALANCE_TREE : %s\n", bhash)
-
-						//fmt.Printf("Orphan: %v\n",chain.Is_Block_Orphan(hash))
-
-						json_bytes, err := json.Marshal(bl)
-
-						fmt.Printf("%s  err : %s\n", string(prettyprint_json(json_bytes)), err)
-					} else {
-						fmt.Printf("Err %s\n", err)
-					}
-
-				} else {
-					fmt.Printf("print_block  needs a single block id as argument\n")
 				}
+			} else {
+				fmt.Printf("print_block  needs a single block id as argument\n")
+				continue
+			}
+			bl, err := chain.Load_BL_FROM_ID(hash)
+			if err != nil {
+				fmt.Printf("Err %s\n", err)
+				continue
+			}
+
+			header, _ := derodrpc.GetBlockHeader(chain, hash)
+			fmt.Fprintf(os.Stdout, "BLID:%s\n", bl.GetHash())
+			fmt.Fprintf(os.Stdout, "Major version:%d Minor version: %d ", bl.Major_Version, bl.Minor_Version)
+			fmt.Fprintf(os.Stdout, "Height:%d ", bl.Height)
+			fmt.Fprintf(os.Stdout, "Timestamp:%d  (%s)\n", bl.Timestamp, bl.GetTimestamp())
+			for i := range bl.Tips {
+				fmt.Fprintf(os.Stdout, "Past %d:%s\n", i, bl.Tips[i])
+			}
+			for i, mbl := range bl.MiniBlocks {
+				fmt.Fprintf(os.Stdout, "Mini %d:%s %s\n", i, mbl, header.Miners[i])
+			}
+			for i, txid := range bl.Tx_hashes {
+				fmt.Fprintf(os.Stdout, "tx %d:%s\n", i, txid)
+			}
+
+			fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(hash).String())
+			fmt.Printf("TopoHeight: %d\n", chain.Load_Block_Topological_order(hash))
+
+			version, err := chain.ReadBlockSnapshotVersion(hash)
+			if err != nil {
+				panic(err)
+			}
+
+			bhash, err := chain.Load_Merkle_Hash(version)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Printf("BALANCE_TREE : %s\n", bhash)
+			fmt.Printf("MINING REWARD : %s\n", globals.FormatMoney(blockchain.CalcBlockReward(bl.Height)))
+
+		case command == "print_bc":
+			fmt.Printf("printing block chain\n")
+
+			start := int64(0)
+			stop := int64(0)
+
+			if len(line_parts) != 3 {
+				fmt.Printf("print_bc requires 2 parameters: <begin_height> <end_height>\n")
+				continue
+			}
+
+			if s, err := strconv.ParseInt(line_parts[1], 10, 64); err == nil {
+				start = s
+			} else {
+				fmt.Printf("Invalid start value: %s\n", line_parts[1])
+				continue
+			}
+
+			if s, err := strconv.ParseInt(line_parts[2], 10, 64); err == nil {
+				stop = s
+			} else {
+				fmt.Printf("Invalid stop value: %s\n", line_parts[2])
+				continue
+			}
+
+			topoHeight := chain.Load_TOPO_HEIGHT()
+			if start < 0 || start > topoHeight {
+				fmt.Printf("Start value should be between 0 and current topo height (%d)\n", topoHeight)
+				continue
+			}
+
+			if start > stop || stop > topoHeight {
+				fmt.Printf("Stop value should be >= start and <= current topo height (%d)\n", topoHeight)
+				continue
+			}
+
+			for i := start; i <= stop; i++ {
+				currentBlockID, err := chain.Load_Block_Topological_order_at_index(i)
+				if err != nil {
+					fmt.Printf("Skipping block at topo height %d due to error %s\n", i, err)
+					continue
+				}
+
+				timestamp := uint64(0)
+				diff := new(big.Int)
+				if chain.Block_Exists(currentBlockID) {
+					timestamp = chain.Load_Block_Timestamp(currentBlockID)
+					diff = chain.Load_Block_Difficulty(currentBlockID)
+				}
+
+				version, err := chain.ReadBlockSnapshotVersion(currentBlockID)
+				if err != nil {
+					fmt.Printf("Skipping block %s due to snapshot version error %s\n", currentBlockID, err)
+					continue
+				}
+
+				balanceHash, err := chain.Load_Merkle_Hash(version)
+				if err != nil {
+					fmt.Printf("Skipping block %s due to balance tree error %s\n", currentBlockID, err)
+					continue
+				}
+
+				fmt.Printf("TopoHeight: %d Height: %d Timestamp: %d Difficulty: %s\n", i, chain.Load_Height_for_BL_ID(currentBlockID), timestamp, diff.String())
+				fmt.Printf("BlockID: %s BalanceTree: %s\n", currentBlockID, balanceHash)
+			}
+
+		case command == "print_tx":
+			if len(line_parts) == 2 && len(line_parts[1]) == 64 {
+				txid, err := hex.DecodeString(strings.ToLower(line_parts[1]))
+				if err != nil {
+					fmt.Printf("err while decoding txid err %s\n", err)
+					continue
+				}
+
+				var hash crypto.Hash
+				copy(hash[:32], []byte(txid))
+
+				var tx transaction.Transaction
+				if txBytes, err := chain.Store.Block_tx_store.ReadTX(hash); err != nil {
+					fmt.Printf("err while reading txid err %s\n", err)
+					continue
+				} else if err = tx.Deserialize(txBytes); err != nil {
+					fmt.Printf("err deserializing tx err %s\n", err)
+					continue
+				}
+
+				if validBLID, invalid, valid := chain.IS_TX_Valid(hash); valid {
+					fmt.Printf("TX is valid in block %s\n", validBLID)
+				} else if len(invalid) == 0 {
+					fmt.Printf("TX is mined in a side chain\n")
+				} else {
+					fmt.Printf("TX is mined in blocks %+v\n", invalid)
+				}
+
+				if tx.IsRegistration() {
+					fmt.Printf("Registration TX validity could not be detected\n")
+				}
+			} else {
+				fmt.Printf("print_tx needs a single transaction id as argument\n")
 			}
 
 		case strings.ToLower(line) == "status":
@@ -517,6 +622,17 @@ func main() {
 
 			}
 
+		case command == "diff":
+			tip := chain.Get_Top_ID()
+			fmt.Printf("Tip: %s\n", tip)
+			fmt.Printf("Height: %d\n", chain.Get_Height())
+			fmt.Printf("TopoHeight: %d\n", chain.Load_TOPO_HEIGHT())
+			fmt.Printf("difficulty: %s\n", chain.Load_Block_Difficulty(tip).String())
+
+		case command == "print_height":
+			fmt.Printf("Height: %d\n", chain.Get_Height())
+			fmt.Printf("TopoHeight: %d\n", chain.Load_TOPO_HEIGHT())
+
 		case strings.ToLower(line) == "bye":
 			fallthrough
 		case strings.ToLower(line) == "exit":
@@ -530,7 +646,7 @@ func main() {
 			time.Sleep(1 * time.Second)
 		case line == "":
 		default:
-			logger.Info(fmt.Sprintf("you said: %s", strconv.Quote(line)))
+			fmt.Printf("unknown command %s, type 'help' for available commands\n", strconv.Quote(line))
 		}
 	}
 exit:
@@ -606,25 +722,20 @@ func usage(w io.Writer) {
 	//io.WriteString(w, completer.Tree("    "))
 	io.WriteString(w, "\t\033[1mhelp\033[0m\t\tthis help\n")
 	io.WriteString(w, "\t\033[1mdiff\033[0m\t\tShow difficulty\n")
+	io.WriteString(w, "\t\033[1mprofile\033[0m\t\tWrite cpu profile on exit\n")
 	io.WriteString(w, "\t\033[1mprint_bc\033[0m\tPrint blockchain info in a given blocks range, print_bc <begin_height> <end_height>\n")
 	io.WriteString(w, "\t\033[1mprint_block\033[0m\tPrint block, print_block <block_hash> or <block_height>\n")
+	io.WriteString(w, "\t\033[1mprint_tree\033[0m\tPrint blockchain tree (simulator placeholder)\n")
 	io.WriteString(w, "\t\033[1mprint_height\033[0m\tPrint local blockchain height\n")
 	io.WriteString(w, "\t\033[1mprint_tx\033[0m\tPrint transaction, print_tx <transaction_hash>\n")
 	io.WriteString(w, "\t\033[1mstatus\033[0m\t\tShow general information\n")
-	io.WriteString(w, "\t\033[1mstart_mining\033[0m\tStart mining <dero address> <number of threads>\n")
-	io.WriteString(w, "\t\033[1mstop_mining\033[0m\tStop daemon mining\n")
-	io.WriteString(w, "\t\033[1mpeer_list\033[0m\tPrint peer list\n")
-	io.WriteString(w, "\t\033[1msync_info\033[0m\tPrint information about connected peers and their state\n")
 	io.WriteString(w, "\t\033[1mbye\033[0m\t\tQuit the daemon\n")
-	io.WriteString(w, "\t\033[1mban\033[0m\t\tBan specific ip from making any connections\n")
-	io.WriteString(w, "\t\033[1munban\033[0m\t\tRevoke restrictions on previously banned ips\n")
-	io.WriteString(w, "\t\033[1mbans\033[0m\t\tPrint current ban list\n")
 	io.WriteString(w, "\t\033[1mmempool_print\033[0m\t\tprint mempool contents\n")
 	io.WriteString(w, "\t\033[1mmempool_delete_tx\033[0m\t\tDelete specific tx from mempool\n")
-	io.WriteString(w, "\t\033[1mmempool_flush\033[0m\t\tFlush regpool\n")
+	io.WriteString(w, "\t\033[1mmempool_flush\033[0m\t\tFlush mempool\n")
 	io.WriteString(w, "\t\033[1mregpool_print\033[0m\t\tprint regpool contents\n")
 	io.WriteString(w, "\t\033[1mregpool_delete_tx\033[0m\t\tDelete specific tx from regpool\n")
-	io.WriteString(w, "\t\033[1mregpool_flush\033[0m\t\tFlush mempool\n")
+	io.WriteString(w, "\t\033[1mregpool_flush\033[0m\t\tFlush regpool\n")
 	io.WriteString(w, "\t\033[1mversion\033[0m\t\tShow version\n")
 	io.WriteString(w, "\t\033[1mexit\033[0m\t\tQuit the daemon\n")
 	io.WriteString(w, "\t\033[1mquit\033[0m\t\tQuit the daemon\n")
@@ -634,7 +745,12 @@ func usage(w io.Writer) {
 var completer = readline.NewPrefixCompleter(
 	readline.PcItem("help"),
 	readline.PcItem("diff"),
-
+	readline.PcItem("profile"),
+	readline.PcItem("print_bc"),
+	readline.PcItem("print_block"),
+	readline.PcItem("print_tree"),
+	readline.PcItem("print_height"),
+	readline.PcItem("print_tx"),
 	readline.PcItem("mempool_flush"),
 	readline.PcItem("mempool_delete_tx"),
 	readline.PcItem("mempool_print"),

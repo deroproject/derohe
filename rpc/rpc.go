@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -223,7 +224,15 @@ func (args Arguments) MarshalBinary() (data []byte, err error) {
 func (args *Arguments) UnmarshalBinary(data []byte) (err error) {
 	localmap := map[string]interface{}{}
 
-	if err = dec.Unmarshal(data, &localmap); err != nil {
+	// Decode exactly the FIRST CBOR item and ignore any trailing bytes. CheckPack pads
+	// every payload-0 to its size limit with random trailing bytes, so the packed buffer
+	// is one CBOR map followed by pad. fxamacker/cbor v2.4.0's Unmarshal tolerates that
+	// trailing pad, but v2.7+ made Unmarshal return ExtraneousDataError on remaining bytes
+	// (UnmarshalFirst became the opt-in tolerant API). A version bump past ~v2.7 would make
+	// dec.Unmarshal here fail on EVERY padded payload-0, silently orphaning all messaging.
+	// A Decoder reads a single item and stops, so this is tolerant of the pad in EVERY cbor
+	// version with no dependency pin — the version-agnostic equivalent of UnmarshalFirst.
+	if err = dec.NewDecoder(bytes.NewReader(data)).Decode(&localmap); err != nil {
 		return err
 	}
 

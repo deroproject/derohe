@@ -110,7 +110,11 @@ func Connect(endpoint string) (err error) {
 	input_output := rwc.New(rpc_client.WS)
 	rpc_client.RPC = jrpc2.NewClient(channel.RawJSON(input_output, input_output), &jrpc2.ClientOptions{OnNotify: Notify_broadcaster})
 
-	return test_connectivity()
+	if err = test_connectivity(); err != nil {
+		Connected = false
+		return err
+	}
+	return nil
 }
 
 func GetRPCClient() *Client {

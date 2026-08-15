@@ -74,7 +74,7 @@ func (connection *Connection) dispatch_test_handshake() {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	if err := connection.Client.CallWithContext(ctx, "Peer.Handshake", request, &response); err != nil {
-		connection.logger.V(4).Error(err, "cannot handshake")
+		connection.logger.V(4).Info("cannot handshake", "error", err.Error())
 		connection.exit()
 		return
 	}

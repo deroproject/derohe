@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package main is an example of using funcr.
 package main
 
 import (
@@ -45,6 +46,7 @@ func main() {
 		funcr.Options{
 			LogCaller:    funcr.All,
 			LogTimestamp: true,
+			Verbosity:    1,
 		})
 	example(log.WithValues("module", "example"))
 }

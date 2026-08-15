@@ -16,18 +16,20 @@
 
 package p2p
 
-import "fmt"
-import "time"
-import "math/big"
-import "sync/atomic"
+import (
+	"fmt"
+	"math/big"
+	"sync/atomic"
+	"time"
 
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/errormsg"
-import "github.com/deroproject/derohe/blockchain"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/blockchain"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/errormsg"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/transaction"
+)
 
 // used to satisfy difficulty interface
 type MemorySource struct {
@@ -347,6 +349,14 @@ func (connection *Connection) process_object_response(response Objects, sent int
 				}
 			}
 			cbl.Txs = append(cbl.Txs, &tx)
+
+			// apply HF3 fixes to allow stuck nodes to catch up
+			if bl.Height < uint64(globals.Config.MAJOR_HF3_HEIGHT) {
+				if t, ok := blockchain.HF3_Affected_Txs[tx.GetHash().String()]; ok {
+					chain.Verify_Transaction_NonCoinbase(&tx)
+					t.Parity = (bl.Height > t.Height) == t.Tx_Parity
+				}
+			}
 		}
 
 		// check if we can add ourselves to chain
@@ -388,11 +398,14 @@ func (connection *Connection) process_object_response(response Objects, sent int
 
 			return nil
 		}
-		
+
 		// too old TXs will be ignored for mining, but we should check incoming TX here to avoid high system load
-		if uint64(chain.Get_Height()) > tx.Height+blockchain.TX_VALIDITY_HEIGHT {
-			connection.logger.V(2).Error(err, "Incoming TX is too far in the past", "txid", tx.GetHash().String())
-			continue
+		// exclude registration txs from this check as they provide no height
+		if tx.TransactionType != transaction.REGISTRATION {
+			if uint64(chain.Get_Height()) > tx.Height+blockchain.TX_VALIDITY_HEIGHT {
+				connection.logger.V(2).Error(err, "Incoming TX is too far in the past", "txid", tx.GetHash().String())
+				continue
+			}
 		}
 
 		if !chain.Mempool.Mempool_TX_Exist(tx.GetHash()) { // we still donot have it, so try to process it

@@ -1,5 +1,5 @@
 # Welcome to DERO
-[Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [GitHub](https://github.com/deroproject/derohe) [Explorer](https://testnetexplorer.dero.io) [Wiki](https://wiki.dero.io) [Web Wallet](https://wallet.dero.io/)
+[Twitter](https://twitter.com/DeroProject) [Discord](https://discord.gg/H95TJDp) [Matrix](https://matrix.to/#/#general:matrix.dero.live) [GitHub](https://github.com/DEROFDN/derohe) [Explorer](https://explorer.derofoundation.org) [Wiki](https://wiki.dero.io)
 
 DERO is a blockchain with Smart Contracts preserving your privacy through multiple features while staying fast, secure, and accessible to all people easily.
 
@@ -155,7 +155,7 @@ For specific details of current DERO core (daemon) implementation and capabiliti
 
 - **Pederson Commitment**: (Part of ring confidential transactions): Pederson commitment algorithm is a cryptographic primitive that allows user to commit to a chosen value while keeping it hidden to others. Pederson commitment is used to hide all amounts without revealing the actual amount. It is a homomorphic commitment scheme.
 
-- **Homomorphic Encryption**: Homomorphic Encryption is used to to do operations such as addition/substraction to settle balances with data being always encrypted (Balances are never decrypted before/during/after operations in any form.).
+- **Homomorphic Encryption**: Homomorphic Encryption is used to do operations such as addition/substraction to settle balances with data being always encrypted (Balances are never decrypted before/during/after operations in any form.).
 
 - **Homomorphic Ring Confidential Transactions**: Gives untraceability, privacy and fungibility while making sure that the system is stable and secure.
 
@@ -195,7 +195,7 @@ For specific details of current DERO core (daemon) implementation and capabiliti
 
 #### **Erasure Coded Blocks**
 
-Traditional Blockchains process blocks as single unit of computation(if a double-spend tx occurs within the block, entire block is rejected). As soon as a block is found, it is sent to all its peers.DERO blockchain erasure codes the block into 48 chunks, dispersing and chunks are dispersed to peers randomly.Any peer receiving any 16 chunks( from 48 chunks) can regerate the block and thus lower overheads and lower propagation time.
+Traditional Blockchains process blocks as single unit of computation(if a double-spend tx occurs within the block, entire block is rejected). As soon as a block is found, it is sent to all its peers.DERO blockchain erasure codes the block into 48 chunks, dispersing and chunks are dispersed to peers randomly.Any peer receiving any 16 chunks (from 48 chunks) can regenerate the block and thus lower overheads and lower propagation time.
 
 #### Client Protocol
 
@@ -208,7 +208,7 @@ DERO blockchain is completely private, so anyone cannot view, confirm, verify an
 So to prove any transaction you require *TXID* and *deroproof*.
 deroproof can be obtained using `get_tx_key` command in dero-wallet-cli.
 
-Enter the *TXID* and *deroproof* in [DERO Explorer](https://testnetexplorer.dero.io)
+Enter the *TXID* and *deroproof* in [DERO Explorer](https://explorer.derofoundation.org)
 ![DERO Explorer Proving Transaction](https://github.com/deroproject/documentation/raw/master/images/explorer-prove-tx.png)
 
 ## DERO Installation
@@ -219,18 +219,21 @@ DERO is written in golang and very easy to install both from source and binary.
 
 First you need to install Golang if not already, minimum version required for Golang is 1.17.
 
-In go workspace, execute:
-`go get -u github.com/deroproject/derohe/...`
+Clone the repository and build the binaries:
 
-When the command has finished, check go workspace bin folder for binaries.
-For example, on Linux machine the following binaries will be created:
--  `derod-linux-amd64`: DERO Daemon
--  `dero-wallet-cli-linux-amd64`: DERO CLI Wallet
--  `explorer-linux-amd64`: DERO Explorer (Yes, DERO has prebuilt personal explorer also for advance privacy users)
+```bash
+git clone https://github.com/deroproject/derohe.git
+cd derohe
+go build -o derod ./cmd/derod
+go build -o dero-wallet-cli ./cmd/dero-wallet-cli
+go build -o explorer ./cmd/explorer
+```
+
+The resulting binaries (`derod`, `dero-wallet-cli`, `explorer`) will be in the current directory.
 
 ### Installation From Binary
 
-Download [DERO binaries](https://github.com/deroproject/derohe/releases)  for ARM, INTEL, MAC platform and Windows, Mac, FreeBSD, OpenBSD, Linux (or any others availables platforms) operating systems.
+Download [DERO binaries](https://github.com/DEROFDN/derohe/releases) for ARM, INTEL, MAC, Windows, Mac, FreeBSD, OpenBSD, Linux (and other available platforms).
 
 ### Running DERO Daemon
 
@@ -257,7 +260,7 @@ If DERO daemon is not running start DERO wallet with --remote option like follow
 
 ### DERO Explorer
 
-[DERO Explorer](https://explorer.dero.io/) is used to check and confirm transaction on DERO Network.
+[DERO Explorer](https://explorer.derofoundation.org) is used to check and confirm transactions on the DERO network.
 
 DERO users can run their own explorer on local machine and can [browse](http://127.0.0.1:8080) on local machine port 8080.
 

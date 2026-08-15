@@ -1112,12 +1112,14 @@ func valid_registration_or_display_error(l *readline.Instance, wallet *walletapi
 // show the transfers to the user originating from this account
 func show_transfers(l *readline.Instance, wallet *walletapi.Wallet_Disk, scid crypto.Hash, limit uint64) {
 
-	if wallet.GetMode() && walletapi.IsDaemonOnline() { // if wallet is in offline mode , we cannot do anything
-		if err := wallet.Sync_Wallet_Memory_With_Daemon_internal(scid); err != nil {
-			logger.Error(err, "Error syncing wallet", "scid", scid.String())
-			return
+	/*
+		if wallet.GetMode() && walletapi.IsDaemonOnline() { // if wallet is in offline mode , we cannot do anything
+			if err := wallet.Sync_Wallet_Memory_With_Daemon_internal(scid); err != nil {
+				logger.Error(err, "Error syncing wallet", "scid", scid.String())
+				return
+			}
 		}
-	}
+	*/
 
 	in := true
 	out := true

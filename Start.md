@@ -1,6 +1,6 @@
 # DERO Installation
 
-Official source code is available here: https://github.com/deroproject/derohe
+Official source code is available here: https://github.com/DEROFDN/derohe
 
 DERO is written in golang and is very easy to install both from source and binary.
 
@@ -8,20 +8,23 @@ DERO is written in golang and is very easy to install both from source and binar
 
 First you need to install Golang if not already, minimum version required for Golang is 1.17.
 
-In go workspace, execute:
-`go get -u github.com/deroproject/derohe/...`
+Clone the repository and build the binaries:
 
-When the command has finished, check go workspace bin folder for binaries.
-For example, on Linux machine the following binaries will be created:
-- `derod-linux-amd64`: DERO Daemon
-- `dero-wallet-cli-linux-amd64`: DERO CLI Wallet
--  `explorer-linux-amd64`: DERO Explorer  (Yes, DERO has prebuilt personal explorer also for advance privacy users)
+```bash
+git clone https://github.com/DEROFDN/derohe.git
+cd derohe
+go build -o derod ./cmd/derod
+go build -o dero-wallet-cli ./cmd/dero-wallet-cli
+go build -o explorer ./cmd/explorer
+```
+
+The resulting binaries (`derod`, `dero-wallet-cli`, `explorer`) will be in the current directory.
 
 ## From Binary
 
 Download DERO binaries for ARM, INTEL, MAC platform and Windows, Mac, FreeBSD, OpenBSD, Linux (or any others availables platforms) operating systems.
 
-Official link for releases is https://github.com/deroproject/derohe/releases
+Official link for releases is https://github.com/DEROFDN/derohe/releases
 
 ## Running DERO Daemon
 

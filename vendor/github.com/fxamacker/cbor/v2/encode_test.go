@@ -260,6 +260,11 @@ var marshalTests = []marshalTest{
 	{hexDecode("f4"), []interface{}{false}},
 	{hexDecode("f5"), []interface{}{true}},
 	{hexDecode("f6"), []interface{}{nil, []byte(nil), []int(nil), map[uint]bool(nil), (*int)(nil), io.Reader(nil)}},
+	// simple values
+	{hexDecode("e0"), []interface{}{SimpleValue(0)}},
+	{hexDecode("f0"), []interface{}{SimpleValue(16)}},
+	{hexDecode("f820"), []interface{}{SimpleValue(32)}},
+	{hexDecode("f8ff"), []interface{}{SimpleValue(255)}},
 	// nan, positive and negative inf
 	{hexDecode("f97c00"), []interface{}{math.Inf(1)}},
 	{hexDecode("f97e00"), []interface{}{math.NaN()}},
@@ -2852,6 +2857,51 @@ func TestInvalidInfConvert(t *testing.T) {
 	}
 }
 
+func TestNilContainers(t *testing.T) {
+	nilContainersNull := EncOptions{NilContainers: NilContainerAsNull}
+	nilContainersEmpty := EncOptions{NilContainers: NilContainerAsEmpty}
+
+	testCases := []struct {
+		name         string
+		v            interface{}
+		opts         EncOptions
+		wantCborData []byte
+	}{
+		{"map(nil) as CBOR null", map[string]string(nil), nilContainersNull, hexDecode("f6")},
+		{"map(nil) as CBOR empty map", map[string]string(nil), nilContainersEmpty, hexDecode("a0")},
+
+		{"slice(nil) as CBOR null", []int(nil), nilContainersNull, hexDecode("f6")},
+		{"slice(nil) as CBOR empty array", []int(nil), nilContainersEmpty, hexDecode("80")},
+
+		{"[]byte(nil) as CBOR null", []byte(nil), nilContainersNull, hexDecode("f6")},
+		{"[]byte(nil) as CBOR empty bytestring", []byte(nil), nilContainersEmpty, hexDecode("40")},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			em, err := tc.opts.EncMode()
+			if err != nil {
+				t.Errorf("EncMode() returned an error %v", err)
+			}
+			b, err := em.Marshal(tc.v)
+			if err != nil {
+				t.Errorf("Marshal(%v) returned error %v", tc.v, err)
+			} else if !bytes.Equal(b, tc.wantCborData) {
+				t.Errorf("Marshal(%v) = 0x%x, want 0x%x", tc.v, b, tc.wantCborData)
+			}
+		})
+	}
+}
+
+func TestInvalidNilContainers(t *testing.T) {
+	wantErrorMsg := "cbor: invalid NilContainers 100"
+	_, err := EncOptions{NilContainers: NilContainersMode(100)}.EncMode()
+	if err == nil {
+		t.Errorf("EncMode() didn't return an error")
+	} else if err.Error() != wantErrorMsg {
+		t.Errorf("EncMode() returned error %q, want %q", err.Error(), wantErrorMsg)
+	}
+}
+
 // Keith Randall's workaround for constant propagation issue https://github.com/golang/go/issues/36400
 const (
 	// qnan 32 bits constants
@@ -2882,29 +2932,29 @@ const (
 
 var (
 	// qnan 32 bits variables
-	qnanVar0xffc00001 uint32 = qnanConst0xffc00001
-	qnanVar0x7fc00001 uint32 = qnanConst0x7fc00001
-	qnanVar0xffc02000 uint32 = qnanConst0xffc02000
-	qnanVar0x7fc02000 uint32 = qnanConst0x7fc02000
+	qnanVar0xffc00001 = qnanConst0xffc00001
+	qnanVar0x7fc00001 = qnanConst0x7fc00001
+	qnanVar0xffc02000 = qnanConst0xffc02000
+	qnanVar0x7fc02000 = qnanConst0x7fc02000
 	// snan 32 bits variables
-	snanVar0xff800001 uint32 = snanConst0xff800001
-	snanVar0x7f800001 uint32 = snanConst0x7f800001
-	snanVar0xff802000 uint32 = snanConst0xff802000
-	snanVar0x7f802000 uint32 = snanConst0x7f802000
+	snanVar0xff800001 = snanConst0xff800001
+	snanVar0x7f800001 = snanConst0x7f800001
+	snanVar0xff802000 = snanConst0xff802000
+	snanVar0x7f802000 = snanConst0x7f802000
 	// qnan 64 bits variables
-	qnanVar0xfff8000000000001 uint64 = qnanConst0xfff8000000000001
-	qnanVar0x7ff8000000000001 uint64 = qnanConst0x7ff8000000000001
-	qnanVar0xfff8000020000000 uint64 = qnanConst0xfff8000020000000
-	qnanVar0x7ff8000020000000 uint64 = qnanConst0x7ff8000020000000
-	qnanVar0xfffc000000000000 uint64 = qnanConst0xfffc000000000000
-	qnanVar0x7ffc000000000000 uint64 = qnanConst0x7ffc000000000000
+	qnanVar0xfff8000000000001 = qnanConst0xfff8000000000001
+	qnanVar0x7ff8000000000001 = qnanConst0x7ff8000000000001
+	qnanVar0xfff8000020000000 = qnanConst0xfff8000020000000
+	qnanVar0x7ff8000020000000 = qnanConst0x7ff8000020000000
+	qnanVar0xfffc000000000000 = qnanConst0xfffc000000000000
+	qnanVar0x7ffc000000000000 = qnanConst0x7ffc000000000000
 	// snan 64 bits variables
-	snanVar0xfff0000000000001 uint64 = snanConst0xfff0000000000001
-	snanVar0x7ff0000000000001 uint64 = snanConst0x7ff0000000000001
-	snanVar0xfff0000020000000 uint64 = snanConst0xfff0000020000000
-	snanVar0x7ff0000020000000 uint64 = snanConst0x7ff0000020000000
-	snanVar0xfff4000000000000 uint64 = snanConst0xfff4000000000000
-	snanVar0x7ff4000000000000 uint64 = snanConst0x7ff4000000000000
+	snanVar0xfff0000000000001 = snanConst0xfff0000000000001
+	snanVar0x7ff0000000000001 = snanConst0x7ff0000000000001
+	snanVar0xfff0000020000000 = snanConst0xfff0000020000000
+	snanVar0x7ff0000020000000 = snanConst0x7ff0000020000000
+	snanVar0xfff4000000000000 = snanConst0xfff4000000000000
+	snanVar0x7ff4000000000000 = snanConst0x7ff4000000000000
 )
 
 func TestNaNConvert(t *testing.T) {
@@ -3306,6 +3356,7 @@ func TestEncOptions(t *testing.T) {
 		Time:          TimeRFC3339Nano,
 		TimeTag:       EncTagRequired,
 		IndefLength:   IndefLengthForbidden,
+		NilContainers: NilContainerAsNull,
 		TagsMd:        TagsAllowed,
 	}
 	em, err := opts1.EncMode()
@@ -3588,5 +3639,63 @@ func TestMarshalNegBigInt(t *testing.T) {
 				t.Errorf("Marshal(%v) = 0x%x, want 0x%x", tc.value, b, tc.cborDataBigInt)
 			}
 		})
+	}
+}
+
+func TestStructWithSimpleValueFields(t *testing.T) {
+	type T struct {
+		SV1 SimpleValue `cbor:",omitempty"` // omit empty
+		SV2 SimpleValue
+	}
+
+	v1 := T{}
+	want1 := []byte{0xa1, 0x63, 0x53, 0x56, 0x32, 0xe0}
+
+	v2 := T{SV1: SimpleValue(1), SV2: SimpleValue(255)}
+	want2 := []byte{
+		0xa2,
+		0x63, 0x53, 0x56, 0x31, 0xe1,
+		0x63, 0x53, 0x56, 0x32, 0xf8, 0xff,
+	}
+
+	em, _ := EncOptions{}.EncMode()
+	dm, _ := DecOptions{}.DecMode()
+	tests := []roundTripTest{
+		{"default values", v1, want1},
+		{"non-default values", v2, want2}}
+	testRoundTrip(t, tests, em, dm)
+}
+
+func TestMapWithSimpleValueKey(t *testing.T) {
+	data := []byte{0xa2, 0x00, 0x00, 0xe0, 0x00} // {0: 0, simple(0): 0}
+
+	// Decode CBOR map with positive integer 0 and simple value 0 as keys.
+	// No map key duplication is detected because keys are of different CBOR types.
+	// RFC 8949 Section 5.6.1 says "a simple value 2 is not equivalent to an integer 2".
+	decOpts := DecOptions{
+		DupMapKey: DupMapKeyEnforcedAPF, // duplicated key not allowed
+	}
+	decMode, _ := decOpts.DecMode()
+
+	var v map[interface{}]interface{}
+	err := decMode.Unmarshal(data, &v)
+	if err != nil {
+		t.Errorf("Unmarshal(0x%x) returned error %v", data, err)
+	}
+
+	// Encode decoded Go map.
+	encOpts := EncOptions{
+		Sort: SortBytewiseLexical,
+	}
+	encMode, _ := encOpts.EncMode()
+
+	encodedData, err := encMode.Marshal(v)
+	if err != nil {
+		t.Errorf("Marshal(%v) returned error %v", v, err)
+	}
+
+	// Test roundtrip produces identical CBOR data.
+	if !bytes.Equal(data, encodedData) {
+		t.Errorf("Marshal(%v) = 0x%x, want 0x%x", v, encodedData, data)
 	}
 }

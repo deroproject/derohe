@@ -1,6 +1,16 @@
 {{define "notfound_page"}}
 {{ template "header" . }}
 
-<h2 style="margin-bottom: 0px"><font color="red">No details found in database</font></h2>
+<div class="not-found-container">
+    <div class="not-found-icon">⚠️</div>
+    <h1 class="not-found-title">Not Found</h1>
+    <p class="not-found-message">
+        The requested block or transaction could not be found in the database.
+        <br>
+        Please verify the hash or height and try again.
+    </p>
+    <a href="/" class="not-found-back-btn">← Return to Explorer</a>
+</div>
+
 {{ template "footer" . }}  
 {{end}}

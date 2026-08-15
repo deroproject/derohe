@@ -1,8 +1,31 @@
+// The MIT License (MIT)
+//
+// Copyright (c) 2015 xtaci
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 package kcp
 
 import (
+	"container/heap"
 	"io"
-	"net"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -18,11 +41,13 @@ func TestLossyConn1(t *testing.T) {
 	client, err := lossyconn.NewLossyConn(0.1, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 
 	server, err := lossyconn.NewLossyConn(0.1, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 	testlink(t, client, server, 1, 10, 2, 1)
 }
@@ -33,11 +58,13 @@ func TestLossyConn2(t *testing.T) {
 	client, err := lossyconn.NewLossyConn(0.2, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 
 	server, err := lossyconn.NewLossyConn(0.2, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 	testlink(t, client, server, 1, 10, 2, 1)
 }
@@ -48,11 +75,13 @@ func TestLossyConn3(t *testing.T) {
 	client, err := lossyconn.NewLossyConn(0.3, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 
 	server, err := lossyconn.NewLossyConn(0.3, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 	testlink(t, client, server, 1, 10, 2, 1)
 }
@@ -63,11 +92,13 @@ func TestLossyConn4(t *testing.T) {
 	client, err := lossyconn.NewLossyConn(0.1, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 
 	server, err := lossyconn.NewLossyConn(0.1, 100)
 	if err != nil {
 		t.Fatal(err)
+		return
 	}
 	testlink(t, client, server, 1, 10, 2, 0)
 }
@@ -96,11 +127,11 @@ func testlink(t *testing.T, client *lossyconn.LossyConn, server *lossyconn.Lossy
 		}
 	}
 
-	echoTester := func(s *UDPSession, raddr net.Addr) {
+	echoTester := func(s *UDPSession) {
 		s.SetNoDelay(nodelay, interval, resend, nc)
 		buf := make([]byte, 64)
 		var rtt time.Duration
-		for i := 0; i < repeat; i++ {
+		for range repeat {
 			start := time.Now()
 			s.Write(buf)
 			io.ReadFull(s, buf)
@@ -114,22 +145,106 @@ func testlink(t *testing.T, client *lossyconn.LossyConn, server *lossyconn.Lossy
 	}
 
 	go echoServer(listener)
-	echoTester(sess, server.LocalAddr())
+	echoTester(sess)
 }
 
 func BenchmarkFlush(b *testing.B) {
 	kcp := NewKCP(1, func(buf []byte, size int) {})
-	kcp.snd_buf = make([]segment, 1024)
-	for k := range kcp.snd_buf {
-		kcp.snd_buf[k].xmit = 1
-		kcp.snd_buf[k].resendts = currentMs() + 10000
+	kcp.snd_buf = NewRingBuffer[segment](1024)
+	for range kcp.snd_buf.MaxLen() {
+		kcp.snd_buf.Push(segment{xmit: 1, resendts: currentMs() + 10000})
 	}
-	b.ResetTimer()
+
 	b.ReportAllocs()
 	var mu sync.Mutex
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		mu.Lock()
-		kcp.flush(false)
+		kcp.flush(IKCP_FLUSH_FULL)
 		mu.Unlock()
+	}
+}
+
+// TestSegmentHeap tests the segmentHeap data structure
+func TestSegmentHeap(t *testing.T) {
+	h := newSegmentHeap()
+	segments := []segment{
+		{sn: 1},
+		{sn: 2},
+		{sn: 3},
+	}
+
+	for _, seg := range segments {
+		heap.Push(h, seg)
+		t.Logf("pushed segment with seq %d", seg.sn)
+	}
+
+	if h.Len() != len(segments) {
+		t.Errorf("expected length %d, got %d", len(segments), h.Len())
+	}
+
+	for i := range segments {
+		seg := heap.Pop(h).(segment)
+		if seg.sn != segments[i].sn {
+			t.Errorf("expected seq %d, got %d", segments[i].sn, seg.sn)
+		}
+	}
+}
+
+// BenchmarkDebugLog test DebugLog cost time with build tags debug on/off
+// trace log on:
+//
+//	go test -benchmem -run=^$ -bench ^BenchmarkDebugLog$ -tags debug
+//
+// trace log off:
+func TestSetMtuBoundary(t *testing.T) {
+	kcp := NewKCP(0, func(buf []byte, size int) {})
+
+	tests := []struct {
+		name string
+		mtu  int
+		want int // 0 = success, -1 = failure
+	}{
+		{"negative", -1, -1},
+		{"zero", 0, -1},
+		{"below overhead", IKCP_OVERHEAD - 1, -1},
+		{"equal overhead", IKCP_OVERHEAD, -1},
+		{"one above overhead (minimum valid)", IKCP_OVERHEAD + 1, 0},
+		{"typical MTU", 1400, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := kcp.SetMtu(tt.mtu)
+			if got != tt.want {
+				t.Errorf("SetMtu(%d) = %d, want %d", tt.mtu, got, tt.want)
+			}
+		})
+	}
+
+	// verify mss is correctly derived after a valid SetMtu
+	kcp.SetMtu(1400)
+	if kcp.mss != 1400-IKCP_OVERHEAD {
+		t.Errorf("mss = %d, want %d", kcp.mss, 1400-IKCP_OVERHEAD)
+	}
+
+	// minimum valid MTU yields mss = 1
+	kcp.SetMtu(IKCP_OVERHEAD + 1)
+	if kcp.mss != 1 {
+		t.Errorf("mss = %d, want 1 for minimum valid MTU", kcp.mss)
+	}
+}
+
+// go test -benchmem -run=^$ -bench ^BenchmarkDebugLog$
+func BenchmarkDebugLog(b *testing.B) {
+	kcp := &KCP{
+		conv:    123,
+		snd_wnd: 456,
+	}
+	kcp.log = slog.Debug
+
+	for b.Loop() {
+		// In release mode, this line of code will be completely 'erased' by the compiler,
+		// as if it doesn't exist at all, and even the parameter's interface conversion will not occur.
+		kcp.debugLog(IKCP_LOG_OUT_WASK, "conv", kcp.conv, "wnd", kcp.snd_wnd)
 	}
 }

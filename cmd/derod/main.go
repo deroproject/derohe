@@ -145,7 +145,7 @@ func main() {
 	if _, ok := globals.Arguments["--log-dir"]; ok && globals.Arguments["--log-dir"] != nil {
 		logdir = globals.Arguments["--log-dir"].(string)
 		filename = filepath.Base(exename) + ".log"
-		filename = filepath.Join(logdir,filename)
+		filename = filepath.Join(logdir, filename)
 	}
 
 	globals.InitializeLog(l.Stdout(), &lumberjack.Logger{
@@ -460,6 +460,9 @@ restart_loop:
 				logger.Info("will use", "integrator_address", chain.IntegratorAddress().String())
 			}
 
+		case command == "diff":
+			fmt.Printf("Current difficulty: %s\n", chain.Get_Difficulty_At_Tips(chain.Get_TIPS()).String())
+
 		case command == "print_bc":
 
 			logger.Info("printing block chain")
@@ -558,7 +561,7 @@ restart_loop:
 					count++
 				}
 			}
-			logger.Info("flushed mempool to driectory", "count", count, "dir", filepath.Join(globals.GetDataDirectory(), "mempool"))
+			logger.Info("flushed mempool to directory", "count", count, "dir", filepath.Join(globals.GetDataDirectory(), "mempool"))
 
 		case command == "mempool_print":
 			chain.Mempool.Mempool_Print()
@@ -851,7 +854,7 @@ restart_loop:
 				}
 
 			} else {
-				fmt.Printf("print_tx  needs a single transaction id as arugument\n")
+				fmt.Printf("print_tx  needs a single transaction id as argument\n")
 			}
 
 		case strings.ToLower(line) == "status":
@@ -860,9 +863,7 @@ restart_loop:
 			mempool_tx_count := len(chain.Mempool.Mempool_List_TX())
 			regpool_tx_count := len(chain.Regpool.Regpool_List_TX())
 
-			supply := uint64(0)
-
-			supply = (config.PREMINE + blockchain.CalcBlockReward(uint64(chain.Get_Height()))*uint64(chain.Get_Height())) // valid for few years
+			supply := blockchain.CalcSupply(uint64(chain.Get_Height()))
 
 			hostname, _ := os.Hostname()
 			fmt.Printf("STATUS MENU for DERO HE Node - Hostname: %s\n\n", hostname)
@@ -1167,29 +1168,39 @@ func prettyprint_json(b []byte) []byte {
 
 func usage(w io.Writer) {
 	io.WriteString(w, "commands:\n")
-	io.WriteString(w, "\t\033[1mhelp\033[0m\t\tthis help\n")
-	io.WriteString(w, "\t\033[1mdiff\033[0m\t\tShow difficulty\n")
-	io.WriteString(w, "\t\033[1mprint_bc\033[0m\tPrint blockchain info in a given blocks range, print_bc <begin_height> <end_height>\n")
-	io.WriteString(w, "\t\033[1mprint_block\033[0m\tPrint block, print_block <block_hash> or <block_height>\n")
-	io.WriteString(w, "\t\033[1mprint_tx\033[0m\tPrint transaction, print_tx <transaction_hash>\n")
-	io.WriteString(w, "\t\033[1mstatus\033[0m\t\tShow general information\n")
-	io.WriteString(w, "\t\033[1mpeer_list\033[0m\tPrint peer list\n")
-	io.WriteString(w, "\t\033[1msyncinfo\033[0m\tPrint information about connected peers and their state\n")
-	io.WriteString(w, "\t\033[1mbye\033[0m\t\tQuit the daemon\n")
-	io.WriteString(w, "\t\033[1mban\033[0m\t\tBan specific ip from making any connections\n")
-	io.WriteString(w, "\t\033[1munban\033[0m\t\tRevoke restrictions on previously banned ips\n")
-	io.WriteString(w, "\t\033[1mbans\033[0m\t\tPrint current ban list\n")
-	io.WriteString(w, "\t\033[1mmempool_print\033[0m\t\tprint mempool contents\n")
+	io.WriteString(w, "\t\033[1mhelp\033[0m\t\t\tthis help\n")
+	io.WriteString(w, "\t\033[1mban\033[0m\t\t\tBan specific ip from making any connections, ban <ip> [seconds]\n")
+	io.WriteString(w, "\t\033[1mbans\033[0m\t\t\tPrint current ban list\n")
+	io.WriteString(w, "\t\033[1mblock_export\033[0m\t\tExport a block to /tmp, block_export <block_hash>\n")
+	io.WriteString(w, "\t\033[1mblock_import\033[0m\t\tImport a block from /tmp, block_import <block_hash>\n")
+	io.WriteString(w, "\t\033[1mdiff\033[0m\t\t\tShow difficulty\n")
+	io.WriteString(w, "\t\033[1mfix\033[0m\t\t\tRun corruption repair on the topo store\n")
+	io.WriteString(w, "\t\033[1mgc\033[0m\t\t\tTrigger garbage collection\n")
+	io.WriteString(w, "\t\033[1mgraph\033[0m\t\t\tWrite block chain graph to /tmp/graph.dot, graph <start_height> <end_height>\n")
+	io.WriteString(w, "\t\033[1mheap\033[0m\t\t\tWrite heap dump to file, heap <filename>\n")
 	io.WriteString(w, "\t\033[1mmempool_delete_tx\033[0m\t\tDelete specific tx from mempool\n")
-	io.WriteString(w, "\t\033[1mmempool_flush\033[0m\t\tFlush regpool\n")
-	io.WriteString(w, "\t\033[1mregpool_print\033[0m\t\tprint regpool contents\n")
+	io.WriteString(w, "\t\033[1mmempool_dump\033[0m\t\tDump mempool transactions to disk\n")
+	io.WriteString(w, "\t\033[1mmempool_flush\033[0m\t\tFlush mempool\n")
+	io.WriteString(w, "\t\033[1mmempool_print\033[0m\t\tPrint mempool contents\n")
+	io.WriteString(w, "\t\033[1mparse_block\033[0m\t\tParse and print a block given in hex, parse_block <hex>\n")
+	io.WriteString(w, "\t\033[1mpeer_list\033[0m\t\tPrint peer list\n")
+	io.WriteString(w, "\t\033[1mpop\033[0m\t\t\tPop n blocks from the top of the chain, pop [n]\n")
+	io.WriteString(w, "\t\033[1mprint_bc\033[0m\t\tPrint blockchain info in a given blocks range, print_bc <begin_height> <end_height>\n")
+	io.WriteString(w, "\t\033[1mprint_block\033[0m\t\tPrint block, print_block <block_hash> or <block_height>\n")
+	io.WriteString(w, "\t\033[1mprint_tx\033[0m\t\tPrint transaction, print_tx <transaction_hash>\n")
+	io.WriteString(w, "\t\033[1mprofile\033[0m\t\t\tStart CPU profiling to file\n")
 	io.WriteString(w, "\t\033[1mregpool_delete_tx\033[0m\t\tDelete specific tx from regpool\n")
-	io.WriteString(w, "\t\033[1mregpool_flush\033[0m\t\tFlush mempool\n")
-	io.WriteString(w, "\t\033[1msetintegratoraddress\033[0m\t\tChange current integrated address\n")
-
-	io.WriteString(w, "\t\033[1mversion\033[0m\t\tShow version\n")
-	io.WriteString(w, "\t\033[1mexit\033[0m\t\tQuit the daemon\n")
-	io.WriteString(w, "\t\033[1mquit\033[0m\t\tQuit the daemon\n")
+	io.WriteString(w, "\t\033[1mregpool_flush\033[0m\t\tFlush regpool\n")
+	io.WriteString(w, "\t\033[1mregpool_print\033[0m\t\tPrint regpool contents\n")
+	io.WriteString(w, "\t\033[1msetintegratoraddress\033[0m\tChange current integrator address\n")
+	io.WriteString(w, "\t\033[1msleep\033[0m\t\t\tSleep console for 1 second\n")
+	io.WriteString(w, "\t\033[1mstatus\033[0m\t\t\tShow general information\n")
+	io.WriteString(w, "\t\033[1msyncinfo\033[0m\t\tPrint information about connected peers and their state\n")
+	io.WriteString(w, "\t\033[1munban\033[0m\t\t\tRevoke restrictions on previously banned ips\n")
+	io.WriteString(w, "\t\033[1mversion\033[0m\t\t\tShow version\n")
+	io.WriteString(w, "\t\033[1mbye\033[0m\t\t\tQuit the daemon\n")
+	io.WriteString(w, "\t\033[1mexit\033[0m\t\t\tQuit the daemon\n")
+	io.WriteString(w, "\t\033[1mquit\033[0m\t\t\tQuit the daemon\n")
 
 }
 

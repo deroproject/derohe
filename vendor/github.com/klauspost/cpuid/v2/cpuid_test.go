@@ -34,7 +34,7 @@ func TestCPUID(t *testing.T) {
 	t.Log("PhysicalCores:", CPU.PhysicalCores)
 	t.Log("ThreadsPerCore:", CPU.ThreadsPerCore)
 	t.Log("LogicalCores:", CPU.LogicalCores)
-	t.Log("Family", CPU.Family, "Model:", CPU.Model)
+	t.Log("Family", CPU.Family, "Model:", CPU.Model, "Stepping:", CPU.Stepping)
 	t.Log("Features:", strings.Join(CPU.FeatureSet(), ","))
 	t.Log("Cacheline bytes:", CPU.CacheLine)
 	t.Log("L1 Instruction Cache:", CPU.Cache.L1I, "bytes")
@@ -242,4 +242,44 @@ func ExampleCPUInfo_Ia32TscAux() {
 	chip := (ecx & 0xFFF000) >> 12
 	core := ecx & 0xFFF
 	fmt.Println("Chip, Core:", chip, core)
+}
+
+func TestCombineFeatures(t *testing.T) {
+	cpu := CPU
+	for i := FeatureID(0); i < lastID; i++ {
+		if cpu.Has(i) != cpu.HasAll(CombineFeatures(i)) {
+			t.Errorf("id %d:%s mismatch", i, i.String())
+		}
+	}
+}
+
+func BenchmarkFlags(b *testing.B) {
+	var a bool
+	var cpu = CPU
+	b.Run("ids", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			a = cpu.Supports(CMOV, CMPXCHG8, X87, FXSR, MMX, SYSCALL, SSE, SSE2, CX16, LAHF, POPCNT, SSE3, SSE4, SSE42, SSSE3, AVX, AVX2, BMI1, BMI2, F16C, FMA3, LZCNT, MOVBE, OSXSAVE) || a
+		}
+		_ = a
+	})
+	b.Run("features", func(b *testing.B) {
+		f := CombineFeatures(CMOV, CMPXCHG8, X87, FXSR, MMX, SYSCALL, SSE, SSE2, CX16, LAHF, POPCNT, SSE3, SSE4, SSE42, SSSE3, AVX, AVX2, BMI1, BMI2, F16C, FMA3, LZCNT, MOVBE, OSXSAVE)
+		for i := 0; i < b.N; i++ {
+			a = cpu.HasAll(f) || a
+		}
+		_ = a
+	})
+	b.Run("id", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			a = cpu.Has(CMOV) || a
+		}
+		_ = a
+	})
+	b.Run("feature", func(b *testing.B) {
+		f := CombineFeatures(CMOV)
+		for i := 0; i < b.N; i++ {
+			a = cpu.HasAll(f) || a
+		}
+		_ = a
+	})
 }

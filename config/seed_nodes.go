@@ -20,19 +20,29 @@ package config
 
 // some seed nodes for mainnet (these seed node are not compliant with earlier protocols)
 // only version 2
+// Evaluated 2026-04-22 via multi-region KCP handshake test.
+// Gaps: Africa, Australia/Oceania, NA-West-Coast, EU-East.
 var Mainnet_seed_nodes = []string{
-	// "89.38.99.117:8443",
-	// "109.236.81.137:8080",
-	// "89.38.97.110:11011",
-	// "190.2.136.120:11011",
+	// EU West — France
 	"82.65.143.182:11011",
+	// EU West — Germany (non-standard port)
+	"85.214.253.170:58686",
+	// EU West — Netherlands
+	"38.180.116.63:11011",
+	// EU West — UK (alternate port)
+	"213.171.208.37:18089",
+	// South America — Argentina
+	"190.194.227.11:11011",
+	// North America East — Canada
 	"51.222.86.51:11011",
-	"204.12.199.25:11011",
-	"154.26.138.136:11011",
-	"66.85.74.214:11011",
+	// North America Central — USA (non-standard port)
+	"209.145.59.4:50404",
+	// Asia — Vietnam
+	"116.111.112.188:11011",
 }
 
 // some seed node for testnet
 var Testnet_seed_nodes = []string{
-	"212.8.242.60:40401",
+	"69.30.234.163:40401",
+	"testnet.derofoundation.co:40401",
 }

@@ -20,6 +20,8 @@ import "fmt"
 import "testing"
 import "strings"
 
+import "github.com/deroproject/derohe/cryptography/crypto"
+
 // we are covering atleast one test case each for all supported languages
 
 func Test_Wallet_Generation_and_Recovery(t *testing.T) {
@@ -154,7 +156,33 @@ func Test_Wallet_Generation_and_Recovery(t *testing.T) {
 		if err == nil {
 			t.Errorf("%s Account recovery failed err %s", test.name, err)
 		}
-
 	}
 
+}
+
+// Test_TokenAdd_NilEntriesNative guards against the nil-map panic that
+// TokenAdd hit on a freshly created/restored, not-yet-synced wallet where
+// account.EntriesNative is still nil (it is populated lazily during sync).
+// Regression test for PR #44.
+func Test_TokenAdd_NilEntriesNative(t *testing.T) {
+	w := &Wallet_Memory{account: &Account{Ringsize: 16, FeesMultiplier: 2.0}}
+	// account.EntriesNative is intentionally nil here (fresh/restored wallet).
+
+	var scid crypto.Hash
+	scid[0] = 1
+
+	if err := w.TokenAdd(scid); err != nil {
+		t.Fatalf("TokenAdd returned unexpected error on fresh wallet: %v", err)
+	}
+	if w.account.EntriesNative == nil {
+		t.Fatal("EntriesNative should have been initialized by TokenAdd")
+	}
+	if got := w.account.EntriesNative[scid]; got == nil {
+		t.Fatal("token entry should be a non-nil empty slice")
+	}
+
+	// a second add of the same scid must be rejected as already added
+	if err := w.TokenAdd(scid); err == nil {
+		t.Fatal("expected 'token already added' error on duplicate scid")
+	}
 }

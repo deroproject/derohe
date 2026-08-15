@@ -18,21 +18,22 @@ package dvm
 
 // this file implements necessary structure to  SC handling
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+	"math/big"
+	"math/rand"
+	"time"
 
-//import "bytes"
-//import "runtime/debug"
-import "encoding/binary"
-import "time"
-import "math/big"
-import "math/rand"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-
-import "golang.org/x/xerrors"
-import "github.com/deroproject/graviton"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/config" //import "bytes"
+	//import "runtime/debug"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/graviton"
+	"golang.org/x/xerrors"
+)
 
 //import "github.com/deroproject/derohe/transaction"
 
@@ -45,7 +46,7 @@ type Simulator struct {
 	Balances     map[string]map[string]uint64
 }
 
-func SimulatorInitialize(ss *graviton.Snapshot) *Simulator {
+func SimulatorInitialize(ss *graviton.Snapshot, topoHeight uint64) *Simulator {
 
 	var s Simulator
 	var err error
@@ -63,6 +64,7 @@ func SimulatorInitialize(ss *graviton.Snapshot) *Simulator {
 	}
 	s.ss = ss
 
+	s.height = topoHeight
 	s.balance_tree, err = ss.GetTree(config.BALANCE_TREE)
 	if err != nil {
 		panic(err)
@@ -89,9 +91,13 @@ func (s *Simulator) AccountAddBalance(addr rpc.Address, scid crypto.Hash, balanc
 
 func (s *Simulator) SCInstall(sc_code string, incoming_values map[crypto.Hash]uint64, SCDATA rpc.Arguments, signer_addr *rpc.Address, fees uint64) (scid crypto.Hash, gascompute, gasstorage uint64, err error) {
 	var blid crypto.Hash
-	rand.Seed(time.Now().Unix())
-	rand.Read(scid[:])
-	rand.Read(blid[:])
+	globals.Global_Random.Read(blid[:])
+	globals.Global_Random.Read(scid[:])
+
+	// avoid panic, because a Graviton tree can't start with a colon ':' (0x3a)
+	for scid[0] == 0x3a {
+		globals.Global_Random.Read(scid[:])
+	}
 
 	var sc SmartContract
 	if sc, _, err = ParseSmartContract(sc_code); err != nil {

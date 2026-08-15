@@ -102,11 +102,11 @@ var Dialer proxy.Dialer = proxy.Direct // for proxy and direct connections
 var Arguments = map[string]interface{}{}
 
 func InitNetwork() {
-	Config = config.Mainnet                    // default is mainnnet
-	if Arguments["--testnet"].(bool) == true { // setup testnet if requested
+	Config = config.Mainnet // default is mainnet
+	// Handle nil case: if --testnet not provided, defaults to mainnet
+	if testnet, ok := Arguments["--testnet"].(bool); ok && testnet {
 		Config = config.Testnet
 	}
-
 }
 
 // these 2 global variables control all log levels

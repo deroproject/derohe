@@ -39,6 +39,7 @@ func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 	result.Height = chain.Get_Height()
 	result.StableHeight = chain.Get_Stable_Height()
 	result.TopoHeight = chain.Load_TOPO_HEIGHT()
+	result.PrunedHeight = chain.LocatePruneTopo()
 
 	{
 		version, err := chain.ReadBlockSnapshotVersion(chain.Get_Top_ID())
@@ -78,8 +79,8 @@ func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 	//result.Dynamic_fee_per_kb = config.FEE_PER_KB
 	//result.Median_Block_Size = config.CRYPTONOTE_MAX_BLOCK_SIZE
 
-	result.Total_Supply = (config.PREMINE + blockchain.CalcBlockReward(uint64(result.TopoHeight))*uint64(result.TopoHeight)) // valid for few years
-	result.Total_Supply = result.Total_Supply / 100000                                                                       // only give deros remove fractional part
+	result.Total_Supply = blockchain.CalcSupply(uint64(chain.Get_Height()))
+	result.Total_Supply = result.Total_Supply / 100000 // only give deros remove fractional part
 
 	if globals.Config.Name != config.Mainnet.Name { // anything other than mainnet is testnet at this point in time
 		result.Testnet = true

@@ -57,3 +57,24 @@ func TestFastOverflow(t *testing.T) {
 		t.Fatalf("unexpected value for phi=NaN; got %v; want %v", q, nan)
 	}
 }
+
+func TestFastRepeatableResults(t *testing.T) {
+	f := GetFast()
+	defer PutFast(f)
+
+	for i := 0; i < maxSamples*10; i++ {
+		f.Update(float64(i))
+	}
+	q1 := f.Quantile(0.95)
+
+	for j := 0; j < 10; j++ {
+		f.Reset()
+		for i := 0; i < maxSamples*10; i++ {
+			f.Update(float64(i))
+		}
+		q2 := f.Quantile(0.95)
+		if q2 != q1 {
+			t.Fatalf("unexpected quantile value; got %g; want %g", q2, q1)
+		}
+	}
+}

@@ -1,22 +1,17 @@
-// Package testify is a set of packages that provide many tools for testifying that your code will behave as you intend.
+// Module testify is a set of packages that provide many tools for testifying that your code will behave as you intend.
 //
-// testify contains the following packages:
+// Testify contains the following packages:
 //
-// The assert package provides a comprehensive set of assertion functions that tie in to the Go testing system.
+// The [github.com/stretchr/testify/assert] package provides a comprehensive set of assertion functions that tie in to [the Go testing system].
+// The [github.com/stretchr/testify/require] package provides the same assertions but as fatal checks.
 //
-// The http package contains tools to make it easier to test http activity using the Go testing system.
+// The [github.com/stretchr/testify/mock] package provides a system by which it is possible to mock your objects and verify calls are happening as expected.
 //
-// The mock package provides a system by which it is possible to mock your objects and verify calls are happening as expected.
+// The [github.com/stretchr/testify/suite] package provides a basic structure for using structs as testing suites, and methods on those structs as tests.  It includes setup/teardown functionality in the way of interfaces.
 //
-// The suite package provides a basic structure for using structs as testing suites, and methods on those structs as tests.  It includes setup/teardown functionality in the way of interfaces.
+// A [golangci-lint] compatible linter for testify is available called [testifylint].
+//
+// [the Go testing system]: https://go.dev/doc/code#Testing
+// [golangci-lint]: https://golangci-lint.run/
+// [testifylint]: https://github.com/Antonboom/testifylint
 package testify
-
-// blank imports help docs.
-import (
-	// assert package
-	_ "github.com/stretchr/testify/assert"
-	// http package
-	_ "github.com/stretchr/testify/http"
-	// mock package
-	_ "github.com/stretchr/testify/mock"
-)

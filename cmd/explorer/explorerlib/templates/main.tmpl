@@ -1,72 +1,111 @@
-
 {{define "main"}}
 {{ template "header" . }}
+
 {{ template "txpool" . }}
 
-      <h2 style="margin-bottom: 0px">Transactions in the last 11 blocks</h2>
+<div class="enhanced-card">
+    <div class="enhanced-card-header">
+        <h2 class="enhanced-card-title">Recent Blocks & Transactions</h2>
+        <p class="enhanced-card-subtitle">Latest 11 blocks with their transactions</p>
+    </div>
 
-    <h4 style="font-size: 14px; margin-top: 0px">(Median size of these blocks: 0.09 kB)</h4>
-    {{ template "paging" . }}
-    <div class="center">
+    <div class="enhanced-card-content">
+        {{ template "paging" . }}
 
-            <table class="center">
-                <tr>
-                    <td>height</td>
-                    <td>topo height</td>
-                    <td>age [h:m:s.ms]<!--(Δm)--></td>
-                    <td>miniblocks</td>
-                    <td>size [kiB]<!--(Δm)--></td>
-                    <td>tx hash</td>
-                    <td>type</td>
-                    <td>fees</td>
-                    <td>ring size</td>
-                    <td>tx size [kB]</td>
-                </tr>
-                
-                
-                {{range .block_array}}
-                <tr>
-                    <td>  {{if .SyncBlock }} <strong>{{.Height}}</strong> {{else}} <font color="purple">{{.Height}}</font>   {{end}} </td>
-                    <td><a href="/block/{{.TopoHeight}}">{{.TopoHeight}}</a></td>
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
+                    <tr>
+                        <th class="col-height">Height</th>
+                        <th class="col-topo">Topo</th>
+                        <th class="col-age" title="Elapsed time since the block timestamp">Block Age</th>
+                        <th class="col-miniblocks">Mini</th>
+                        <th class="col-size">Size</th>
+                        <th class="col-hash">Hash</th>
+                        <th class="col-type">Type</th>
+                        <th class="col-reward">Amount</th>
+                        <th class="col-ring">Ring</th>
+                        <th class="col-txsize">TX Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .block_array}}
+                    <tr class="block-row">
+                        <td class="col-height">
+                            {{if .SyncBlock}}
+                            <strong style="color: #52c8db;">{{.Height}}</strong>
+                            {{else}}
+                            <span style="color: #b959b6;">{{.Height}}</span>
+                            {{end}}
+                        </td>
+                        <td class="col-topo"><a href="/block/{{.TopoHeight}}">{{.TopoHeight}}</a></td>
+                        <td class="col-age"><span class="age-display">{{.Age}}</span></td>
+                        <td class="col-miniblocks"><span class="miniblock-badge">{{len .Block.MiniBlocks}}</span></td>
+                        <td class="col-size">{{.Size}} kB</td>
+                        <td class="col-hash">
+                            <div class="hash-truncate">
+                                <a href="/block/{{.Hash}}" class="hash-text" title="{{.Hash}}">
+                                    <script>document.write(truncateHash('{{.Hash}}'))</script>
+                                    <noscript>{{.Hash}}</noscript>
+                                </a>
+                                <button class="copy-btn" onclick="copyToClipboard('{{.Hash}}', this)">Copy</button>
+                            </div>
+                        </td>
+                        <td class="col-type"><span class="badge badge-purple">BLOCK</span></td>
+                        <td class="col-reward" style="color: #4ade80; font-weight: 600;">{{.Mtx.Amount}}</td>
+                        <td class="col-ring">-</td>
+                        <td class="col-txsize">{{.Mtx.Size}} kB</td>
+                    </tr>
                     
-                    <td>{{.Age}}</td>
-                    <td>{{len .Block.MiniBlocks}}</td>
-                    <td>{{.Size}}</td>
-                    <td>block <a href="/block/{{.Hash}}">{{.Hash}}  </a></td>
-                    <td>N/A</td>
-                    <td>{{.Mtx.Amount}}</td>
-                    
-                    <td></td>
-                    <td>{{.Mtx.Size}}</td>
-
-                </tr>
-                
-                {{range .Txs}}
-                <tr>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    
-                    {{if .Skipped }}<td><a href="/tx/{{.Hash}}"><font color="indianred">{{.Hash}}</font>  </a></td>
-                    {{else}}
-                    <td><a href="/tx/{{.Hash}}">{{.Hash}}</a></td>
+                    {{range .Txs}}
+                    <tr>
+                        <td class="col-height"></td>
+                        <td class="col-topo"></td>
+                        <td class="col-age"></td>
+                        <td class="col-miniblocks"></td>
+                        <td class="col-size"></td>
+                        <td class="col-hash">
+                            <div class="hash-truncate">
+                                {{if .Skipped}}
+                                <a href="/tx/{{.Hash}}" class="hash-text tx-skipped" title="{{.Hash}}">
+                                {{else}}
+                                <a href="/tx/{{.Hash}}" class="hash-text" title="{{.Hash}}">
+                                {{end}}
+                                    <script>document.write(truncateHash('{{.Hash}}'))</script>
+                                    <noscript>{{.Hash}}</noscript>
+                                </a>
+                                <button class="copy-btn" onclick="copyToClipboard('{{.Hash}}', this)">Copy</button>
+                            </div>
+                        </td>
+                        <td class="col-type">
+                            {{if eq .TransactionType "NORMAL"}}
+                            <span class="tx-type tx-type-normal">NORMAL</span>
+                            {{else if eq .TransactionType "COINBASE"}}
+                            <span class="tx-type tx-type-coinbase">COINBASE</span>
+                            {{else if eq .TransactionType "REGISTRATION"}}
+                            <span class="tx-type tx-type-registration">REG</span>
+                            {{else if eq .TransactionType "BURN"}}
+                            <span class="tx-type tx-type-burn">BURN</span>
+                            {{else if eq .TransactionType "SC"}}
+                            <span class="tx-type tx-type-sc">SC</span>
+                            {{else}}
+                            <span class="tx-type">{{.TransactionType}}</span>
+                            {{end}}
+                        </td>
+                        <td class="col-reward" style="color: #52c8db; font-weight: 500;">{{.Fee}}</td>
+                        <td class="col-ring">{{.Ring_size}}</td>
+                        <td class="col-txsize">{{.Size}} kB</td>
+                    </tr>
                     {{end}}
                     
-                    
-                    <td>{{.TransactionType}}</td>
-                    <td>{{.Fee}}</td>
-                    <td>{{.Ring_size}}</td>
-                    <td>{{.Size}}</td>
-
-                </tr>
-                {{end}}
-                
-                {{end}}
-              </table>  
-        {{ template "paging" . }}
-        
+                    {{end}}
+                </tbody>
+            </table>
         </div>
-       {{ template "footer" . }}         
+
+        {{ template "paging" . }}
+    </div>
+</div>
+
+{{ template "footer" . }}
 {{end}}

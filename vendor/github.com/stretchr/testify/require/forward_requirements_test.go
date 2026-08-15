@@ -7,6 +7,8 @@ import (
 )
 
 func TestImplementsWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 
 	require.Implements((*AssertionTesterInterface)(nil), new(AssertionTesterConformingObject))
@@ -19,7 +21,23 @@ func TestImplementsWrapper(t *testing.T) {
 	}
 }
 
+func TestIsNotTypeWrapper(t *testing.T) {
+	t.Parallel()
+
+	require := New(t)
+	require.IsNotType(new(AssertionTesterNonConformingObject), new(AssertionTesterConformingObject))
+
+	mockT := new(MockT)
+	mockRequire := New(mockT)
+	mockRequire.IsNotType(new(AssertionTesterConformingObject), new(AssertionTesterConformingObject))
+	if !mockT.Failed {
+		t.Error("Check should fail")
+	}
+}
+
 func TestIsTypeWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.IsType(new(AssertionTesterConformingObject), new(AssertionTesterConformingObject))
 
@@ -32,6 +50,8 @@ func TestIsTypeWrapper(t *testing.T) {
 }
 
 func TestEqualWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Equal(1, 1)
 
@@ -44,6 +64,8 @@ func TestEqualWrapper(t *testing.T) {
 }
 
 func TestNotEqualWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NotEqual(1, 2)
 
@@ -56,6 +78,8 @@ func TestNotEqualWrapper(t *testing.T) {
 }
 
 func TestExactlyWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 
 	a := float32(1)
@@ -73,6 +97,8 @@ func TestExactlyWrapper(t *testing.T) {
 }
 
 func TestNotNilWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NotNil(t, new(AssertionTesterConformingObject))
 
@@ -85,6 +111,8 @@ func TestNotNilWrapper(t *testing.T) {
 }
 
 func TestNilWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Nil(nil)
 
@@ -97,6 +125,8 @@ func TestNilWrapper(t *testing.T) {
 }
 
 func TestTrueWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.True(true)
 
@@ -109,6 +139,8 @@ func TestTrueWrapper(t *testing.T) {
 }
 
 func TestFalseWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.False(false)
 
@@ -121,6 +153,8 @@ func TestFalseWrapper(t *testing.T) {
 }
 
 func TestContainsWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Contains("Hello World", "Hello")
 
@@ -133,6 +167,8 @@ func TestContainsWrapper(t *testing.T) {
 }
 
 func TestNotContainsWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NotContains("Hello World", "Hello!")
 
@@ -145,6 +181,8 @@ func TestNotContainsWrapper(t *testing.T) {
 }
 
 func TestPanicsWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Panics(func() {
 		panic("Panic!")
@@ -159,6 +197,8 @@ func TestPanicsWrapper(t *testing.T) {
 }
 
 func TestNotPanicsWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NotPanics(func() {})
 
@@ -173,6 +213,8 @@ func TestNotPanicsWrapper(t *testing.T) {
 }
 
 func TestNoErrorWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NoError(nil)
 
@@ -185,6 +227,8 @@ func TestNoErrorWrapper(t *testing.T) {
 }
 
 func TestErrorWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Error(errors.New("some error"))
 
@@ -196,7 +240,23 @@ func TestErrorWrapper(t *testing.T) {
 	}
 }
 
+func TestErrorContainsWrapper(t *testing.T) {
+	t.Parallel()
+
+	require := New(t)
+	require.ErrorContains(errors.New("some error: another error"), "some error")
+
+	mockT := new(MockT)
+	mockRequire := New(mockT)
+	mockRequire.ErrorContains(errors.New("some error: another error"), "different error")
+	if !mockT.Failed {
+		t.Error("Check should fail")
+	}
+}
+
 func TestEqualErrorWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.EqualError(errors.New("some error"), "some error")
 
@@ -209,6 +269,8 @@ func TestEqualErrorWrapper(t *testing.T) {
 }
 
 func TestEmptyWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Empty("")
 
@@ -221,6 +283,8 @@ func TestEmptyWrapper(t *testing.T) {
 }
 
 func TestNotEmptyWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NotEmpty("x")
 
@@ -233,6 +297,8 @@ func TestNotEmptyWrapper(t *testing.T) {
 }
 
 func TestWithinDurationWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	a := time.Now()
 	b := a.Add(10 * time.Second)
@@ -248,6 +314,8 @@ func TestWithinDurationWrapper(t *testing.T) {
 }
 
 func TestInDeltaWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.InDelta(1.001, 1, 0.01)
 
@@ -260,6 +328,8 @@ func TestInDeltaWrapper(t *testing.T) {
 }
 
 func TestZeroWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.Zero(0)
 
@@ -272,6 +342,8 @@ func TestZeroWrapper(t *testing.T) {
 }
 
 func TestNotZeroWrapper(t *testing.T) {
+	t.Parallel()
+
 	require := New(t)
 	require.NotZero(1)
 
@@ -284,6 +356,8 @@ func TestNotZeroWrapper(t *testing.T) {
 }
 
 func TestJSONEqWrapper_EqualSONString(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -294,6 +368,8 @@ func TestJSONEqWrapper_EqualSONString(t *testing.T) {
 }
 
 func TestJSONEqWrapper_EquivalentButNotEqual(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -304,6 +380,8 @@ func TestJSONEqWrapper_EquivalentButNotEqual(t *testing.T) {
 }
 
 func TestJSONEqWrapper_HashOfArraysAndHashes(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -315,6 +393,8 @@ func TestJSONEqWrapper_HashOfArraysAndHashes(t *testing.T) {
 }
 
 func TestJSONEqWrapper_Array(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -325,6 +405,8 @@ func TestJSONEqWrapper_Array(t *testing.T) {
 }
 
 func TestJSONEqWrapper_HashAndArrayNotEquivalent(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -335,6 +417,8 @@ func TestJSONEqWrapper_HashAndArrayNotEquivalent(t *testing.T) {
 }
 
 func TestJSONEqWrapper_HashesNotEquivalent(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -345,6 +429,8 @@ func TestJSONEqWrapper_HashesNotEquivalent(t *testing.T) {
 }
 
 func TestJSONEqWrapper_ActualIsNotJSON(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -355,6 +441,8 @@ func TestJSONEqWrapper_ActualIsNotJSON(t *testing.T) {
 }
 
 func TestJSONEqWrapper_ExpectedIsNotJSON(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -365,6 +453,8 @@ func TestJSONEqWrapper_ExpectedIsNotJSON(t *testing.T) {
 }
 
 func TestJSONEqWrapper_ExpectedAndActualNotJSON(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -375,6 +465,8 @@ func TestJSONEqWrapper_ExpectedAndActualNotJSON(t *testing.T) {
 }
 
 func TestJSONEqWrapper_ArraysOfDifferentOrder(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -385,6 +477,8 @@ func TestJSONEqWrapper_ArraysOfDifferentOrder(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_EqualYAMLString(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -395,6 +489,8 @@ func TestYAMLEqWrapper_EqualYAMLString(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_EquivalentButNotEqual(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -405,6 +501,8 @@ func TestYAMLEqWrapper_EquivalentButNotEqual(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_HashOfArraysAndHashes(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -441,6 +539,8 @@ array:
 }
 
 func TestYAMLEqWrapper_Array(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -451,6 +551,8 @@ func TestYAMLEqWrapper_Array(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_HashAndArrayNotEquivalent(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -461,6 +563,8 @@ func TestYAMLEqWrapper_HashAndArrayNotEquivalent(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_HashesNotEquivalent(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -471,6 +575,8 @@ func TestYAMLEqWrapper_HashesNotEquivalent(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_ActualIsSimpleString(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -481,6 +587,8 @@ func TestYAMLEqWrapper_ActualIsSimpleString(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_ExpectedIsSimpleString(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -491,6 +599,8 @@ func TestYAMLEqWrapper_ExpectedIsSimpleString(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_ExpectedAndActualSimpleString(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
@@ -501,6 +611,8 @@ func TestYAMLEqWrapper_ExpectedAndActualSimpleString(t *testing.T) {
 }
 
 func TestYAMLEqWrapper_ArraysOfDifferentOrder(t *testing.T) {
+	t.Parallel()
+
 	mockT := new(MockT)
 	mockRequire := New(mockT)
 
