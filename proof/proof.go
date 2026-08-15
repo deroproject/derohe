@@ -51,6 +51,10 @@ func Prove(proof string, input_tx string, ring_string [][]string, mainnet bool) 
 
 	if args.Has(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64) { // this service is expecting value to be specfic
 		amount = args.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)
+		if err = ValidatePayloadProofAmount(amount); err != nil {
+			err = fmt.Errorf("invalid proof amount: %v", err)
+			return
+		}
 	} else {
 		err = fmt.Errorf("Invalid proof.")
 		return
@@ -86,7 +90,7 @@ func Prove(proof string, input_tx string, ring_string [][]string, mainnet bool) 
 
 	// okay all inputs have been parsed
 	var x bn256.G1
-	x.ScalarMult(crypto.G, new(big.Int).SetInt64(int64(amount)))
+	x.ScalarMult(crypto.G, new(big.Int).SetUint64(amount))
 	x.Add(new(bn256.G1).Set(&x), addr.PublicKey.G1())
 
 	for t := range tx.Payloads {
@@ -113,10 +117,19 @@ func Prove(proof string, input_tx string, ring_string [][]string, mainnet bool) 
 
 				payload_raw = append(payload_raw, payload[1:])
 				var args rpc.Arguments
-				if err := args.UnmarshalBinary(payload[1:]); err == nil {
+				if unmarshal_err := args.UnmarshalBinary(payload[1:]); unmarshal_err == nil {
+					if args.Has(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64) {
+						payload_amount := args.Value(rpc.RPC_VALUE_TRANSFER, rpc.DataUint64).(uint64)
+						if payload_amount != amount {
+							err = fmt.Errorf("inconsistent proof: claimed amount (%d) does not match payload amount (%d)",
+								amount, payload_amount)
+							return
+						}
+					}
+
 					payload_decoded = append(payload_decoded, fmt.Sprintf("%s", args))
 				} else {
-					payload_decoded = append(payload_decoded, err.Error())
+					payload_decoded = append(payload_decoded, unmarshal_err.Error())
 				}
 
 				return

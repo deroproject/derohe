@@ -36,9 +36,9 @@ type Summary struct {
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned summary is safe to use from concurrent goroutines.
 func NewSummary(name string) *Summary {
@@ -51,9 +51,9 @@ func NewSummary(name string) *Summary {
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned summary is safe to use from concurrent goroutines.
 func NewSummaryExt(name string, window time.Duration, quantiles []float64) *Summary {
@@ -119,6 +119,10 @@ func (sm *Summary) marshalTo(prefix string, w io.Writer) {
 	}
 }
 
+func (sm *Summary) metricType() string {
+	return "summary"
+}
+
 func splitMetricName(name string) (string, string) {
 	n := strings.IndexByte(name, '{')
 	if n < 0 {
@@ -140,9 +144,9 @@ func (sm *Summary) updateQuantiles() {
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned summary is safe to use from concurrent goroutines.
 //
@@ -158,9 +162,9 @@ func GetOrCreateSummary(name string) *Summary {
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned summary is safe to use from concurrent goroutines.
 //
@@ -196,11 +200,23 @@ func (qv *quantileValue) marshalTo(prefix string, w io.Writer) {
 	}
 }
 
+func (qv *quantileValue) metricType() string {
+	return "unsupported"
+}
+
 func addTag(name, tag string) string {
 	if len(name) == 0 || name[len(name)-1] != '}' {
 		return fmt.Sprintf("%s{%s}", name, tag)
 	}
-	return fmt.Sprintf("%s,%s}", name[:len(name)-1], tag)
+	name = name[:len(name)-1]
+	if len(name) == 0 {
+		panic(fmt.Errorf("BUG: metric name cannot be empty"))
+	}
+	if name[len(name)-1] == '{' {
+		// case for empty labels set metric_name{}
+		return fmt.Sprintf("%s%s}", name, tag)
+	}
+	return fmt.Sprintf("%s,%s}", name, tag)
 }
 
 func registerSummaryLocked(sm *Summary) {

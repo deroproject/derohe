@@ -91,6 +91,7 @@ type CHAIN_CONFIG struct {
 	HF1_HEIGHT       int64 // first HF applied here
 	HF2_HEIGHT       int64 // second HF applie here
 	MAJOR_HF2_HEIGHT int64 // MAJOR HF2 applies here, changes pow
+	MAJOR_HF3_HEIGHT int64 // MAJOR HF3 applied here, changes/adds consensus rules
 
 	Dev_Address        string // to which address the integrator rewatd will go, if user doesn't specify integrator address'
 	Genesis_Tx         string
@@ -106,6 +107,7 @@ var Mainnet = CHAIN_CONFIG{Name: "mainnet",
 	HF1_HEIGHT:              21480,
 	HF2_HEIGHT:              29000,
 	MAJOR_HF2_HEIGHT:        481600,
+	MAJOR_HF3_HEIGHT:        7504640,
 
 	Genesis_Tx: "" +
 		"01" + // version
@@ -127,6 +129,7 @@ var Testnet = CHAIN_CONFIG{Name: "testnet", // testnet will always have last 3 b
 	HF1_HEIGHT:       0, // on testnet apply at genesis
 	HF2_HEIGHT:       0, // on testnet apply at genesis
 	MAJOR_HF2_HEIGHT: 4, // on testnet apply at 4
+	MAJOR_HF3_HEIGHT: 0, // on testnet apply at genesis
 
 	Genesis_Tx: "" +
 		"01" + // version

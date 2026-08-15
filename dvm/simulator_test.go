@@ -117,7 +117,7 @@ This lottery smart contract will give lottery wins on every second try in follow
 
 // run the test
 func Test_Simulator_execution(t *testing.T) {
-	s := SimulatorInitialize(nil)
+	s := SimulatorInitialize(nil, 0)
 	var addr *rpc.Address
 	var err error
 

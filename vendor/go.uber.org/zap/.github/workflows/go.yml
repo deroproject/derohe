@@ -36,7 +36,11 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Download Dependencies
-      run: go mod download
+      run: |
+        go mod download
+        (cd tools && go mod download)
+        (cd benchmarks && go mod download)
+        (cd zapgrpc/internal/test && go mod download)
 
     - name: Lint
       if: matrix.latest
@@ -47,6 +51,3 @@ jobs:
 
     - name: Upload coverage to codecov.io
       uses: codecov/codecov-action@v1
-
-    - name: Benchmark
-      run: make bench

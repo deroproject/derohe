@@ -6,15 +6,20 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	bolt "go.etcd.io/bbolt"
+	"go.etcd.io/bbolt/internal/btesting"
 )
 
 // TestTx_Check_ReadOnly tests consistency checking on a ReadOnly database.
 func TestTx_Check_ReadOnly(t *testing.T) {
-	db := MustOpenDB()
-	defer db.Close()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("widgets"))
 		if err != nil {
@@ -27,11 +32,11 @@ func TestTx_Check_ReadOnly(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.DB.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	readOnlyDB, err := bolt.Open(db.f, 0666, &bolt.Options{ReadOnly: true})
+	readOnlyDB, err := bolt.Open(db.Path(), 0666, &bolt.Options{ReadOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +50,7 @@ func TestTx_Check_ReadOnly(t *testing.T) {
 	numChecks := 2
 	errc := make(chan error, numChecks)
 	check := func() {
-		err, _ := <-tx.Check()
-		errc <- err
+		errc <- <-tx.Check()
 	}
 	// Ensure the freelist is not reloaded and does not race.
 	for i := 0; i < numChecks; i++ {
@@ -58,13 +62,15 @@ func TestTx_Check_ReadOnly(t *testing.T) {
 		}
 	}
 	// Close the view transaction
-	tx.Rollback()
+	err = tx.Rollback()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Ensure that committing a closed transaction returns an error.
 func TestTx_Commit_ErrTxClosed(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	tx, err := db.Begin(true)
 	if err != nil {
 		t.Fatal(err)
@@ -85,8 +91,7 @@ func TestTx_Commit_ErrTxClosed(t *testing.T) {
 
 // Ensure that rolling back a closed transaction returns an error.
 func TestTx_Rollback_ErrTxClosed(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	tx, err := db.Begin(true)
 	if err != nil {
@@ -103,8 +108,7 @@ func TestTx_Rollback_ErrTxClosed(t *testing.T) {
 
 // Ensure that committing a read-only transaction returns an error.
 func TestTx_Commit_ErrTxNotWritable(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	tx, err := db.Begin(false)
 	if err != nil {
 		t.Fatal(err)
@@ -113,13 +117,15 @@ func TestTx_Commit_ErrTxNotWritable(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Close the view transaction
-	tx.Rollback()
+	err = tx.Rollback()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // Ensure that a transaction can retrieve a cursor on the root bucket.
 func TestTx_Cursor(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		if _, err := tx.CreateBucket([]byte("widgets")); err != nil {
 			t.Fatal(err)
@@ -156,8 +162,7 @@ func TestTx_Cursor(t *testing.T) {
 
 // Ensure that creating a bucket with a read-only transaction returns an error.
 func TestTx_CreateBucket_ErrTxNotWritable(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.View(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucket([]byte("foo"))
 		if err != bolt.ErrTxNotWritable {
@@ -171,8 +176,7 @@ func TestTx_CreateBucket_ErrTxNotWritable(t *testing.T) {
 
 // Ensure that creating a bucket on a closed transaction returns an error.
 func TestTx_CreateBucket_ErrTxClosed(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	tx, err := db.Begin(true)
 	if err != nil {
 		t.Fatal(err)
@@ -188,8 +192,7 @@ func TestTx_CreateBucket_ErrTxClosed(t *testing.T) {
 
 // Ensure that a Tx can retrieve a bucket.
 func TestTx_Bucket(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		if _, err := tx.CreateBucket([]byte("widgets")); err != nil {
 			t.Fatal(err)
@@ -205,8 +208,7 @@ func TestTx_Bucket(t *testing.T) {
 
 // Ensure that a Tx retrieving a non-existent key returns nil.
 func TestTx_Get_NotFound(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("widgets"))
 		if err != nil {
@@ -227,8 +229,7 @@ func TestTx_Get_NotFound(t *testing.T) {
 
 // Ensure that a bucket can be created and retrieved.
 func TestTx_CreateBucket(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	// Create a bucket.
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -256,8 +257,7 @@ func TestTx_CreateBucket(t *testing.T) {
 
 // Ensure that a bucket can be created if it doesn't already exist.
 func TestTx_CreateBucketIfNotExists(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		// Create bucket.
 		if b, err := tx.CreateBucketIfNotExists([]byte("widgets")); err != nil {
@@ -291,8 +291,7 @@ func TestTx_CreateBucketIfNotExists(t *testing.T) {
 
 // Ensure transaction returns an error if creating an unnamed bucket.
 func TestTx_CreateBucketIfNotExists_ErrBucketNameRequired(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte{}); err != bolt.ErrBucketNameRequired {
 			t.Fatalf("unexpected error: %s", err)
@@ -310,8 +309,7 @@ func TestTx_CreateBucketIfNotExists_ErrBucketNameRequired(t *testing.T) {
 
 // Ensure that a bucket cannot be created twice.
 func TestTx_CreateBucket_ErrBucketExists(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	// Create a bucket.
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -336,8 +334,7 @@ func TestTx_CreateBucket_ErrBucketExists(t *testing.T) {
 
 // Ensure that a bucket is created with a non-blank name.
 func TestTx_CreateBucket_ErrBucketNameRequired(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		if _, err := tx.CreateBucket(nil); err != bolt.ErrBucketNameRequired {
 			t.Fatalf("unexpected error: %s", err)
@@ -350,8 +347,7 @@ func TestTx_CreateBucket_ErrBucketNameRequired(t *testing.T) {
 
 // Ensure that a bucket can be deleted.
 func TestTx_DeleteBucket(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	// Create a bucket and add a value.
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -397,8 +393,7 @@ func TestTx_DeleteBucket(t *testing.T) {
 
 // Ensure that deleting a bucket on a closed transaction returns an error.
 func TestTx_DeleteBucket_ErrTxClosed(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	tx, err := db.Begin(true)
 	if err != nil {
 		t.Fatal(err)
@@ -413,8 +408,7 @@ func TestTx_DeleteBucket_ErrTxClosed(t *testing.T) {
 
 // Ensure that deleting a bucket with a read-only transaction returns an error.
 func TestTx_DeleteBucket_ReadOnly(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.View(func(tx *bolt.Tx) error {
 		if err := tx.DeleteBucket([]byte("foo")); err != bolt.ErrTxNotWritable {
 			t.Fatalf("unexpected error: %s", err)
@@ -427,8 +421,7 @@ func TestTx_DeleteBucket_ReadOnly(t *testing.T) {
 
 // Ensure that nothing happens when deleting a bucket that doesn't exist.
 func TestTx_DeleteBucket_NotFound(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		if err := tx.DeleteBucket([]byte("widgets")); err != bolt.ErrBucketNotFound {
 			t.Fatalf("unexpected error: %s", err)
@@ -442,8 +435,7 @@ func TestTx_DeleteBucket_NotFound(t *testing.T) {
 // Ensure that no error is returned when a tx.ForEach function does not return
 // an error.
 func TestTx_ForEach_NoError(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("widgets"))
 		if err != nil {
@@ -466,8 +458,7 @@ func TestTx_ForEach_NoError(t *testing.T) {
 
 // Ensure that an error is returned when a tx.ForEach function returns an error.
 func TestTx_ForEach_WithError(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("widgets"))
 		if err != nil {
@@ -491,8 +482,7 @@ func TestTx_ForEach_WithError(t *testing.T) {
 
 // Ensure that Tx commit handlers are called after a transaction successfully commits.
 func TestTx_OnCommit(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	var x int
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -511,8 +501,7 @@ func TestTx_OnCommit(t *testing.T) {
 
 // Ensure that Tx commit handlers are NOT called after a transaction rolls back.
 func TestTx_OnCommit_Rollback(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	var x int
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -531,8 +520,7 @@ func TestTx_OnCommit_Rollback(t *testing.T) {
 
 // Ensure that the database can be copied to a file path.
 func TestTx_CopyFile(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 
 	path := tempfile()
 	if err := db.Update(func(tx *bolt.Tx) error {
@@ -602,8 +590,7 @@ func (f *failWriter) Write(p []byte) (n int, err error) {
 
 // Ensure that Copy handles write errors right.
 func TestTx_CopyFile_Error_Meta(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("widgets"))
 		if err != nil {
@@ -629,8 +616,7 @@ func TestTx_CopyFile_Error_Meta(t *testing.T) {
 
 // Ensure that Copy handles write errors right.
 func TestTx_CopyFile_Error_Normal(t *testing.T) {
-	db := MustOpenDB()
-	defer db.MustClose()
+	db := btesting.MustCreateDB(t)
 	if err := db.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucket([]byte("widgets"))
 		if err != nil {
@@ -714,8 +700,7 @@ func TestTx_releaseRange(t *testing.T) {
 	// Set initial mmap size well beyond the limit we will hit in this
 	// test, since we are testing with long running read transactions
 	// and will deadlock if db.grow is triggered.
-	db := MustOpenWithOption(&bolt.Options{InitialMmapSize: os.Getpagesize() * 100})
-	defer db.MustClose()
+	db := btesting.MustCreateDBWithOption(t, &bolt.Options{InitialMmapSize: os.Getpagesize() * 100})
 
 	bucket := "bucket"
 
@@ -921,4 +906,150 @@ func ExampleTx_CopyFile() {
 
 	// Output:
 	// The value for 'foo' in the clone is: bar
+}
+
+func TestTxStats_GetAndIncAtomically(t *testing.T) {
+	var stats bolt.TxStats
+
+	stats.IncPageCount(1)
+	assert.Equal(t, int64(1), stats.GetPageCount())
+
+	stats.IncPageAlloc(2)
+	assert.Equal(t, int64(2), stats.GetPageAlloc())
+
+	stats.IncCursorCount(3)
+	assert.Equal(t, int64(3), stats.GetCursorCount())
+
+	stats.IncNodeCount(100)
+	assert.Equal(t, int64(100), stats.GetNodeCount())
+
+	stats.IncNodeDeref(101)
+	assert.Equal(t, int64(101), stats.GetNodeDeref())
+
+	stats.IncRebalance(1000)
+	assert.Equal(t, int64(1000), stats.GetRebalance())
+
+	stats.IncRebalanceTime(1001 * time.Second)
+	assert.Equal(t, 1001*time.Second, stats.GetRebalanceTime())
+
+	stats.IncSplit(10000)
+	assert.Equal(t, int64(10000), stats.GetSplit())
+
+	stats.IncSpill(10001)
+	assert.Equal(t, int64(10001), stats.GetSpill())
+
+	stats.IncSpillTime(10001 * time.Second)
+	assert.Equal(t, 10001*time.Second, stats.GetSpillTime())
+
+	stats.IncWrite(100000)
+	assert.Equal(t, int64(100000), stats.GetWrite())
+
+	stats.IncWriteTime(100001 * time.Second)
+	assert.Equal(t, 100001*time.Second, stats.GetWriteTime())
+
+	assert.Equal(t,
+		bolt.TxStats{
+			PageCount:     1,
+			PageAlloc:     2,
+			CursorCount:   3,
+			NodeCount:     100,
+			NodeDeref:     101,
+			Rebalance:     1000,
+			RebalanceTime: 1001 * time.Second,
+			Split:         10000,
+			Spill:         10001,
+			SpillTime:     10001 * time.Second,
+			Write:         100000,
+			WriteTime:     100001 * time.Second,
+		},
+		stats,
+	)
+}
+
+func TestTxStats_Sub(t *testing.T) {
+	statsA := bolt.TxStats{
+		PageCount:     1,
+		PageAlloc:     2,
+		CursorCount:   3,
+		NodeCount:     100,
+		NodeDeref:     101,
+		Rebalance:     1000,
+		RebalanceTime: 1001 * time.Second,
+		Split:         10000,
+		Spill:         10001,
+		SpillTime:     10001 * time.Second,
+		Write:         100000,
+		WriteTime:     100001 * time.Second,
+	}
+
+	statsB := bolt.TxStats{
+		PageCount:     2,
+		PageAlloc:     3,
+		CursorCount:   4,
+		NodeCount:     101,
+		NodeDeref:     102,
+		Rebalance:     1001,
+		RebalanceTime: 1002 * time.Second,
+		Split:         11001,
+		Spill:         11002,
+		SpillTime:     11002 * time.Second,
+		Write:         110001,
+		WriteTime:     110010 * time.Second,
+	}
+
+	diff := statsB.Sub(&statsA)
+	assert.Equal(t, int64(1), diff.GetPageCount())
+	assert.Equal(t, int64(1), diff.GetPageAlloc())
+	assert.Equal(t, int64(1), diff.GetCursorCount())
+	assert.Equal(t, int64(1), diff.GetNodeCount())
+	assert.Equal(t, int64(1), diff.GetNodeDeref())
+	assert.Equal(t, int64(1), diff.GetRebalance())
+	assert.Equal(t, time.Second, diff.GetRebalanceTime())
+	assert.Equal(t, int64(1001), diff.GetSplit())
+	assert.Equal(t, int64(1001), diff.GetSpill())
+	assert.Equal(t, 1001*time.Second, diff.GetSpillTime())
+	assert.Equal(t, int64(10001), diff.GetWrite())
+	assert.Equal(t, 10009*time.Second, diff.GetWriteTime())
+}
+
+// TestTx_TruncateBeforeWrite ensures the file is truncated ahead whether we sync freelist or not.
+func TestTx_TruncateBeforeWrite(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	for _, isSyncFreelist := range []bool{false, true} {
+		t.Run(fmt.Sprintf("isSyncFreelist:%v", isSyncFreelist), func(t *testing.T) {
+			// Open the database.
+			db := btesting.MustCreateDBWithOption(t, &bolt.Options{
+				NoFreelistSync: isSyncFreelist,
+			})
+
+			bigvalue := make([]byte, db.AllocSize/100)
+			count := 0
+			for {
+				count++
+				tx, err := db.Begin(true)
+				require.NoError(t, err)
+				b, err := tx.CreateBucketIfNotExists([]byte("bucket"))
+				require.NoError(t, err)
+				err = b.Put([]byte{byte(count)}, bigvalue)
+				require.NoError(t, err)
+				err = tx.Commit()
+				require.NoError(t, err)
+
+				size := fileSize(db.Path())
+
+				if size > int64(db.AllocSize) && size < int64(db.AllocSize)*2 {
+					// db.grow expands the file aggresively, that double the size while smaller than db.AllocSize,
+					// or increase with a step of db.AllocSize if larger, by which we can test if db.grow has run.
+					t.Fatalf("db.grow doesn't run when file size changes. file size: %d", size)
+				}
+				if size > int64(db.AllocSize) {
+					break
+				}
+			}
+			db.MustClose()
+			db.MustDeleteFile()
+		})
+	}
 }

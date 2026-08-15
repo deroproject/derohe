@@ -16,8 +16,22 @@
 
 package blockchain
 
-import "fmt"
-import "time"
+import (
+	"fmt"
+	"runtime/debug"
+	"sync"
+	"time"
+
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	"golang.org/x/xerrors"
+)
 
 /*import "bytes"
 import "encoding/binary"
@@ -25,19 +39,6 @@ import "encoding/binary"
 import "github.com/romana/rlog"
 
 */
-
-import "sync"
-import "runtime/debug"
-import "golang.org/x/xerrors"
-import "github.com/deroproject/graviton"
-
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/cryptography/bn256"
 
 // caches x of transactions validity
 // it is always atomic
@@ -226,6 +227,15 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 	}
 
 	tx_hash = tx.GetHash()
+
+	// apply HF3 fixes: add TX to cache
+	if t, ok := HF3_Affected_Txs[tx_hash.String()]; ok {
+		transaction_valid_cache.Store(tx_hash, time.Now())
+
+		tips_string := tx_hash.String()
+		tips_string += fmt.Sprintf("%s", t.Bl_Tips)
+		chain.cache_IsNonceValidTips.Add(tips_string, true)
+	}
 
 	if tx.TransactionType == transaction.REGISTRATION {
 		if _, ok := transaction_valid_cache.Load(tx_hash); ok {
@@ -420,7 +430,12 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 		}
 	}
 
-	if _, ok := transaction_valid_cache.Load(tx_hash); ok {
+	tx_cache := tx_hash
+	if tx.Height >= uint64(globals.Config.MAJOR_HF3_HEIGHT) {
+		tx_cache = crypto.Keccak256(tx.Serialize())
+	}
+
+	if _, ok := transaction_valid_cache.Load(tx_cache); ok {
 		logger.V(2).Info("Found in cache, skipping verification", "txid", tx_hash)
 		return nil
 	} else {
@@ -449,7 +464,7 @@ func (chain *Blockchain) verify_Transaction_NonCoinbase_internal(skip_proof bool
 	// these transactions are done
 	if tx.TransactionType == transaction.NORMAL || tx.TransactionType == transaction.BURN_TX || tx.TransactionType == transaction.SC_TX {
 		if chain.cache_enabled {
-			transaction_valid_cache.Store(tx_hash, time.Now()) // signature got verified, cache it
+			transaction_valid_cache.Store(tx_cache, time.Now()) // signature got verified, cache it
 		}
 
 		return nil

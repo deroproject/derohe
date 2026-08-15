@@ -64,13 +64,14 @@ func GetGasEstimate(ctx context.Context, p rpc.GasEstimate_Params) (result rpc.G
 		}
 	}
 
-	toporecord, err := chain.Store.Topo_store.Read(chain.Load_TOPO_HEIGHT())
+	topoHeight := chain.Load_TOPO_HEIGHT()
+	toporecord, err := chain.Store.Topo_store.Read(topoHeight)
 	// we must now fill in compressed ring members
 	if err == nil {
 		var ss *graviton.Snapshot
 		ss, err = chain.Store.Balance_store.LoadSnapshot(toporecord.State_Version)
 		if err == nil {
-			s := dvm.SimulatorInitialize(ss)
+			s := dvm.SimulatorInitialize(ss, uint64(topoHeight))
 			if len(p.SC_Code) >= 1 { // we need to install the SC
 				if _, result.GasCompute, result.GasStorage, err = s.SCInstall(p.SC_Code, incoming_values, p.SC_RPC, signer, 0); err != nil {
 					return

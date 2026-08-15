@@ -465,8 +465,8 @@ func GenerateProof(scid Hash, scid_index int, s *Statement, witness *Witness, u 
 		Cn.vector = append(Cn.vector, ConstructElGamal(s.CLn[i], s.CRn[i]))
 	}
 
-	btransfer := new(big.Int).SetInt64(int64(witness.TransferAmount)) // this should be reduced
-	bdiff := new(big.Int).SetInt64(int64(witness.Balance))            // this should be reduced
+	btransfer := new(big.Int).SetUint64(witness.TransferAmount)
+	bdiff := new(big.Int).SetUint64(witness.Balance)
 
 	number := btransfer.Add(btransfer, bdiff.Lsh(bdiff, 64)) // we are placing balance and left over balance, and doing a range proof of 128 bits
 

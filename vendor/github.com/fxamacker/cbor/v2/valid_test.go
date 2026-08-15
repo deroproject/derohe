@@ -10,8 +10,8 @@ import (
 
 func TestValid1(t *testing.T) {
 	for _, mt := range marshalTests {
-		if err := Valid(mt.cborData); err != nil {
-			t.Errorf("Valid() returned error %v", err)
+		if err := Wellformed(mt.cborData); err != nil {
+			t.Errorf("Wellformed() returned error %v", err)
 		}
 	}
 }
@@ -19,9 +19,40 @@ func TestValid1(t *testing.T) {
 func TestValid2(t *testing.T) {
 	for _, mt := range marshalTests {
 		dm, _ := DecOptions{DupMapKey: DupMapKeyEnforcedAPF}.DecMode()
-		if err := dm.Valid(mt.cborData); err != nil {
-			t.Errorf("Valid() returned error %v", err)
+		if err := dm.Wellformed(mt.cborData); err != nil {
+			t.Errorf("Wellformed() returned error %v", err)
 		}
+	}
+}
+
+func TestValidExtraneousData(t *testing.T) {
+	testCases := []struct {
+		name                     string
+		cborData                 []byte
+		extraneousDataNumOfBytes int
+		extraneousDataIndex      int
+	}{
+		{"two numbers", []byte{0x00, 0x01}, 1, 1},                                // 0, 1
+		{"bytestring and int", []byte{0x44, 0x01, 0x02, 0x03, 0x04, 0x00}, 1, 5}, // h'01020304', 0
+		{"int and partial array", []byte{0x00, 0x83, 0x01, 0x02}, 3, 1},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Wellformed(tc.cborData)
+			if err == nil {
+				t.Errorf("Wellformed(0x%x) didn't return an error", tc.cborData)
+			} else {
+				ederr, ok := err.(*ExtraneousDataError)
+				if !ok {
+					t.Errorf("Wellformed(0x%x) error type %T, want *ExtraneousDataError", tc.cborData, err)
+				} else if ederr.numOfBytes != tc.extraneousDataNumOfBytes {
+					t.Errorf("Wellformed(0x%x) returned %d bytes of extraneous data, want %d", tc.cborData, ederr.numOfBytes, tc.extraneousDataNumOfBytes)
+				} else if ederr.index != tc.extraneousDataIndex {
+					t.Errorf("Wellformed(0x%x) returned extraneous data index %d, want %d", tc.cborData, ederr.index, tc.extraneousDataIndex)
+				}
+			}
+		})
 	}
 }
 
@@ -32,8 +63,8 @@ func TestValidOnStreamingData(t *testing.T) {
 	}
 	d := decoder{data: buf.Bytes(), dm: defaultDecMode}
 	for i := 0; i < len(marshalTests); i++ {
-		if err := d.valid(); err != nil {
-			t.Errorf("valid() returned error %v", err)
+		if err := d.wellformed(true); err != nil {
+			t.Errorf("wellformed() returned error %v", err)
 		}
 	}
 }
@@ -80,12 +111,12 @@ func TestDepth(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			d := decoder{data: tc.cborData, dm: defaultDecMode}
-			depth, err := d.validInternal(0)
+			depth, err := d.wellformedInternal(0)
 			if err != nil {
-				t.Errorf("valid(0x%x) returned error %v", tc.cborData, err)
+				t.Errorf("wellformed(0x%x) returned error %v", tc.cborData, err)
 			}
 			if depth != tc.wantDepth {
-				t.Errorf("valid(0x%x) returned depth %d, want %d", tc.cborData, depth, tc.wantDepth)
+				t.Errorf("wellformed(0x%x) returned depth %d, want %d", tc.cborData, depth, tc.wantDepth)
 			}
 		})
 	}
@@ -145,12 +176,12 @@ func TestDepthError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dm, _ := tc.opts.decMode()
 			d := decoder{data: tc.cborData, dm: dm}
-			if _, err := d.validInternal(0); err == nil {
-				t.Errorf("valid(0x%x) didn't return an error", tc.cborData)
+			if _, err := d.wellformedInternal(0); err == nil {
+				t.Errorf("wellformed(0x%x) didn't return an error", tc.cborData)
 			} else if _, ok := err.(*MaxNestedLevelError); !ok {
-				t.Errorf("valid(0x%x) returned wrong error type %T, want (*MaxNestedLevelError)", tc.cborData, err)
+				t.Errorf("wellformed(0x%x) returned wrong error type %T, want (*MaxNestedLevelError)", tc.cborData, err)
 			} else if err.Error() != tc.wantErrorMsg {
-				t.Errorf("valid(0x%x) returned error %q, want error %q", tc.cborData, err.Error(), tc.wantErrorMsg)
+				t.Errorf("wellformed(0x%x) returned error %q, want error %q", tc.cborData, err.Error(), tc.wantErrorMsg)
 			}
 		})
 	}

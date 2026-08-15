@@ -1,10 +1,23 @@
 {{ define "paging"}}
-
-<div id="pages" class="center" style="text-align: center;">
-               <a href="/page/{{.previous_page}}">previous page</a> |
-               <a href="/page/1">first page</a> |
-                current page: {{.current_page}}/<a href="/page/{{.total_page}}">{{.total_page}}</a>
-                | <a href="/page/{{.next_page}}">next page</a> |  <a href="/">last page</a>
-            </div>
-
+<div class="pagination">
+    <a href="/" class="pagination-btn">Last</a>
+    
+    {{if lt .next_page .current_page}}
+    <span class="pagination-btn disabled">← Next</span>
+    {{else}}
+    <a href="/page/{{.next_page}}" class="pagination-btn">← Next</a>
+    {{end}}
+    
+    <span class="pagination-current">
+        Page {{.current_page}} of {{.total_page}}
+    </span>
+    
+    {{if gt .previous_page 0}}
+    <a href="/page/{{.previous_page}}" class="pagination-btn">Previous →</a>
+    {{else}}
+    <span class="pagination-btn disabled">Previous →</span>
+    {{end}}
+    
+    <a href="/page/1" class="pagination-btn">First</a>
+</div>
 {{end}}

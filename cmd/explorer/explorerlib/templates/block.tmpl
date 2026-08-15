@@ -1,79 +1,194 @@
 {{define "block"}}
 {{ template "header" . }}
-<div>
 
-    <H4>Block Topo height (unique): {{.block.TopoHeight}}  Block height: ({{.block.Height}})</H4>
-    <H4>Block hash: {{.block.Hash}}</H4>
+<a href="/" class="breadcrumb">← Back to Explorer</a>
 
-{{range $i, $a := .block.Tips}}
-  <H5>Previous blocks: <a href="/block/{{$a}}">{{$a}}</a></H5>
-{{end}}
+<div class="enhanced-card">
+    <div class="enhanced-card-header">
+        <h2 class="enhanced-card-title">Block Details</h2>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem;">
+            <div>
+                <span class="badge badge-primary">Topo Height: {{.block.TopoHeight}}</span>
+            </div>
+            <div>
+                <span class="badge badge-purple">Height: {{.block.Height}}</span>
+            </div>
+        </div>
+    </div>
 
-<!--    
-    <H5>Next block: <a href="/block/a8ade20d5cad5e23105cfc25687beb2498844a984b1450330c67705b6c720596">a8ade20d5cad5e23105cfc25687beb2498844a984b1450330c67705b6c720596</a></H5>
-    -->
-    <table class="center">
-        <tr>
-            <td>Timestamp [UCT] (epoch millisec):</td><td>{{.block.Block_time}} ({{.block.Epoch}})</td>
-            <td>Age [h:m:s.ms]:</td><td>{{.block.Age}}</td>
-            <td>Δ [h:m:s.ms]:</td><td></td>
-        </tr>
-        <tr>
-            <td>Major.minor version:</td><td>{{.block.Major_Version}}.{{.block.Minor_Version}}</td>
-            <td>Block reward:</td><td>{{.block.Reward}}</td>
-            <td>Block size [kB]:</td><td>{{.block.Size}}</td>
-        </tr>
-        <tr>
-            <td>Miniblocks:</td><td>{{len .block.Block.MiniBlocks}}</td>
-            <td>Total fees:</td><td>{{.block.Fees}}</td>
-            <td>No of txs:</td><td>{{.block.Tx_Count}}</td>
-        </tr>
-    </table>
+    <div class="enhanced-card-content">
+        <!-- Block Hash -->
+        <div style="margin-bottom: 1.5rem;">
+            <div style="color: #b3b3b3; font-size: 0.85rem; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Block Hash</div>
+            <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <div class="hash" style="font-size: 0.95rem; flex: 1; min-width: 0;">{{.block.Hash}}</div>
+                <button class="copy-btn" style="opacity: 1;" onclick="copyToClipboard('{{.block.Hash}}', this)">Copy Hash</button>
+            </div>
+        </div>
 
-    <h3>Miner reward for this block</h3>
-    <table class="center">
-        <tr>
-            <td>Miner Address</td>
-            <td>outputs</td>
-            <td>size [kB]</td>
-            <td>version</td>
-        </tr>
-            <tr>
-                <td>{{index .block.Mtx.OutAddress 0}}</a>
-                <td>{{.block.Mtx.Amount}}</td>
-                <td>{{.block.Mtx.Size}}</td>
-                <td>{{.block.Mtx.Version}}</td>
-            </tr>
-
-    </table>
-
-    <h3>Transactions ({{.block.Tx_Count}})</h3>
-        <table class="center" style="width:80%">
-            <tr>
-                <td>hash</td>
-                <td>type</td>
-                <td>fee</td>
-                <td>ring size</td>
-                <td>version</td>
-                <td>size [kB]</td>
-            </tr>
-            {{range .block.Txs}}
-                <tr>
-                   
-                    {{if .Skipped }}<td><a href="/tx/{{.Hash}}"><font color="indianred">{{.Hash}}</font>  </a></td>
-                    {{else}}
-                    <td><a href="/tx/{{.Hash}}">{{.Hash}}</a></td>
-                    {{end}}
-                    <td>{{.TransactionType}}</td>
-                    <td>{{.Fee}}</td>
-                    <td>{{.Ring_size}}</td>             
-                    <td>{{.Version}}</td>
-                    <td>{{.Size}}</td>
-                </tr>
+        <!-- Previous Blocks -->
+        {{if .block.Tips}}
+        <div style="margin-bottom: 1.5rem;">
+            <div style="color: #b3b3b3; font-size: 0.85rem; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Previous Blocks</div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                {{range $i, $a := .block.Tips}}
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <a href="/block/{{$a}}" class="block-hash-link" style="flex: 1;">
+                        <span class="hash-short">
+                            <script>document.write(truncateHash('{{$a}}'))</script>
+                            <noscript>{{$a}}</noscript>
+                        </span>
+                    </a>
+                    <button class="copy-btn" style="opacity: 1; font-size: 0.7rem;" onclick="copyToClipboard('{{$a}}', this)">Copy</button>
+                </div>
                 {{end}}
-        </table>
+            </div>
+        </div>
+        {{end}}
 
+        <!-- Block Information Grid -->
+        <div class="block-info-grid">
+            <div class="block-info-item">
+                <div class="block-info-label">Timestamp (UTC)</div>
+                <div class="block-info-value">{{.block.Block_time}}</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Epoch</div>
+                <div class="block-info-value">{{.block.Epoch}}</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Block Age</div>
+                <div class="block-info-value age-display">{{.block.Age}}</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Version</div>
+                <div class="block-info-value">{{.block.Major_Version}}.{{.block.Minor_Version}}</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Block Reward</div>
+                <div class="block-info-value" style="color: #4ade80;">{{.block.Reward}} DERO</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Block Size</div>
+                <div class="block-info-value">{{.block.Size}} kB</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Miniblocks</div>
+                <div class="block-info-value">{{len .block.Block.MiniBlocks}}</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Total Fees</div>
+                <div class="block-info-value" style="color: #52c8db;">{{.block.Fees}} DERO</div>
+            </div>
+            <div class="block-info-item">
+                <div class="block-info-label">Transactions</div>
+                <div class="block-info-value">{{.block.Tx_Count}}</div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<!-- Miner Reward Section -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Miner Reward</h3>
+    </div>
+    <div class="info-list">
+        <div class="info-row">
+            <div class="info-label">Integrator Address</div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.5rem;">
+                <div class="info-value monospace" style="font-size: 0.85rem;">{{index .block.Mtx.OutAddress 0}}</div>
+                <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{index .block.Mtx.OutAddress 0}}', this)">Copy</button>
+            </div>
+        </div>
+        {{range $idx, $elem := .block.Miners}}
+        <div class="info-row">
+            <div class="info-label">Miner Address </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; padding-bottom: 0.5rem;">
+                <div class="info-value monospace" style="font-size: 0.85rem;">{{$elem}}</div>
+                <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{$elem}}', this)">Copy</button>
+            </div>
+        </div>
+        {{end}}
+        <div class="info-row">
+            <div class="info-label">Total Amount</div>
+            <div class="info-value" style="color: #4ade80; font-weight: 600;">{{.block.Mtx.Amount}} DERO</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">TX Size</div>
+            <div class="info-value">{{.block.Mtx.Size}} kB</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Version</div>
+            <div class="info-value">{{.block.Mtx.Version}}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Transactions Section -->
+{{if .block.Txs}}
+<div class="enhanced-card">
+    <div class="enhanced-card-header">
+        <h3 class="enhanced-card-title">Transactions ({{.block.Tx_Count}})</h3>
+        <p class="enhanced-card-subtitle">All transactions included in this block</p>
+    </div>
+
+    <div class="enhanced-card-content">
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50%;">Transaction Hash</th>
+                        <th style="width: 15%;">Type</th>
+                        <th style="width: 15%;">Fee</th>
+                        <th style="width: 10%;">Ring Size</th>
+                        <th style="width: 5%;">Ver</th>
+                        <th style="width: 5%;">Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .block.Txs}}
+                    <tr>
+                        <td>
+                            <div class="hash-truncate">
+                                {{if .Skipped}}
+                                <a href="/tx/{{.Hash}}" class="hash-text tx-skipped" title="{{.Hash}}">
+                                {{else}}
+                                <a href="/tx/{{.Hash}}" class="hash-text" title="{{.Hash}}">
+                                {{end}}
+                                    <script>document.write(truncateHash('{{.Hash}}'))</script>
+                                    <noscript>{{.Hash}}</noscript>
+                                </a>
+                                <button class="copy-btn" onclick="copyToClipboard('{{.Hash}}', this)">Copy</button>
+                            </div>
+                        </td>
+                        <td>
+                            {{if eq .TransactionType "NORMAL"}}
+                            <span class="tx-type tx-type-normal">NORMAL</span>
+                            {{else if eq .TransactionType "COINBASE"}}
+                            <span class="tx-type tx-type-coinbase">COINBASE</span>
+                            {{else if eq .TransactionType "REGISTRATION"}}
+                            <span class="tx-type tx-type-registration">REGISTRATION</span>
+                            {{else if eq .TransactionType "BURN"}}
+                            <span class="tx-type tx-type-burn">BURN</span>
+                            {{else if eq .TransactionType "SC"}}
+                            <span class="tx-type tx-type-sc">SC</span>
+                            {{else}}
+                            <span class="tx-type">{{.TransactionType}}</span>
+                            {{end}}
+                        </td>
+                        <td style="color: #52c8db; font-weight: 500;">{{.Fee}}</td>
+                        <td style="text-align: center;">{{.Ring_size}}</td>
+                        <td style="text-align: center;">{{.Version}}</td>
+                        <td style="text-align: right;">{{.Size}} kB</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}
 
 {{ template "footer" . }} 
 {{end}}

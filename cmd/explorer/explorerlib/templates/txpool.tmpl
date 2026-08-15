@@ -1,34 +1,53 @@
 {{define "txpool"}}
-<h2 style="margin-bottom: 0px">
-   Transaction pool
-</h2>
-<h4 style="font-size: 12px; margin-top: 0px">(no of txs: {{ .txpool_size }}, size: 0.00 kB, updated every 5 seconds)</h4>
-<div class="center">
-    
-      <table class="center" style="width:80%">
-            <tr>
-                <td>height built</td>
-                <td>transaction hash</td>
-                <td>fee</td>
-                <td>ring size</td>
-                <td>tx size [kB]</td>
-            </tr>
-            
-           
-            {{range .mempool}}
-            <tr>
-                    <td>{{.HeightBuilt}}</td>
-                    <td><a href="/tx/{{.Hash}}">{{.Hash}}</a></td>
-                    <td>{{.Fee}}</td>
-                    <td>{{.Ring_size}}</td>
-                    <td>{{.Size}}</td>
+{{if .mempool}}
+<div class="enhanced-card">
+    <div class="enhanced-card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h2 class="enhanced-card-title" style="margin-bottom: 0.25rem;">Transaction Pool</h2>
+                <p class="enhanced-card-subtitle">Pending transactions awaiting confirmation</p>
+            </div>
+            <div class="txpool-count">
+                <span style="font-weight: 700; font-size: 1.2rem;">{{ .txpool_size }}</span>
+                <span style="color: #b3b3b3;">Transactions</span>
+            </div>
+        </div>
+    </div>
 
-            </tr>
-            
-            {{end}}
-        </table>
-
-
-
+    <div class="enhanced-card-content">
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
+                    <tr>
+                        <th style="width: 12%;">Height Built</th>
+                        <th style="width: 50%;">Transaction Hash</th>
+                        <th style="width: 15%;">Fee</th>
+                        <th style="width: 12%;">Ring Size</th>
+                        <th style="width: 11%;">TX Size</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .mempool}}
+                    <tr>
+                        <td>{{.HeightBuilt}}</td>
+                        <td>
+                            <div class="hash-truncate">
+                                <a href="/tx/{{.Hash}}" class="hash-text" title="{{.Hash}}">
+                                    <script>document.write(truncateHash('{{.Hash}}'))</script>
+                                    <noscript>{{.Hash}}</noscript>
+                                </a>
+                                <button class="copy-btn" onclick="copyToClipboard('{{.Hash}}', this)">Copy</button>
+                            </div>
+                        </td>
+                        <td style="color: #52c8db; font-weight: 500;">{{.Fee}}</td>
+                        <td style="text-align: center;">{{.Ring_size}}</td>
+                        <td style="text-align: right;">{{.Size}} kB</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
+{{end}}
 {{end}}

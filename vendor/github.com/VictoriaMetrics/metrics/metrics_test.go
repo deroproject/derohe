@@ -3,9 +3,159 @@ package metrics
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestWriteMetrics(t *testing.T) {
+	t.Run("gauge_uint64", func(t *testing.T) {
+		var bb bytes.Buffer
+
+		WriteGaugeUint64(&bb, "foo", 123)
+		sExpected := "foo 123\n"
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+
+		ExposeMetadata(true)
+		bb.Reset()
+		WriteGaugeUint64(&bb, "foo", 123)
+		sExpected = "# HELP foo\n# TYPE foo gauge\nfoo 123\n"
+		ExposeMetadata(false)
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+	})
+	t.Run("gauge_float64", func(t *testing.T) {
+		var bb bytes.Buffer
+
+		WriteGaugeFloat64(&bb, "foo", 1.23)
+		sExpected := "foo 1.23\n"
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+
+		ExposeMetadata(true)
+		bb.Reset()
+		WriteGaugeFloat64(&bb, "foo", 1.23)
+		sExpected = "# HELP foo\n# TYPE foo gauge\nfoo 1.23\n"
+		ExposeMetadata(false)
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+	})
+	t.Run("counter_uint64", func(t *testing.T) {
+		var bb bytes.Buffer
+
+		WriteCounterUint64(&bb, "foo_total", 123)
+		sExpected := "foo_total 123\n"
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+
+		ExposeMetadata(true)
+		bb.Reset()
+		WriteCounterUint64(&bb, "foo_total", 123)
+		sExpected = "# HELP foo_total\n# TYPE foo_total counter\nfoo_total 123\n"
+		ExposeMetadata(false)
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+	})
+	t.Run("counter_float64", func(t *testing.T) {
+		var bb bytes.Buffer
+
+		WriteCounterFloat64(&bb, "foo_total", 1.23)
+		sExpected := "foo_total 1.23\n"
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+
+		ExposeMetadata(true)
+		bb.Reset()
+		WriteCounterFloat64(&bb, "foo_total", 1.23)
+		sExpected = "# HELP foo_total\n# TYPE foo_total counter\nfoo_total 1.23\n"
+		ExposeMetadata(false)
+		if s := bb.String(); s != sExpected {
+			t.Fatalf("unexpected value; got\n%s\nwant\n%s", s, sExpected)
+		}
+	})
+}
+
+func TestGetDefaultSet(t *testing.T) {
+	s := GetDefaultSet()
+	if s != defaultSet {
+		t.Fatalf("GetDefaultSet must return defaultSet=%p, but returned %p", defaultSet, s)
+	}
+}
+
+func TestUnregisterAllMetrics(t *testing.T) {
+	for j := 0; j < 3; j++ {
+		for i := 0; i < 10; i++ {
+			_ = NewCounter(fmt.Sprintf("counter_%d", i))
+			_ = NewSummary(fmt.Sprintf("summary_%d", i))
+			_ = NewHistogram(fmt.Sprintf("histogram_%d", i))
+			_ = NewGauge(fmt.Sprintf("gauge_%d", i), func() float64 { return 0 })
+		}
+		if mns := ListMetricNames(); len(mns) == 0 {
+			t.Fatalf("unexpected empty list of metrics on iteration %d", j)
+		}
+		UnregisterAllMetrics()
+		if mns := ListMetricNames(); len(mns) != 0 {
+			t.Fatalf("unexpected metric names after UnregisterAllMetrics call on iteration %d: %q", j, mns)
+		}
+	}
+}
+
+func TestRegisterMetricsWriter(t *testing.T) {
+	RegisterMetricsWriter(func(w io.Writer) {
+		WriteCounterUint64(w, `counter{label="abc"}`, 1234)
+		WriteGaugeFloat64(w, `gauge{a="b",c="d"}`, -34.43)
+	})
+
+	var bb bytes.Buffer
+	WritePrometheus(&bb, false)
+	data := bb.String()
+
+	UnregisterAllMetrics()
+
+	expectedLine := fmt.Sprintf(`counter{label="abc"} 1234` + "\n")
+	if !strings.Contains(data, expectedLine) {
+		t.Fatalf("missing %q in\n%s", expectedLine, data)
+	}
+
+	expectedLine = fmt.Sprintf(`gauge{a="b",c="d"} -34.43` + "\n")
+	if !strings.Contains(data, expectedLine) {
+		t.Fatalf("missing %q in\n%s", expectedLine, data)
+	}
+}
+
+func TestRegisterUnregisterSet(t *testing.T) {
+	const metricName = "metric_from_set"
+	const metricValue = 123
+	s := NewSet()
+	c := s.NewCounter(metricName)
+	c.Set(metricValue)
+
+	RegisterSet(s)
+	var bb bytes.Buffer
+	WritePrometheus(&bb, false)
+	data := bb.String()
+	expectedLine := fmt.Sprintf("%s %d\n", metricName, metricValue)
+	if !strings.Contains(data, expectedLine) {
+		t.Fatalf("missing %q in\n%s", expectedLine, data)
+	}
+
+	UnregisterSet(s, true)
+	bb.Reset()
+	WritePrometheus(&bb, false)
+	data = bb.String()
+	if strings.Contains(data, expectedLine) {
+		t.Fatalf("unepected %q in\n%s", expectedLine, data)
+	}
+}
 
 func TestInvalidName(t *testing.T) {
 	f := func(name string) {

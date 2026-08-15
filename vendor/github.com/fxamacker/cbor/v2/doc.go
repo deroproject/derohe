@@ -2,10 +2,9 @@
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
 /*
-Package cbor is a fast & safe CBOR encoder & decoder (RFC 7049) with a
-standard API + toarray & keyasint struct tags, CBOR tags, float64->32->16,
-CTAP2 & Canonical CBOR, duplicate map key options, and is customizable via
-simple API.
+Package cbor is a modern CBOR codec (RFC 8949 & RFC 7049) with CBOR tags,
+Go struct tags (toarray/keyasint/omitempty), Core Deterministic Encoding,
+CTAP2, Canonical CBOR, float64->32->16, and duplicate map key detection.
 
 Encoding options allow "preferred serialization" by encoding integers and floats
 to their smallest forms (e.g. float16) when values fit.
@@ -40,9 +39,9 @@ creating modes from options at runtime.
 
 EncMode and DecMode interfaces are created from EncOptions or DecOptions structs.
 
-    em := cbor.EncOptions{...}.EncMode()
-    em := cbor.CanonicalEncOptions().EncMode()
-    em := cbor.CTAP2EncOptions().EncMode()
+    em, err := cbor.EncOptions{...}.EncMode()
+    em, err := cbor.CanonicalEncOptions().EncMode()
+    em, err := cbor.CTAP2EncOptions().EncMode()
 
 Modes use immutable options to avoid side-effects and simplify concurrency. Behavior of
 modes won't accidentally change at runtime after they're created.

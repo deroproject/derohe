@@ -22,7 +22,6 @@ package zapcore
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"math"
 	"sync"
 	"time"
@@ -64,7 +63,7 @@ type jsonEncoder struct {
 
 	// for encoding generic values by reflection
 	reflectBuf *buffer.Buffer
-	reflectEnc *json.Encoder
+	reflectEnc ReflectedEncoder
 }
 
 // NewJSONEncoder creates a fast, low-allocation JSON encoder. The encoder
@@ -82,6 +81,17 @@ func NewJSONEncoder(cfg EncoderConfig) Encoder {
 }
 
 func newJSONEncoder(cfg EncoderConfig, spaced bool) *jsonEncoder {
+	if cfg.SkipLineEnding {
+		cfg.LineEnding = ""
+	} else if cfg.LineEnding == "" {
+		cfg.LineEnding = DefaultLineEnding
+	}
+
+	// If no EncoderConfig.NewReflectedEncoder is provided by the user, then use default
+	if cfg.NewReflectedEncoder == nil {
+		cfg.NewReflectedEncoder = defaultReflectedEncoder
+	}
+
 	return &jsonEncoder{
 		EncoderConfig: &cfg,
 		buf:           bufferpool.Get(),
@@ -146,10 +156,7 @@ func (enc *jsonEncoder) AddInt64(key string, val int64) {
 func (enc *jsonEncoder) resetReflectBuf() {
 	if enc.reflectBuf == nil {
 		enc.reflectBuf = bufferpool.Get()
-		enc.reflectEnc = json.NewEncoder(enc.reflectBuf)
-
-		// For consistency with our custom JSON encoder.
-		enc.reflectEnc.SetEscapeHTML(false)
+		enc.reflectEnc = enc.NewReflectedEncoder(enc.reflectBuf)
 	} else {
 		enc.reflectBuf.Reset()
 	}
@@ -211,10 +218,16 @@ func (enc *jsonEncoder) AppendArray(arr ArrayMarshaler) error {
 }
 
 func (enc *jsonEncoder) AppendObject(obj ObjectMarshaler) error {
+	// Close ONLY new openNamespaces that are created during
+	// AppendObject().
+	old := enc.openNamespaces
+	enc.openNamespaces = 0
 	enc.addElementSeparator()
 	enc.buf.AppendByte('{')
 	err := obj.MarshalLogObject(enc)
 	enc.buf.AppendByte('}')
+	enc.closeOpenNamespaces()
+	enc.openNamespaces = old
 	return err
 }
 
@@ -351,7 +364,7 @@ func (enc *jsonEncoder) EncodeEntry(ent Entry, fields []Field) (*buffer.Buffer, 
 	final := enc.clone()
 	final.buf.AppendByte('{')
 
-	if final.LevelKey != "" {
+	if final.LevelKey != "" && final.EncodeLevel != nil {
 		final.addKey(final.LevelKey)
 		cur := final.buf.Len()
 		final.EncodeLevel(ent.Level, final)
@@ -412,11 +425,7 @@ func (enc *jsonEncoder) EncodeEntry(ent Entry, fields []Field) (*buffer.Buffer, 
 		final.AddString(final.StacktraceKey, ent.Stack)
 	}
 	final.buf.AppendByte('}')
-	if final.LineEnding != "" {
-		final.buf.AppendString(final.LineEnding)
-	} else {
-		final.buf.AppendString(DefaultLineEnding)
-	}
+	final.buf.AppendString(final.LineEnding)
 
 	ret := final.buf
 	putJSONEncoder(final)
@@ -431,6 +440,7 @@ func (enc *jsonEncoder) closeOpenNamespaces() {
 	for i := 0; i < enc.openNamespaces; i++ {
 		enc.buf.AppendByte('}')
 	}
+	enc.openNamespaces = 0
 }
 
 func (enc *jsonEncoder) addKey(key string) {

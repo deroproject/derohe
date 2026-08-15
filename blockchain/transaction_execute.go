@@ -18,25 +18,27 @@ package blockchain
 
 // this file implements  core execution of all changes to block chain homomorphically
 
-import "fmt"
-import "bufio"
-import "strings"
-import "strconv"
-import "runtime/debug"
-import "encoding/hex"
-import "math/big"
-import "golang.org/x/xerrors"
+import (
+	"bufio"
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"runtime/debug"
+	"strconv"
+	"strings"
 
-import "github.com/deroproject/derohe/cryptography/crypto"
-import "github.com/deroproject/derohe/cryptography/bn256"
-import "github.com/deroproject/derohe/transaction"
-import "github.com/deroproject/derohe/config"
-import "github.com/deroproject/derohe/premine"
-import "github.com/deroproject/derohe/globals"
-import "github.com/deroproject/derohe/block"
-import "github.com/deroproject/derohe/rpc"
-import "github.com/deroproject/derohe/dvm"
-import "github.com/deroproject/graviton"
+	"github.com/deroproject/derohe/block"
+	"github.com/deroproject/derohe/config"
+	"github.com/deroproject/derohe/cryptography/bn256"
+	"github.com/deroproject/derohe/cryptography/crypto"
+	"github.com/deroproject/derohe/dvm"
+	"github.com/deroproject/derohe/globals"
+	"github.com/deroproject/derohe/premine"
+	"github.com/deroproject/derohe/rpc"
+	"github.com/deroproject/derohe/transaction"
+	"github.com/deroproject/graviton"
+	"golang.org/x/xerrors"
+)
 
 // convert bitcoin model to our, but skip initial 4 years of supply, so our total supply gets to 10.5 million
 const RewardReductionInterval = 210000 * 600 / config.BLOCK_TIME // 210000 comes from bitcoin
@@ -182,8 +184,8 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 
 		zerobalance := crypto.ConstructElGamal(acckey.G1(), crypto.ElGamal_BASE_G)
 
-		if !globals.IsMainnet() { // give testnet users a dummy amount to play
-			zerobalance = zerobalance.Plus(new(big.Int).SetUint64(800000)) // add fix amount to every wallet to users balance for more testing
+		if !globals.IsMainnet() || chain.simulator { // give testnet users a dummy amount to play
+			zerobalance = zerobalance.Plus(new(big.Int).SetUint64(100000000)) // add fix amount to every wallet to users balance for more testing
 		}
 
 		// give new wallets generated in initial month a balance
@@ -237,6 +239,11 @@ func (chain *Blockchain) process_transaction(changed map[crypto.Hash]*graviton.T
 				echanges := crypto.ConstructElGamal(tx.Payloads[t].Statement.C[i], tx.Payloads[t].Statement.D)
 
 				nb.Balance = nb.Balance.Add(echanges) // homomorphic addition of changes
+
+				// apply HF3 fixes: use reverse parity
+				if t, ok := HF3_Affected_Txs[tx.GetHash().String()]; ok {
+					parity = t.Parity
+				}
 
 				if (i%2 == 0) == parity { // this condition is well thought out and works good enough
 					nb.NonceHeight = height

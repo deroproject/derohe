@@ -1,251 +1,518 @@
 {{define "tx"}}
 {{ template "header" . }}
-            <div>
-                <H4 style="margin:5px">Tx hash: {{.info.Hash}} Type {{.info.TransactionType }}</H4>
-                
-                {{if eq .info.TransactionType "BURN" }}
-                    <H4 style="margin:5px; color: red">Burns: {{.info.Burn_Value }} DERO</H4>
+
+<a href="/" class="breadcrumb">← Back to Explorer</a>
+
+<div class="enhanced-card">
+    <div class="enhanced-card-header">
+        <h2 class="enhanced-card-title">Transaction Details</h2>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.75rem;">
+            {{if eq .info.TransactionType "NORMAL"}}
+            <span class="tx-type tx-type-normal">NORMAL</span>
+            {{else if eq .info.TransactionType "COINBASE"}}
+            <span class="tx-type tx-type-coinbase">COINBASE</span>
+            {{else if eq .info.TransactionType "PREMINE"}}
+            <span class="tx-type tx-type-coinbase">PREMINE</span>
+            {{else if eq .info.TransactionType "REGISTRATION"}}
+            <span class="tx-type tx-type-registration">REGISTRATION</span>
+            {{else if eq .info.TransactionType "BURN"}}
+            <span class="tx-type tx-type-burn">BURN</span>
+            {{else if eq .info.TransactionType "SC"}}
+            <span class="tx-type tx-type-sc">SMART CONTRACT</span>
+            {{else}}
+            <span class="tx-type">{{.info.TransactionType}}</span>
+            {{end}}
+            
+            {{if eq .info.TransactionType "BURN"}}
+            <span class="badge badge-success" style="background: rgba(239,68,68,0.2); color: #ef4444; border-color: rgba(239,68,68,0.3);">
+                Burns: {{.info.Burn_Value}} DERO
+            </span>
+            {{end}}
+        </div>
+    </div>
+
+    <div class="enhanced-card-content">
+        <!-- Transaction Hash -->
+        <div style="margin-bottom: 1.5rem;">
+            <div style="color: #b3b3b3; font-size: 0.85rem; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Transaction Hash</div>
+            <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <div class="hash" style="font-size: 0.95rem; flex: 1; min-width: 0;">{{.info.Hash}}</div>
+                <button class="copy-btn" style="opacity: 1;" onclick="copyToClipboard('{{.info.Hash}}', this)">Copy Hash</button>
+            </div>
+        </div>
+
+        <!-- Valid/Invalid Blocks -->
+        <div style="margin-bottom: 1.5rem;">
+            <div style="color: #b3b3b3; font-size: 0.85rem; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">Block Status</div>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <a href="/block/{{.info.ValidBlock}}" class="block-hash-link" style="background: rgba(74,222,128,0.1); border-color: rgba(74,222,128,0.3); flex: 1;">
+                        <span style="color: #4ade80; font-weight: 600; margin-right: 0.5rem;">✓ VALID</span>
+                        <span class="hash-short">
+                            <script>document.write(truncateHash('{{.info.ValidBlock}}'))</script>
+                            <noscript>{{.info.ValidBlock}}</noscript>
+                        </span>
+                    </a>
+                    <button class="copy-btn" style="opacity: 1; font-size: 0.7rem;" onclick="copyToClipboard('{{.info.ValidBlock}}', this)">Copy</button>
+                </div>
+                {{range $i, $e := .info.InvalidBlock}}
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <a href="/block/{{$e}}" class="block-hash-link" style="background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); flex: 1;">
+                        <span style="color: #ef4444; font-weight: 600; margin-right: 0.5rem;">✗ INVALID</span>
+                        <span class="hash-short">
+                            <script>document.write(truncateHash('{{$e}}'))</script>
+                            <noscript>{{$e}}</noscript>
+                        </span>
+                    </a>
+                    <button class="copy-btn" style="opacity: 1; font-size: 0.7rem;" onclick="copyToClipboard('{{$e}}', this)">Copy</button>
+                </div>
                 {{end}}
+            </div>
+        </div>
+    </div>
+</div>
 
-                <H5>Block: <a href="/block/{{.info.ValidBlock}}">{{.info.ValidBlock}}</a> (VALID) </H5>
-
-                {{range $i, $e := .info.InvalidBlock}} 
-                 <H5>Block: <a href="/block/{{$e}}">{{$e}}</a></H5>
-                {{end}}
-
+<!-- PREMINE Type -->
 {{if eq .info.TransactionType "PREMINE"}}
-   <table class="center" style="width: 80%; margin-top:10px">
-                    <tr>
-                        <td>{{index .info.OutAddress 0}} Registered with funds {{.info.Amount}}</td>
-                    </tr>
-    </table>
-
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Premine Registration</h3>
+    </div>
+    <div class="info-list">
+        <div class="info-row">
+            <div class="info-label">Address</div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div class="info-value monospace" style="font-size: 0.85rem;">{{index .info.OutAddress 0}}</div>
+                <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{index .info.OutAddress 0}}', this)">Copy</button>
+            </div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Amount</div>
+            <div class="info-value" style="color: #4ade80; font-weight: 600;">{{.info.Amount}} DERO</div>
+        </div>
+    </div>
+</div>
 {{end}}
 
+<!-- REGISTRATION Type -->
 {{if eq .info.TransactionType "REGISTRATION"}}
-   <table class="center" style="width: 80%; margin-top:10px">
-                    <tr>
-                        <td>{{index .info.OutAddress 0}} Registered </td>
-                    </tr>
-    </table>
-
-{{end}}
-
-
-{{if .info.SC_Install }}
-
-<div class="center" style="border: 1px;width: 100%;overflow: hidden; text-overflow: ellipsis;">
-    <H5 style="margin:5px">SCID current reserves </H5>
-
-   <table class="center" style="width: 80%; margin-top:10px;border: 1px">
-                    <tr>
-                        <td>SCID</td> <td style="width: 20%">Amount(in atomic units)</td>
-                    </tr>
-
-                    {{range $k, $v := .info.SC_State.Balances}} 
-                      <tr>
-                          <td>{{ $k }}</td> <td>  {{ $v }}  </td>
-                      </tr>
-                    {{end}}
-    </table>
-
-    <H5 style="margin:5px">SCID string variables </H5>
-    <table class="center" style="border: 1px;width: 80%; margin-top:10px;overflow: hidden; text-overflow: ellipsis;">
-                    <tr>
-                        <td>key</td> <td style="width: 20%;text-align:left">value</td>
-                    </tr>
-                    {{range $k, $v := .info.SC_State.VariableStringKeys}} 
-                      <tr>
-                          <td>{{ $k }}</td> <td style="width: 20%;text-align:left;overflow: hidden; text-overflow: ellipsis;">  {{ $v }}  </td>
-                      </tr>
-                    {{end}}
-    </table>
-    <H5 style="margin:5px">SCID uint64 variables </H5>
-    <table class="center" style="border: 1px;width: 80%; margin-top:10px">
-                    <tr>
-                        <td>key</td> <td style="width: 20%;text-align:left">value</td>
-                    </tr>
-                    {{range $k, $v := .info.SC_State.VariableUint64Keys}} 
-                      <tr>
-                          <td>{{ $k }}</td> <td style="width: 20%;text-align:left;overflow: hidden; text-overflow: ellipsis;">  {{ $v }}  </td>
-                      </tr>
-                    {{end}}
-    </table>
-
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Account Registration</h3>
+    </div>
+    <div class="info-list">
+        <div class="info-row">
+            <div class="info-label">Registered Address</div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div class="info-value monospace" style="font-size: 0.85rem;">{{index .info.OutAddress 0}}</div>
+                <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{index .info.OutAddress 0}}', this)">Copy</button>
+            </div>
+        </div>
+    </div>
 </div>
 {{end}}
 
-{{if or (eq .info.TransactionType "NORMAL")  (eq .info.TransactionType "BURN")  (eq .info.TransactionType "SC") }}
-                 <H5 style="margin:5px">built BLID : <a href="/block/{{.info.BLID}}">{{.info.BLID}}</a> </H5>
-                <H5 style="margin:5px">Tx RootHash: {{.info.RootHash}}  built height : {{.info.HeightBuilt}} </H5>
+<!-- Smart Contract State -->
+{{if .info.SC_Install}}
+<div class="sc-info-section">
+    <h3 class="sc-info-title">Smart Contract State</h3>
+    
+    {{if .info.SC_State.Balances}}
+    <div style="margin-bottom: 1.5rem;">
+        <h4 style="color: #8b5cf6; font-size: 1rem; margin-bottom: 0.75rem;">SCID Reserves</h4>
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
+                    <tr>
+                        <th>SCID</th>
+                        <th>Amount (Atomic Units)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range $k, $v := .info.SC_State.Balances}}
+                    <tr>
+                        <td class="hash-short">{{$k}}</td>
+                        <td style="color: #52c8db; font-weight: 500;">{{$v}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{end}}
 
-  
-                <table class="center" style="width: 80%; margin-top:10px">
+    {{if .info.SC_State.VariableStringKeys}}
+    <div style="margin-bottom: 1.5rem;">
+        <h4 style="color: #8b5cf6; font-size: 1rem; margin-bottom: 0.75rem;">String Variables</h4>
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
                     <tr>
-                        <td>Timestamp: {{.info.Timestamp}} </td>
-                        <td>Timestamp [UTC]: {{.info.Block_time}}</td>
-                        <td>Age [y:d:h:m:s]: {{.info.Age}} </td>
+                        <th>Key</th>
+                        <th>Value</th>
                     </tr>
+                </thead>
+                <tbody>
+                    {{range $k, $v := .info.SC_State.VariableStringKeys}}
                     <tr>
-                        <td>Block: <a href="/block/{{.info.Height}}">{{.info.Height}}</a></td>
-                        <td>Fee: {{.info.Fee}}</td>
-                        <td>Tx size: {{.info.Size}} kB</td>
+                        <td>{{$k}}</td>
+                        <td style="word-break: break-all;">{{$v}}</td>
                     </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{end}}
+
+    {{if .info.SC_State.VariableUint64Keys}}
+    <div style="margin-bottom: 1.5rem;">
+        <h4 style="color: #8b5cf6; font-size: 1rem; margin-bottom: 0.75rem;">Uint64 Variables</h4>
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
                     <tr>
-                        <td>Tx version: {{.info.Version}}</td>
-                        <td>No of confirmations: {{.info.Depth}}</td>
-                        <td>Signature type:  {{.info.Type}}</td>
+                        <th>Key</th>
+                        <th>Value</th>
                     </tr>
+                </thead>
+                <tbody>
+                    {{range $k, $v := .info.SC_State.VariableUint64Keys}}
                     <tr>
-                        <td colspan="3">Extra: {{.info.Extra}}</td>
+                        <td>{{$k}}</td>
+                        <td style="color: #52c8db; font-weight: 500;">{{$v}}</td>
                     </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}
+
+<!-- Transaction Details (NORMAL, BURN, SC) -->
+{{if or (eq .info.TransactionType "NORMAL") (eq .info.TransactionType "BURN") (eq .info.TransactionType "SC")}}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Transaction Information</h3>
+    </div>
+    <div class="info-list">
+        <div class="info-row">
+            <div class="info-label">Built BLID</div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; justify-content: flex-end;">
+                <a href="/block/{{.info.BLID}}" class="monospace" style="font-size: 0.85rem;" title="{{.info.BLID}}">
+                    <script>document.write(truncateHash('{{.info.BLID}}'))</script>
+                    <noscript>{{.info.BLID}}</noscript>
+                </a>
+                <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{.info.BLID}}', this)">Copy</button>
+            </div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Root Hash</div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; justify-content: flex-end;">
+                <div class="info-value monospace" style="font-size: 0.85rem;">
+                    <script>document.write(truncateHash('{{.info.RootHash}}'))</script>
+                    <noscript>{{.info.RootHash}}</noscript>
+                </div>
+                <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{.info.RootHash}}', this)">Copy</button>
+            </div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Built Height</div>
+            <div class="info-value">{{.info.HeightBuilt}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Block</div>
+            <div class="info-value">
+                <a href="/block/{{.info.Height}}">{{.info.Height}}</a>
+            </div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Timestamp</div>
+            <div class="info-value">{{.info.Timestamp}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Timestamp (UTC)</div>
+            <div class="info-value">{{.info.Block_time}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Block Age</div>
+            <div class="info-value age-display">{{.info.Age}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Fee</div>
+            <div class="info-value" style="color: #52c8db; font-weight: 600;">{{.info.Fee}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">TX Size</div>
+            <div class="info-value">{{.info.Size}} kB</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Version</div>
+            <div class="info-value">{{.info.Version}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Confirmations</div>
+            <div class="info-value">{{.info.Depth}}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">Signature Type</div>
+            <div class="info-value">{{.info.Type}}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Assets -->
+{{range $ii, $ee := .info.Assets}}
+<div class="enhanced-card">
+    <div class="enhanced-card-header">
+        {{if eq $ee.SCID "0000000000000000000000000000000000000000000000000000000000000000"}}
+        <h3 class="enhanced-card-title" style="color: #52c8db;">DERO Asset</h3>
+        {{else}}
+        <h3 class="enhanced-card-title" style="color: #b959b6;">Token Asset</h3>
+        <p class="enhanced-card-subtitle monospace">{{$ee.SCID}}</p>
+        {{end}}
+    </div>
+
+    <div class="enhanced-card-content">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-card-value">{{$ee.Ring_size}}</div>
+                <div class="stat-card-label">Ring Size</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-value">{{$ee.Fees}}</div>
+                <div class="stat-card-label">Fees</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-card-value">{{$ee.Burn}}</div>
+                <div class="stat-card-label">
+                    {{if eq $.info.TransactionType "SC"}}
+                    Deposited
+                    {{else}}
+                    Burned
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        {{if eq $.info.TransactionType "SC"}}
+        <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 8px;">
+            <div style="color: #b3b3b3; font-size: 0.8rem; margin-bottom: 0.25rem;">Sender</div>
+            <div style="color: #8b5cf6; font-weight: 600; font-family: monospace;">{{$.info.SC_Signer}}</div>
+        </div>
+        {{end}}
+
+        {{if $ee.Ring}}
+        <div style="margin-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h4 style="color: #b3b3b3; font-size: 0.9rem; margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Ring Members ({{len $ee.Ring}})</h4>
+                <button class="collapse-toggle" onclick="toggleCollapse('ring-members-{{$ii}}', this)">Show Ring Members</button>
+            </div>
+            <div id="ring-members-{{$ii}}" class="tx-table-wrapper" style="display: none;">
+                <table class="tx-table">
+                    <thead>
+                        <tr>
+                            <th>Ring Member Address</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range $i, $e := $ee.Ring}}
+                        <tr>
+                            <td>
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                                    <span class="monospace" style="font-size: 0.85rem;">{{$e}}</span>
+                                    <button class="copy-btn" style="opacity: 1; font-size: 0.65rem;" onclick="copyToClipboard('{{$e}}', this)">Copy</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
                 </table>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
 
-             {{range $ii, $ee := .info.Assets}} 
-                {{if eq $ee.SCID "0000000000000000000000000000000000000000000000000000000000000000" }}
-
-
-                
-                  <H5>DERO : {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} 
-
-                 
-
-                 {{if eq $.info.TransactionType "SC"}}
-                        Deposited to SC {{$ee.Burn}}
-                    {{else}}
-                        Burned {{$ee.Burn}}
-                 {{end}}
-
-                 </H5>
-                {{if eq $.info.TransactionType "SC"}} <H5>Sender :  {{  $.info.SC_Signer }} </H5> {{end}}
-
-                 {{else}}
-                    <H5>Token: {{$ee.SCID}}   {{$ee.Ring_size}} inputs/outputs (RING size) Fees {{$ee.Fees}} {{if eq $.info.TransactionType "SC"}}
-                        Deposited Tokens to SC {{$ee.Burn}}
-                    {{else}}
-                        Burned {{$ee.Burn}}
-                 {{end}}
-
-                 </H5>
-                 {{end}}
-                 <div class="center">
-                  <table class="center">
-                      <tr>
-                          <td>address</td>
-                      </tr>
-                      
-                      {{range $i, $e := $ee.Ring}} 
-                      <tr>
-                          <td>{{ $e }}</td>
-                      </tr>
-                      {{end}}
-                  </table>
-              </div>
-
-            {{end}}
-              
+<!-- Smart Contract Info -->
 {{if eq .info.TransactionType "SC"}}
-   <table class="center" style="width: 80%; margin-top:10px">
+<div class="sc-info-section">
+    <h3 class="sc-info-title">Smart Contract Details</h3>
+    
+    <div class="info-list">
+        <div class="info-row">
+            <div class="info-label">SC Balance</div>
+            <div class="info-value" style="color: #4ade80; font-weight: 600;">{{.info.SC_Balance_string}} DERO</div>
+        </div>
+    </div>
+
+    {{if .info.SC_Code}}
+    <div style="margin-top: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h4 style="color: #8b5cf6; font-size: 1rem; margin: 0;">Smart Contract Code</h4>
+            <button class="collapse-toggle" onclick="toggleCollapse('sc-code-display', this)">Show Code</button>
+        </div>
+        <div id="sc-code-display" class="sc-code-display" style="display: none;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
+                <button class="copy-btn" style="opacity: 1;" onclick="copyElementText('sc-code-text', this)">Copy Code</button>
+            </div>
+            <pre id="sc-code-text">{{.info.SC_Code}}</pre>
+        </div>
+    </div>
+    {{end}}
+
+    {{if .info.SC_Args}}
+    <div style="margin-top: 1.5rem;">
+        <h4 style="color: #8b5cf6; font-size: 1rem; margin-bottom: 0.75rem;">Smart Contract Arguments</h4>
+        <div class="tx-table-wrapper">
+            <table class="tx-table">
+                <thead>
                     <tr>
-                        <td>SC Balance:  {{  .info.SC_Balance_string }} DERO</td>
+                        <th style="width: 25%;">Name</th>
+                        <th style="width: 15%;">Type</th>
+                        <th style="width: 60%;">Value</th>
                     </tr>
+                </thead>
+                <tbody>
+                    {{range .info.SC_Args}}
                     <tr>
-                        <td>SC CODE:<pre style="text-align: left;">  {{  .info.SC_Code }}</pre></td>
-                    </tr>
-                    <tr>
-                        <td>SC Arguments: {{  .info.SC_Args }}</td>
-                    </tr>
-    </table>
-
-{{end}}
-<!-- TODO currently we donot enable user to prove or decode something -->
-<br/>
-<br/>
-<div class="center" style="border: 1px">
-                  <table class="center" border="1">
-                      <tr>
-                           
-
-                          <td> <h3>Prove to someone that you have sent them DERO in this transaction</h3>  </td>
-                      </tr>
-                      <tr>
-                      <td>
-                      proof can be obtained using wallet
-                                    command in  <i>dero-wallet-cli</i> or from the statement
-                                    <br>
-                                        Note: proof is sent to the server, as the calculations are done on the server side
-                                
-                      </td>
-                      </tr>
-                      <tr>
-                      <td>
-
-
-
-                                <form  method="post" style="width:100%;margin-top:2px" class="style-1">
-                                   <input name="txproof" size="120" placeholder="Tx Proof here" type="text"><br>
-                                    <input name="raw_tx_data" value="" type="hidden">
-                                    <!--above raw_tx_data field only used when checking raw tx data through tx pusher         NOTE: comment should be be closed -->
-                                    <input value="Prove sending" style="margin-top:5px" type="submit">
-            
-                                </form>
+                        <td style="color: #b959b6; font-weight: 600;">{{.Name}}</td>
+                        <td><span class="badge badge-primary" style="font-size: 0.7rem;">{{.DataType}}</span></td>
+                        <td style="font-family: monospace; font-size: 0.85rem; word-break: break-all;">
+                            {{if eq .DataType "S"}}
+                            "{{.Value}}"
+                            {{else if eq .DataType "H"}}
+                            <span style="color: #b959b6;">{{.Value}}</span>
+                            {{else}}
+                            <span style="color: #52c8db;">{{.Value}}</span>
+                            {{end}}
                         </td>
-                        </tr>
-
-                        {{if .info.Proof_amount }}
-                        <tr>
-                        <td><h2><font color="blue">{{.info.Proof_address}} Received {{.info.Proof_amount}} DERO
-
-
-                        {{if .info.Proof_Payload}}
-                            <br/> Decoded Data {{ .info.Proof_Payload}}
-
-                           <br/> Raw Data 
-                            <br/><pre>{{ .info.Proof_Payload_raw}}</pre>
-                           
-                        {{end}}
-                     </font>  </h2> 
-   </td>
-                        </tr>
-                        {{end}} 
-
-                        {{if .info.Proof_error }}
-                        <tr>
-                        <td>   <font color="red">{{.info.Proof_error}}</font>
-   </td>
-                        </tr>
-                        {{end}}
-            
-
-
-                        </table>
-
-                     </div>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{end}}
+</div>
 {{end}}
 
+<!-- Transaction Proof Form -->
+<div id="proof" class="proof-form-container">
+    <h3 class="proof-form-title">Prove Transaction</h3>
+    <p class="proof-form-description">
+        Prove that you sent DERO in this transaction. Obtain proof using the <code>dero-wallet-cli</code> command or from your wallet statement.
+        <br><br>
+        <strong>Note:</strong> The proof is sent to the server for verification calculations.
+        Payload proofs are user-provided display proofs; for the strongest verification, confirm with the receiving wallet.
+    </p>
 
-<div class="center" style="border: 1px;width: 100%;overflow: hidden; text-overflow: ellipsis;">
-                  <table class="center" border="1">
-                      <tr>
-<br/> TX hex bytes 
-<br/>{{ .info.Hex}}
-</tr>
-</table>
+    <form id="proof-form" method="post" action="#proof">
+        <div class="proof-input-group">
+            <input id="txproof-input" name="txproof" type="text" class="proof-input" placeholder="Enter transaction proof here...">
+            <input name="raw_tx_data" value="" type="hidden">
+        </div>
+        <button type="submit" class="proof-submit-btn" id="proof-submit-btn">Verify Proof</button>
+    </form>
+
+    <div id="proof-result-container">
+    {{if .info.Proof_amount}}
+    <div class="proof-result proof-result-success">
+        <div class="proof-result-title">✓ Proof Verified Successfully</div>
+        <div style="color: #fff; margin-top: 0.75rem;">
+            <strong>{{.info.Proof_address}}</strong> received <strong style="color: #4ade80;">{{.info.Proof_amount}} DERO</strong>
+        </div>
+        {{if .info.Proof_Payload}}
+        <div style="margin-top: 1rem; padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 6px;">
+            <div style="color: #b3b3b3; font-size: 0.85rem; margin-bottom: 0.5rem;">Decoded Payload:</div>
+            <div style="color: #fff;">{{.info.Proof_Payload}}</div>
+        </div>
+        <div style="margin-top: 1rem;">
+            <div style="color: #b3b3b3; font-size: 0.85rem; margin-bottom: 0.5rem;">Raw Data:</div>
+            <div class="code-block">
+                <pre>{{.info.Proof_Payload_raw}}</pre>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+
+    {{if .info.Proof_error}}
+    <div class="proof-result proof-result-error">
+        <div class="proof-result-title">✗ Proof Verification Failed</div>
+        <div style="color: #fff; margin-top: 0.5rem;">{{.info.Proof_error}}</div>
+    </div>
+    {{end}}
+    </div>
 </div>
 
-{{if eq .info.CoinBase false}}
+<script>
+(function() {
+    const form = document.getElementById('proof-form');
+    const btn = document.getElementById('proof-submit-btn');
+    const input = document.getElementById('txproof-input');
+    const resultContainer = document.getElementById('proof-result-container');
+    
+    if (!form) return;
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const proofValue = input.value.trim();
+        if (!proofValue) return;
+        
+        btn.disabled = true;
+        btn.textContent = 'Verifying...';
+        
+        const formData = new FormData(form);
+        
+        fetch(window.location.pathname, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const newResult = doc.getElementById('proof-result-container');
+            
+            if (newResult) {
+                resultContainer.innerHTML = newResult.innerHTML;
+            }
+            
+            btn.disabled = false;
+            btn.textContent = 'Verify Proof';
+        })
+        .catch(err => {
+            resultContainer.innerHTML = '<div class="proof-result proof-result-error"><div class="proof-result-title">✗ Error</div><div style="color: #fff; margin-top: 0.5rem;">Failed to verify proof. Please try again.</div></div>';
+            btn.disabled = false;
+            btn.textContent = 'Verify Proof';
+        });
+    });
+})();
+</script>
+{{end}}
 
-                 <!--   <h3>{{.info.In}} input(s) for total of ? dero</h3>
-                <div class="center">
-                   <table class="center">
-                   <tr>
-                   <td>
+<!-- Raw Transaction Data -->
+<div class="card">
+    <div class="card-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <h3 class="card-title" style="margin: 0;">Raw Transaction Data</h3>
+            <button class="collapse-toggle" onclick="toggleCollapse('raw-tx-data', this)">Show Raw Data</button>
+        </div>
+    </div>
+    <div id="raw-tx-data" class="collapsible-content" style="display: none;">
+        <div class="code-block">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
+                <button class="copy-btn" style="opacity: 1;" onclick="copyToClipboard('{{.info.Hex}}', this)">Copy All</button>
+            </div>
+            <pre style="word-break: break-all; white-space: pre-wrap;">{{.info.Hex}}</pre>
+        </div>
+    </div>
+</div>
 
-                  </table>
-              </div>
-        -->
-            {{end}}
-           </div>
-{{ template "footer" . }} 
-              
+{{ template "footer" . }}
 {{end}}

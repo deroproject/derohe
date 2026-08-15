@@ -11,9 +11,9 @@ import (
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned counter is safe to use from concurrent goroutines.
 func NewCounter(name string) *Counter {
@@ -42,6 +42,11 @@ func (c *Counter) Add(n int) {
 	atomic.AddUint64(&c.n, uint64(n))
 }
 
+// AddInt64 adds n to c.
+func (c *Counter) AddInt64(n int64) {
+	atomic.AddUint64(&c.n, uint64(n))
+}
+
 // Get returns the current value for c.
 func (c *Counter) Get() uint64 {
 	return atomic.LoadUint64(&c.n)
@@ -58,6 +63,10 @@ func (c *Counter) marshalTo(prefix string, w io.Writer) {
 	fmt.Fprintf(w, "%s %d\n", prefix, v)
 }
 
+func (c *Counter) metricType() string {
+	return "counter"
+}
+
 // GetOrCreateCounter returns registered counter with the given name
 // or creates new counter if the registry doesn't contain counter with
 // the given name.
@@ -65,9 +74,9 @@ func (c *Counter) marshalTo(prefix string, w io.Writer) {
 // name must be valid Prometheus-compatible metric with possible labels.
 // For instance,
 //
-//     * foo
-//     * foo{bar="baz"}
-//     * foo{bar="baz",aaa="b"}
+//   - foo
+//   - foo{bar="baz"}
+//   - foo{bar="baz",aaa="b"}
 //
 // The returned counter is safe to use from concurrent goroutines.
 //

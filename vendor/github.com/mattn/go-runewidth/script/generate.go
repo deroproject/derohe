@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 // Generate runewidth_table.go from data at https://unicode.org/
@@ -64,9 +65,9 @@ func eastasian(out io.Writer, in io.Reader) error {
 		}
 		var r1, r2 rune
 		var ss string
-		n, err := fmt.Sscanf(line, "%x..%x;%s ", &r1, &r2, &ss)
+		n, err := fmt.Sscanf(line, "%x..%x ; %s", &r1, &r2, &ss)
 		if err != nil || n == 2 {
-			n, err = fmt.Sscanf(line, "%x;%s ", &r1, &ss)
+			n, err = fmt.Sscanf(line, "%x ; %s", &r1, &ss)
 			if err != nil || n != 2 {
 				continue
 			}
@@ -92,12 +93,10 @@ func eastasian(out io.Writer, in io.Reader) error {
 				hi: r2,
 			})
 		case "Na":
-			if r1 > 0xFF {
-				na = append(na, rrange{
-					lo: r1,
-					hi: r2,
-				})
-			}
+			na = append(na, rrange{
+				lo: r1,
+				hi: r2,
+			})
 		case "N":
 			nu = append(nu, rrange{
 				lo: r1,
@@ -119,7 +118,7 @@ func eastasian(out io.Writer, in io.Reader) error {
 	fmt.Fprint(out)
 
 	shapeup(&na)
-	generate(out, "notassigned", na)
+	generate(out, "narrow", na)
 	fmt.Fprintln(out)
 
 	shapeup(&nu)
@@ -134,7 +133,7 @@ func emoji(out io.Writer, in io.Reader) error {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.Index(line, "Extended_Pictographic ; No") != -1 {
+		if strings.Index(line, "Extended_Pictographic=No") != -1 {
 			break
 		}
 	}
@@ -181,7 +180,7 @@ func main() {
 
 	fmt.Fprint(f, "package runewidth\n\n")
 
-	resp, err := http.Get("https://unicode.org/Public/13.0.0/ucd/EastAsianWidth.txt")
+	resp, err := http.Get("https://unicode.org/Public/15.1.0/ucd/EastAsianWidth.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -189,7 +188,7 @@ func main() {
 
 	eastasian(f, resp.Body)
 
-	resp, err = http.Get("https://unicode.org/Public/13.0.0/ucd/emoji/emoji-data.txt")
+	resp, err = http.Get("https://unicode.org/Public/15.1.0/ucd/emoji/emoji-data.txt")
 	if err != nil {
 		log.Fatal(err)
 	}

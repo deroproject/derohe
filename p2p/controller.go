@@ -388,7 +388,9 @@ func connect_with_endpoint(endpoint string, sync_node bool) {
 	if err != nil {
 		logger.V(3).Error(err, "Dial failed", "endpoint", endpoint)
 		Peer_SetFail(ParseIPNoError(remote_ip.String())) // update peer list as we see
-		conn.Close()
+		if conn != nil {
+			conn.Close()
+		}
 		return //nil, fmt.Errorf("Dial failed err %s", err.Error())
 	}
 
@@ -704,7 +706,7 @@ func process_outgoing_connection(conn net.Conn, tlsconn net.Conn, remote_addr ne
 
 // shutdown the p2p component
 func P2P_Shutdown() {
-	//close(Exit_Event) // send signal to all connections to exit
+	close(Exit_Event) // send signal to all connections to exit
 	save_peer_list() // save peer list
 	save_ban_list()  // save ban list
 

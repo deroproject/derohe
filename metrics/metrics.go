@@ -18,18 +18,21 @@
 
 package metrics
 
-import "fmt"
-import "io"
-import "os"
-import "time"
-import "bytes"
-import "net"
-import "net/url"
-import "net/http"
-import "path/filepath"
-import "github.com/go-logr/logr"
-import "github.com/VictoriaMetrics/metrics"
-import "github.com/xtaci/kcp-go/v5"
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/VictoriaMetrics/metrics"
+	"github.com/go-logr/logr"
+	"github.com/xtaci/kcp-go/v5"
+)
 
 // these are exported by the daemon for various analysis
 var Version string //this is later converted to metrics format
@@ -83,10 +86,16 @@ func writePrometheusMetrics(w io.Writer) {
 	fmt.Fprintf(w, "KCP_EarlyRetransSegs %d\n", kcp.DefaultSnmp.EarlyRetransSegs)
 	fmt.Fprintf(w, "KCP_LostSegs %d\n", kcp.DefaultSnmp.LostSegs)
 	fmt.Fprintf(w, "KCP_RepeatSegs %d\n", kcp.DefaultSnmp.RepeatSegs)
+	fmt.Fprintf(w, "KCP_FECFullShardSet %d\n", kcp.DefaultSnmp.FECFullShardSet)
 	fmt.Fprintf(w, "KCP_FECRecovered %d\n", kcp.DefaultSnmp.FECRecovered)
 	fmt.Fprintf(w, "KCP_FECErrs %d\n", kcp.DefaultSnmp.FECErrs)
 	fmt.Fprintf(w, "KCP_FECParityShards %d\n", kcp.DefaultSnmp.FECParityShards)
-	fmt.Fprintf(w, "KCP_FECShortShards %d\n", kcp.DefaultSnmp.FECShortShards)
+	fmt.Fprintf(w, "KCP_FECShardSet %d\n", kcp.DefaultSnmp.FECShardSet)
+	fmt.Fprintf(w, "KCP_FECShardMin %d\n", kcp.DefaultSnmp.FECShardMin)
+	fmt.Fprintf(w, "KCP_RingBufferSndQueue %d\n", kcp.DefaultSnmp.RingBufferSndQueue)
+	fmt.Fprintf(w, "KCP_RingBufferRcvQueue %d\n", kcp.DefaultSnmp.RingBufferRcvQueue)
+	fmt.Fprintf(w, "KCP_RingBufferSndBuffer %d\n", kcp.DefaultSnmp.RingBufferSndBuffer)
+	fmt.Fprintf(w, "KCP_OOBPackets %d\n", kcp.DefaultSnmp.OOBPackets)
 
 }
 
@@ -147,7 +156,7 @@ func Dump_metrics_data_directly(logger logr.Logger, specificnamei interface{}) {
 		databuffer.Reset()
 		writePrometheusMetrics(databuffer)
 
-		resp, err := netClient.Post(metrics_url, "application/test", databuffer)
+		resp, err := netClient.Post(metrics_url, "text/plain", databuffer)
 		if err == nil {
 			resp.Body.Close()
 		} else {
