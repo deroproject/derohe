@@ -69,7 +69,10 @@ func (c *Connection) Chain(request Chain_Request_Struct, response *Chain_Respons
 	const MAX_BLOCKS = 512
 
 	for i := start_topoheight; i <= chain.Load_TOPO_HEIGHT() && len(response.Block_list) <= MAX_BLOCKS; i++ {
-		hash, _ := chain.Load_Block_Topological_order_at_index(i)
+		hash, err := chain.Load_Block_Topological_order_at_index(i)
+		if err != nil { // topoheight i isn't cleanly readable yet (e.g. tip just advanced, not fully flushed) --
+			break // stop here rather than leak a zero hash and desync the position-to-topoheight mapping for the rest
+		}
 		response.Block_list = append(response.Block_list, [32]byte(hash))
 	}
 

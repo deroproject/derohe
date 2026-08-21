@@ -243,6 +243,7 @@ type (
 		SC_DERO_Deposit  uint64    `json:"sc_dero_deposit"`
 		SC_TOKEN_Deposit uint64    `json:"sc_token_deposit"`
 		Ringsize         uint64    `json:"ringsize"`
+		Fees             uint64    `json:"fees"`
 	}
 )
 
