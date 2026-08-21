@@ -67,6 +67,7 @@ func ScInvoke(ctx context.Context, p rpc.SC_Invoke_Params) (result rpc.Transfer_
 	tp.SC_RPC = p.SC_RPC
 	tp.SC_ID = p.SC_ID
 	tp.Ringsize = p.Ringsize
+	tp.Fees = p.Fees
 
 	//fmt.Printf("transfers %+v\n", tp)
 
