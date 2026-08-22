@@ -88,6 +88,10 @@ func GetInfo(ctx context.Context) (result rpc.GetInfo_Result, err error) {
 
 	if globals.IsSimulator() {
 		result.Network = "Simulator"
+	} else if globals.IsMainnet() {
+		result.Network = "Mainnet"
+	} else {
+		result.Network = "Testnet"
 	}
 
 	in, out := p2p.Peer_Direction_Count()
