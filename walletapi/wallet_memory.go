@@ -20,6 +20,7 @@ import "fmt"
 import "time"
 import "crypto/rand"
 import "crypto/sha1"
+import "crypto/sha256"
 import "sync"
 import "runtime"
 
@@ -41,7 +42,7 @@ import "github.com/deroproject/derohe/walletapi/mnemonics"
 
 // see this https://godoc.org/golang.org/x/crypto/pbkdf2
 type KDF struct {
-	Hashfunction string `json:"hash"` //"SHA1" currently only sha1 is supported
+	Hashfunction string `json:"hash"` // SHA256 for new wallets; SHA1 retained for legacy wallets
 	Keylen       int    `json:"keylen"`
 	Iterations   int    `json:"iterations"`
 	Salt         []byte `json:"salt"`
@@ -171,7 +172,7 @@ func (w *Wallet_Memory) Set_Encrypted_Wallet_Password(password string) (err erro
 	}
 	w.KDF.Keylen = 32
 	w.KDF.Iterations = 262144
-	w.KDF.Hashfunction = "SHA1"
+	w.KDF.Hashfunction = "SHA256" // SECURITY: upgraded from SHA1 for new wallets
 
 	if runtime.GOOS == "js" {
 		w.KDF.Iterations = 32768
@@ -322,10 +323,13 @@ func (w *Wallet_Memory) Close_Encrypted_Wallet() {
 // generate key from password
 func Generate_Key(k KDF, password string) (key []byte) {
 	switch k.Hashfunction {
+	case "SHA256":
+		return pbkdf2.Key([]byte(password), k.Salt, k.Iterations, k.Keylen, sha256.New)
 	case "SHA1":
 		return pbkdf2.Key([]byte(password), k.Salt, k.Iterations, k.Keylen, sha1.New)
 
 	default:
+		// Preserve compatibility with legacy files that omitted the hash field.
 		return pbkdf2.Key([]byte(password), k.Salt, k.Iterations, k.Keylen, sha1.New)
 	}
 }

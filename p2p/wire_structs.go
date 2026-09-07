@@ -53,7 +53,8 @@ type Handshake_Struct struct {
 	Local_Port      uint32        `cbor:"LP"`
 	Peer_ID         uint64        `cbor:"PID"`
 	Pruned          int64         `cbor:"PRUNED"`
-	Network_ID      [16]byte      `cbor:"NID"` // 16 bytes
+	Network_ID      [16]byte      `cbor:"NID"`              // 16 bytes
+	CertFingerprint [32]byte      `cbor:"CERTFP,omitempty"` // SHA-256 of DER-encoded TLS certificate
 	Flags           []string      `cbor:"FLAGS"`
 	PeerList        []Peer_Info   `cbor:"PLIST"`
 	Extension_List  []string      `cbor:"EXT"`

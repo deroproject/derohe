@@ -140,8 +140,9 @@ func P2P_Init(params map[string]interface{}) error {
 	}
 
 	chain = params["chain"].(*blockchain.Blockchain)
-	load_ban_list()  // load ban list
-	load_peer_list() // load old list if availble
+	load_ban_list()                             // load ban list
+	load_peer_list()                            // load old list if availble
+	knownCerts.Load(globals.GetDataDirectory()) // load cert pin store
 
 	// if user provided a sync node, connect with it
 	if _, ok := globals.Arguments["--sync-node"]; ok { // check if parameter is supported
@@ -394,8 +395,14 @@ func connect_with_endpoint(endpoint string, sync_node bool) {
 
 	tunekcp(conn) // set tunings for low latency
 
-	// TODO we need to choose fastest cipher here ( so both clients/servers are not loaded)
-	conntls := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+	// The certificate is self-signed; identity is authenticated by the
+	// post-handshake fingerprint pinning. Require TLS 1.2 or newer and present
+	// our process-local certificate to the peer.
+	conntls := tls.Client(conn, &tls.Config{
+		Certificates:       []tls.Certificate{localTLSCertificate()},
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS12,
+	})
 	process_outgoing_connection(conn, conntls, remote_ip, false, sync_node)
 
 }
@@ -548,10 +555,10 @@ func P2P_Server_v2() {
 
 	set_handlers(srv)
 
-	tlsconfig := &tls.Config{Certificates: []tls.Certificate{generate_random_tls_cert()}}
-	//l, err := tls.Listen("tcp", default_address, tlsconfig) // listen as TLS server
-
-	_ = tlsconfig
+	tlsconfig := &tls.Config{
+		Certificates: []tls.Certificate{localTLSCertificate()},
+		MinVersion:   tls.VersionTLS12,
+	}
 
 	var masterkey = pbkdf2.Key(globals.Config.Network_ID.Bytes(), globals.Config.Network_ID.Bytes(), 1024, 32, sha1.New)
 	var blockcipher, _ = kcp.NewAESBlockCrypt(masterkey)
@@ -705,8 +712,9 @@ func process_outgoing_connection(conn net.Conn, tlsconn net.Conn, remote_addr ne
 // shutdown the p2p component
 func P2P_Shutdown() {
 	//close(Exit_Event) // send signal to all connections to exit
-	save_peer_list() // save peer list
-	save_ban_list()  // save ban list
+	save_peer_list()                            // save peer list
+	save_ban_list()                             // save ban list
+	knownCerts.Save(globals.GetDataDirectory()) // persist cert pins
 
 	// TODO we  must wait for connections to kill themselves
 	logger.Info("P2P Shutdown")

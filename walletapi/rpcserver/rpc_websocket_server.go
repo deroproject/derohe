@@ -29,6 +29,7 @@ import "context"
 import "strings"
 import "runtime/debug"
 import "encoding/json"
+import "net/url"
 
 import "github.com/deroproject/derohe/config"
 import "github.com/deroproject/derohe/globals"
@@ -117,13 +118,9 @@ func hasbasicauthfailed(rpcserver *RPCServer, w http.ResponseWriter, r *http.Req
 		return true
 	}
 
-	if globals.Arguments["--allow-rpc-password-change"] != nil && globals.Arguments["--allow-rpc-password-change"].(bool) == true {
-
-		if r.Header.Get("Pass") != "" {
-			rpcserver.password = r.Header.Get("Pass")
-		}
-	}
-
+	// Password changes are intentionally not accepted from request headers.
+	// A header is attacker-controlled input and is not an authenticated change
+	// operation; changing the password here would permit lockout/DoS attacks.
 	return false
 
 }
@@ -226,11 +223,11 @@ func (rpcserver *RPCServer) Run(wallet *walletapi.Wallet_Disk) {
 		p.Ringsize = 2        // experts need not use this, they have direct call to do it
 
 		if result, err := Transfer(context.WithValue(context.Background(), "wallet_context", &wallet_apis), p); err != nil {
-			fmt.Fprintf(w, err.Error())
+			fmt.Fprintf(w, "%s", err.Error())
 			return
 		} else {
 			if err := json.NewEncoder(w).Encode(result); err != nil {
-				fmt.Fprintf(w, err.Error())
+				fmt.Fprintf(w, "%s", err.Error())
 				return
 			}
 		}
@@ -276,7 +273,22 @@ func hello(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "DERO BLOCKCHAIN Hello world!")
 }
 
-var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }} // use default options
+// CheckOrigin restricts WebSocket upgrades to localhost origins only.
+// This prevents CSRF-style attacks from malicious web pages.
+func checkWSOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true // non-browser clients (curl, etc.) don't send Origin
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "0.0.0.0"
+}
+
+var upgrader = websocket.Upgrader{CheckOrigin: checkWSOrigin}
 
 type WALLET_CONTEXT struct {
 	r      *RPCServer

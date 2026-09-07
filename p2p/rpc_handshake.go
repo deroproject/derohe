@@ -30,14 +30,22 @@ import "github.com/blang/semver/v4"
 
 // verify incoming handshake for number of checks such as mainnet/testnet etc etc
 func Verify_Handshake(handshake *Handshake_Struct) bool {
-	v := semver.MustParse(handshake.DaemonVersion)
+	if handshake == nil {
+		return false
+	}
+	v, err := semver.Parse(handshake.DaemonVersion)
+	if err != nil {
+		return false
+	}
 
 	if v.Major >= 3 && v.Minor >= 5 && v.Patch >= 0 {
 
 	} else {
+		if len(v.Pre) == 0 {
+			return false
+		}
 		var pre int
-		fmt.Sscanf(v.Pre[0].String(), "%d", &pre) // make sure previous releases can connect
-		if pre < 88 {
+		if _, err := fmt.Sscanf(v.Pre[0].String(), "%d", &pre); err != nil || pre < 88 { // make sure previous releases can connect
 			return false
 		}
 	}
@@ -61,12 +69,20 @@ func (handshake *Handshake_Struct) Fill() {
 	copy(handshake.Network_ID[:], globals.Config.Network_ID[:])
 }
 
+// SetCertFingerprint populates the handshake cert fingerprint from a TLS connection.
+func (handshake *Handshake_Struct) SetCertFingerprint() {
+	handshake.CertFingerprint = localTLSFingerprint()
+}
+
 // this is used only once
 // all clients start with handshake, then other party sends avtive to mark that connection is active
 func (connection *Connection) dispatch_test_handshake() {
 	defer handle_connection_panic(connection)
 	var request, response Handshake_Struct
 	request.Fill()
+
+	// Include our certificate fingerprint in the handshake.
+	request.SetCertFingerprint()
 
 	//scan our peer list and send peers which have been recently communicated
 	request.PeerList = get_peer_list_specific(Address(connection))
@@ -84,6 +100,25 @@ func (connection *Connection) dispatch_test_handshake() {
 		connection.exit()
 		return
 	}
+
+	// SECURITY: Verify peer's certificate fingerprint against our pin store.
+	if response.Peer_ID == 0 || response.CertFingerprint == [32]byte{} {
+		connection.logger.V(1).Info("peer did not provide a TLS certificate fingerprint")
+		connection.exit()
+		return
+	}
+	if response.Peer_ID != 0 && response.CertFingerprint != [32]byte{} {
+		if !knownCerts.Verify(response.Peer_ID, response.CertFingerprint) {
+			connection.logger.V(1).Info("CERT PIN MISMATCH — possible MITM, disconnecting",
+				"peer_id", fmt.Sprintf("%x", response.Peer_ID),
+				"remote", Address(connection))
+			connection.exit()
+			return
+		}
+		// Pin or update the cert fingerprint for this peer.
+		knownCerts.Pin(response.Peer_ID, response.CertFingerprint)
+	}
+
 	connection.update(&response.Common) // update common information
 	if !Connection_Add(connection) {    // add connection to pool
 		connection.exit()
@@ -159,7 +194,27 @@ func (c *Connection) Handshake(request Handshake_Struct, response *Handshake_Str
 		return fmt.Errorf("NID mismatch")
 	}
 
+	// SECURITY: Verify the connecting peer's cert fingerprint.
+	if request.Peer_ID == 0 || request.CertFingerprint == [32]byte{} {
+		logger.V(1).Info("incoming peer did not provide a TLS certificate fingerprint")
+		c.exit()
+		return fmt.Errorf("missing cert fingerprint")
+	}
+	if request.Peer_ID != 0 && request.CertFingerprint != [32]byte{} {
+		if !knownCerts.Verify(request.Peer_ID, request.CertFingerprint) {
+			logger.V(1).Info("CERT PIN MISMATCH from incoming peer",
+				"peer_id", fmt.Sprintf("%x", request.Peer_ID),
+				"remote", c.Addr.String())
+			c.exit()
+			return fmt.Errorf("cert pin mismatch")
+		}
+		// Pin this peer's cert for future verification.
+		knownCerts.Pin(request.Peer_ID, request.CertFingerprint)
+	}
+
 	response.Fill()
+	// Include our certificate fingerprint in the response.
+	response.SetCertFingerprint()
 
 	c.update(&request.Common) // update common information
 	if c.State == ACTIVE {

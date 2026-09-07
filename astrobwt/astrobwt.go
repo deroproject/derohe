@@ -1,11 +1,15 @@
 package astrobwt
 
 import "fmt"
-import "unsafe"
+import "os"
+import "runtime/debug"
 import "crypto/rand"
 import "encoding/binary"
 import "golang.org/x/crypto/sha3"
 import "golang.org/x/crypto/salsa20/salsa"
+
+// NOTE: "unsafe" import removed — unsafe.Pointer cast was replaced with
+// safe binary.LittleEndian.PutUint16 serialization.
 
 // see here to improve the algorithms more https://github.com/y-256/libdivsufsort/blob/wiki/SACA_Benchmarks.md
 
@@ -17,9 +21,10 @@ func POW16(inputdata []byte) (outputhash [32]byte) {
 
 	defer func() {
 		if r := recover(); r != nil { // if something happens due to RAM issues in miner, we should continue, system will crash sooner or later
+			fmt.Fprintf(os.Stderr, "[ASTROBWT] POW16 panic recovered: %v\n%s\n", r, debug.Stack())
 			var buf [16]byte
 			rand.Read(buf[:])
-			outputhash = sha3.Sum256(buf[:]) // return a falsified has which will fail the check
+			outputhash = sha3.Sum256(buf[:]) // return a falsified hash which will fail the check
 		}
 	}()
 
@@ -33,18 +38,13 @@ func POW16(inputdata []byte) (outputhash [32]byte) {
 	var sa [stage1_length]int16
 	text_16_0alloc(stage1[:], sa[:])
 
-	if LittleEndian {
-		var s *[stage1_length * 2]byte = (*[stage1_length * 2]byte)(unsafe.Pointer(&sa))
-		outputhash = sha3.Sum256(s[:])
-		return
-	} else {
-		var s [stage1_length * 2]byte
-		for i := range sa {
-			binary.LittleEndian.PutUint16(s[i<<1:], uint16(sa[i]))
-		}
-		outputhash = sha3.Sum256(s[:])
-		return
+	// SECURITY: Always use safe serialization (binary.LittleEndian.PutUint16)
+	// instead of unsafe.Pointer cast which is undefined behavior on some platforms.
+	var s [stage1_length * 2]byte
+	for i := range sa {
+		binary.LittleEndian.PutUint16(s[i<<1:], uint16(sa[i]))
 	}
+	outputhash = sha3.Sum256(s[:])
 	return
 }
 
@@ -70,19 +70,13 @@ func POW32(inputdata []byte) (outputhash [32]byte) {
 		sa16[i] = int16(sa[i])
 	}
 
-	if LittleEndian {
-		var s *[stage1_length * 2]byte = (*[stage1_length * 2]byte)(unsafe.Pointer(&sa16))
-		outputhash = sha3.Sum256(s[:])
-		return
-	} else {
-		var s [stage1_length * 2]byte
-		for i := range sa {
-			binary.LittleEndian.PutUint16(s[i<<1:], uint16(sa[i]))
-		}
-		outputhash = sha3.Sum256(s[:])
-		return
+	// SECURITY: Always use safe serialization (binary.LittleEndian.PutUint16)
+	// instead of unsafe.Pointer cast which is undefined behavior on some platforms.
+	var s [stage1_length * 2]byte
+	for i := range sa16 {
+		binary.LittleEndian.PutUint16(s[i<<1:], uint16(sa16[i]))
 	}
-
+	outputhash = sha3.Sum256(s[:])
 	return
 }
 

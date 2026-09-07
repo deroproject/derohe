@@ -80,7 +80,7 @@ Usage:
   --rpc-server      Run rpc server, so wallet is accessible using api
   --rpc-bind=<127.0.0.1:20209>  Wallet binds on this ip address and port
   --rpc-login=<username:password>  RPC server will grant access based on these credentials
-  --allow-rpc-password-change   RPC server will change password if you send "Pass" header with new password
+  --allow-rpc-password-change   Deprecated; RPC password changes via request headers are disabled
   --scan-top-n-blocks=<100000>  Only scan top N blocks
   --save-every-x-seconds=<300>  Save wallet every x seconds
   `

@@ -24,10 +24,19 @@ import "encoding/base64"
 import "github.com/deroproject/derohe/rpc"
 import "github.com/deroproject/derohe/transaction"
 import "github.com/deroproject/derohe/cryptography/crypto"
+import "golang.org/x/time/rate"
 
 var lock sync.Mutex
 
+// SECURITY: Rate limit transfers to prevent fee-bombing attacks.
+// 10 transfers/sec with burst of 20 — legitimate wallets won't hit this.
+var transferLimiter = rate.NewLimiter(10.0, 20)
+
 func Transfer(ctx context.Context, p rpc.Transfer_Params) (result rpc.Transfer_Result, err error) {
+
+	if !transferLimiter.Allow() {
+		return result, fmt.Errorf("rate limit exceeded: too many transfer requests")
+	}
 
 	lock.Lock()
 	defer lock.Unlock()
