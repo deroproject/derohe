@@ -16,7 +16,7 @@
 
 package crypto
 
-//import "fmt"
+import "fmt"
 import "math"
 import "math/big"
 import "strconv"
@@ -75,19 +75,21 @@ type InnerProductSupport struct {
 	o         *big.Int
 }
 
-func unmarshalpoint(input string) *bn256.G1 {
+func unmarshalpoint(input string) (*bn256.G1, error) {
 	d, err := hex.DecodeString(input)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("hex decode: %w", err)
 	}
 
 	if len(d) != 64 {
-		panic("wrong length")
+		return nil, fmt.Errorf("wrong length: %d", len(d))
 	}
 
 	x := new(bn256.G1)
-	x.Unmarshal(d)
-	return x
+	if _, err = x.Unmarshal(d); err != nil {
+		return nil, fmt.Errorf("unmarshal point: %w", err)
+	}
+	return x, nil
 
 }
 
@@ -142,7 +144,10 @@ func (proof *Proof) Verify(scid Hash, scid_index int, s *Statement, txid Hash, e
 
 	anonsupport.temp = new(bn256.G1)
 	var zeroes [64]byte
-	anonsupport.temp.Unmarshal(zeroes[:])
+	if _, err := anonsupport.temp.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for temp", "err", err)
+		return false
+	}
 
 	for k := 0; k < 2*m; k++ {
 		anonsupport.temp = new(bn256.G1).Add(anonsupport.temp, new(bn256.G1).ScalarMult(gparams.Gs.vector[k], anonsupport.f[k][1]))
@@ -190,8 +195,14 @@ func (proof *Proof) Verify(scid Hash, scid_index int, s *Statement, txid Hash, e
 
 	anonsupport.CLnR = new(bn256.G1)
 	anonsupport.CRnR = new(bn256.G1)
-	anonsupport.CLnR.Unmarshal(zeroes[:])
-	anonsupport.CRnR.Unmarshal(zeroes[:])
+	if _, err := anonsupport.CLnR.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for CLnR", "err", err)
+		return false
+	}
+	if _, err := anonsupport.CRnR.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for CRnR", "err", err)
+		return false
+	}
 	for i := 0; i < N; i++ {
 		anonsupport.CLnR = new(bn256.G1).Add(anonsupport.CLnR, new(bn256.G1).ScalarMult(s.CLn[i], anonsupport.r[i][0]))
 		anonsupport.CRnR = new(bn256.G1).Add(anonsupport.CRnR, new(bn256.G1).ScalarMult(s.CRn[i], anonsupport.r[i][0]))
@@ -234,8 +245,14 @@ func (proof *Proof) Verify(scid Hash, scid_index int, s *Statement, txid Hash, e
 
 	anonsupport.C_XR = new(bn256.G1)
 	anonsupport.y_XR = new(bn256.G1)
-	anonsupport.C_XR.Unmarshal(zeroes[:])
-	anonsupport.y_XR.Unmarshal(zeroes[:])
+	if _, err := anonsupport.C_XR.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for C_XR", "err", err)
+		return false
+	}
+	if _, err := anonsupport.y_XR.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for y_XR", "err", err)
+		return false
+	}
 	for i := 0; i < N; i++ {
 		anonsupport.C_XR.Add(new(bn256.G1).Set(anonsupport.C_XR), new(bn256.G1).ScalarMult(anonsupport.CR[i/2][i%2], anonsupport.vPow))
 		anonsupport.y_XR.Add(new(bn256.G1).Set(anonsupport.y_XR), new(bn256.G1).ScalarMult(anonsupport.yR[i/2][i%2], anonsupport.vPow))
@@ -251,9 +268,15 @@ func (proof *Proof) Verify(scid Hash, scid_index int, s *Statement, txid Hash, e
 
 	anonsupport.wPow = new(big.Int).SetUint64(1)
 	anonsupport.gR = new(bn256.G1)
-	anonsupport.gR.Unmarshal(zeroes[:])
+	if _, err := anonsupport.gR.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for gR", "err", err)
+		return false
+	}
 	anonsupport.DR = new(bn256.G1)
-	anonsupport.DR.Unmarshal(zeroes[:])
+	if _, err := anonsupport.DR.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for DR", "err", err)
+		return false
+	}
 
 	for i := 0; i < m; i++ {
 		wPow_neg := new(big.Int).Mod(new(big.Int).Neg(anonsupport.wPow), bn256.Order)
@@ -432,7 +455,10 @@ func (proof *Proof) Verify(scid Hash, scid_index int, s *Statement, txid Hash, e
 	var hPrimes []*bn256.G1
 	hPrimeSum := new(bn256.G1)
 
-	hPrimeSum.Unmarshal(zeroes[:])
+	if _, err := hPrimeSum.Unmarshal(zeroes[:]); err != nil {
+		Logger.V(1).Info("Failed to unmarshal zero point for hPrimeSum", "err", err)
+		return false
+	}
 	for i := 0; i < 128; i++ {
 		hPrimes = append(hPrimes, new(bn256.G1).ScalarMult(gparams.Hs.vector[i], new(big.Int).ModInverse(protsupport.ys[i], bn256.Order)))
 

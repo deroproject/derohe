@@ -22,6 +22,7 @@ type RequestResponse struct {
 
 const READ_TIMEOUT = 20 * time.Second
 const WRITE_TIMEOUT = 20 * time.Second
+const MAX_P2P_FRAME_SIZE = 5 * config.STARGATE_HE_MAX_BLOCK_SIZE
 
 var bufPool = &sync.Pool{
 	New: func() interface{} {
@@ -49,8 +50,8 @@ func Read_Data_Frame(r net.Conn, obj interface{}) error {
 		return nil
 	}
 	// most probably memory DDOS attack, kill the connection
-	if uint64(frame_length) > (5 * config.STARGATE_HE_MAX_BLOCK_SIZE) {
-		return fmt.Errorf("Frame length is too big Expected %d Actual %d", 5*config.STARGATE_HE_MAX_BLOCK_SIZE, frame_length)
+	if uint64(frame_length) > MAX_P2P_FRAME_SIZE {
+		return fmt.Errorf("Frame length is too big Expected %d Actual %d", MAX_P2P_FRAME_SIZE, frame_length)
 	}
 
 	buf := bufPool.Get().(*bytes.Buffer)
@@ -77,6 +78,9 @@ func Write_Data_Frame(w net.Conn, obj interface{}) error {
 	data_bytes, err := cbor.Marshal(obj)
 	if err != nil {
 		return err
+	}
+	if uint64(len(data_bytes)) > MAX_P2P_FRAME_SIZE {
+		return fmt.Errorf("encoded frame is too large: %d", len(data_bytes))
 	}
 	binary.LittleEndian.PutUint32(frame_length_buf[:], uint32(len(data_bytes)))
 

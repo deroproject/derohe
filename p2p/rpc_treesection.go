@@ -16,6 +16,7 @@
 
 package p2p
 
+import "fmt"
 import "github.com/deroproject/graviton"
 
 // get parts of the specified balance tree chunk by chunk
@@ -24,6 +25,7 @@ func (c *Connection) TreeSection(request Request_Tree_Section_Struct, response *
 	if request.Topo < 2 || request.SectionLength > 256 || len(request.Section) < int(request.SectionLength/8) { // we are expecting 1 block or 1 tx
 		c.logger.V(1).Info("malformed object request  received, banning peer", "request", request)
 		c.exit()
+		return fmt.Errorf("malformed tree section request")
 	}
 
 	c.update(&request.Common) // update common information

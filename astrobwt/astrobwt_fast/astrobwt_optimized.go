@@ -1,7 +1,9 @@
 package astrobwt_fast
 
-import "unsafe"
+import "fmt"
 import "hash"
+import "os"
+import "runtime/debug"
 import "sync"
 import "crypto/rand"
 import "encoding/binary"
@@ -16,8 +18,8 @@ const stage1_length uint32 = 9973 // it is a prime
 type ScratchData struct {
 	hasher              hash.Hash
 	stage1              [stage1_length + 64]byte // 10 KB stages are taken from it
-	stage1_result       *[stage1_length + 1]uint16
-	stage1_result_bytes *[(stage1_length) * 2]uint8
+	stage1_result       [stage1_length + 1]uint16
+	stage1_result_bytes [stage1_length * 2]byte
 	indices             [stage1_length + 1]uint32 // 40 KB
 	tmp_indices         [stage1_length + 1]uint32 // 40 KB
 }
@@ -25,9 +27,6 @@ type ScratchData struct {
 var Pool = sync.Pool{New: func() interface{} {
 	var d ScratchData
 	d.hasher = sha3.New256()
-	d.stage1_result = ((*[stage1_length + 1]uint16)(unsafe.Pointer(&d.indices[0])))
-	d.stage1_result_bytes = ((*[(stage1_length) * 2]byte)(unsafe.Pointer(&d.indices[0])))
-
 	return &d
 }}
 
@@ -35,9 +34,10 @@ func POW_optimized(inputdata []byte, data *ScratchData) (outputhash [32]byte) {
 
 	defer func() {
 		if r := recover(); r != nil { // if something happens due to RAM issues in miner, we should continue, system will crash sooner or later
+			fmt.Fprintf(os.Stderr, "[ASTROBWT] POW_optimized panic recovered: %v\n%s\n", r, debug.Stack())
 			var buf [16]byte
 			rand.Read(buf[:])
-			outputhash = sha3.Sum256(buf[:]) // return a falsified has which will fail the check
+			outputhash = sha3.Sum256(buf[:]) // return a falsified hash which will fail the check
 		}
 	}()
 
@@ -55,19 +55,15 @@ func POW_optimized(inputdata []byte, data *ScratchData) (outputhash [32]byte) {
 	salsa.XORKeyStream(data.stage1[:stage1_length], data.stage1[:stage1_length], &counter, &key)
 	sort_indices(stage1_length, data.stage1[:stage1_length+40], data.stage1_result[:], data) // extra 40 bytes since we may read them, but we never write them
 
-	if LittleEndian {
-		data.hasher.Reset()
-		data.hasher.Write(data.stage1_result_bytes[:])
-		_ = data.hasher.Sum(key[:0])
-	} else {
-		var s [stage1_length * 2]byte
-		for i, c := range data.stage1_result {
-			binary.LittleEndian.PutUint16(s[i<<1:], c)
-		}
-		data.hasher.Reset()
-		data.hasher.Write(s[:])
-		_ = data.hasher.Sum(key[:0])
+	// Serialize suffix-array indices explicitly in protocol byte order. Do not
+	// alias the uint32 scratch array with unsafe.Pointer: the optimized path
+	// must produce the same digest on every architecture.
+	for i, c := range data.stage1_result[:stage1_length] {
+		binary.LittleEndian.PutUint16(data.stage1_result_bytes[i<<1:], c)
 	}
+	data.hasher.Reset()
+	data.hasher.Write(data.stage1_result_bytes[:])
+	_ = data.hasher.Sum(key[:0])
 
 	copy(outputhash[:], key[:])
 	return

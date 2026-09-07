@@ -18,7 +18,9 @@ package walletapi
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -689,7 +691,13 @@ func (w *Wallet_Memory) SignFile(filename string) error {
 		return err
 	}
 
-	serialize := []byte(fmt.Sprintf("%s%s%x", w.account.Keys.Public.G1().String(), tmppoint.String(), input))
+	// SECURITY: Hash the file content and bind the signature to it.
+	// This prevents the signature from being valid against a modified file.
+	fileHash := sha256.Sum256(input)
+	fileHashHex := hex.EncodeToString(fileHash[:])
+
+	// Sign over the file hash, not the full content, to avoid RAM issues with large files.
+	serialize := []byte(fmt.Sprintf("%s%s%s", w.account.Keys.Public.G1().String(), tmppoint.String(), fileHashHex))
 
 	c := crypto.ReducedHash(serialize)
 	s := new(big.Int).Mul(c, w.account.Keys.Secret.BigInt()) // basicaly scalar mul add
@@ -702,6 +710,7 @@ func (w *Wallet_Memory) SignFile(filename string) error {
 	p.Headers["Address"] = w.GetAddress().String()
 	p.Headers["C"] = fmt.Sprintf("%x", c)
 	p.Headers["S"] = fmt.Sprintf("%x", s)
+	p.Headers["FileHash"] = fileHashHex
 
 	return os.WriteFile(filename+".signed", pem.EncodeToMemory(p), 0600)
 }
@@ -722,6 +731,7 @@ func (w *Wallet_Memory) CheckFileSignature(filename string) (signer *rpc.Address
 	astr := p.Headers["Address"]
 	cstr := p.Headers["C"]
 	sstr := p.Headers["S"]
+	savedHash := p.Headers["FileHash"]
 
 	addr, err := rpc.NewAddress(astr)
 	if err != nil {
@@ -747,12 +757,31 @@ func (w *Wallet_Memory) CheckFileSignature(filename string) (signer *rpc.Address
 		return
 	}
 
-	serialize := []byte(fmt.Sprintf("%s%s%x", addr.PublicKey.G1().String(), tmppoint.String(), input_data))
+	// SECURITY: Verify the file hash matches the one in the signature.
+	// This binds the signature to the specific file content.
+	fileHash := sha256.Sum256(input_data)
+	currentHashHex := hex.EncodeToString(fileHash[:])
 
-	c_calculated := crypto.ReducedHash(serialize)
-	if c.String() != c_calculated.String() {
-		err = fmt.Errorf("signature mismatch")
+	if savedHash != "" && savedHash != currentHashHex {
+		err = fmt.Errorf("file has been modified since signing: expected hash %s, got %s", savedHash, currentHashHex)
 		return
+	}
+
+	// Backward compatible: if no FileHash in old signatures, verify against full content.
+	if savedHash == "" {
+		serialize := []byte(fmt.Sprintf("%s%s%x", addr.PublicKey.G1().String(), tmppoint.String(), input_data))
+		c_calculated := crypto.ReducedHash(serialize)
+		if c.String() != c_calculated.String() {
+			err = fmt.Errorf("signature mismatch")
+			return
+		}
+	} else {
+		serialize := []byte(fmt.Sprintf("%s%s%s", addr.PublicKey.G1().String(), tmppoint.String(), currentHashHex))
+		c_calculated := crypto.ReducedHash(serialize)
+		if c.String() != c_calculated.String() {
+			err = fmt.Errorf("signature mismatch")
+			return
+		}
 	}
 
 	signer = addr

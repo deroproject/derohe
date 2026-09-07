@@ -36,6 +36,14 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 
 	c.logger.V(3).Info("incoming INV", "request", request)
 
+	// SECURITY: Validate message sizes to prevent DoS via oversized inventory notifications.
+	if len(request.Block_list) > 4096 || len(request.Tx_list) > 4096 || len(request.Chunk_list) > 256 {
+		c.logger.V(2).Info("oversized INV received, banning peer",
+			"blocks", len(request.Block_list), "txs", len(request.Tx_list), "chunks", len(request.Chunk_list))
+		c.exit()
+		return nil
+	}
+
 	if len(request.Block_list) >= 1 { //  handle incoming blocks list
 		for i := range request.Block_list { //
 			if !chain.Is_Block_Topological_order(request.Block_list[i]) { // block is not in our chain
@@ -112,9 +120,18 @@ func (c *Connection) NotifyINV(request ObjectList, response *Dummy) (err error) 
 // only miniblocks carry extra info, which leads to better time tracking
 func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err error) {
 	defer handle_connection_panic(c)
-	if len(request.MiniBlocks) >= 5 {
-		err = fmt.Errorf("Notify Block can notify max 5 miniblocks")
-		c.logger.V(3).Error(err, "Should be banned")
+
+	// SECURITY: Validate object sizes to prevent DoS.
+	if len(request.MiniBlocks) > 5 {
+		err = fmt.Errorf("Notify Block can notify max 5 miniblocks, got %d", len(request.MiniBlocks))
+		c.logger.V(2).Error(err, "Oversized miniblock notification, banning peer")
+		c.exit()
+		return err
+	}
+	if len(request.CBlocks) > 4 || len(request.Txs) > 4096 || len(request.Chunks) > 256 {
+		err = fmt.Errorf("oversized object notification")
+		c.logger.V(2).Error(err, "Banning peer for oversized objects",
+			"cblocks", len(request.CBlocks), "txs", len(request.Txs), "chunks", len(request.Chunks))
 		c.exit()
 		return err
 	}
@@ -130,10 +147,11 @@ func (c *Connection) NotifyMiniBlock(request Objects, response *Dummy) (err erro
 			return err
 		}
 		if height > 4 { // activate check a bit after genesis, thanks Slixe
-		if  height-2 <= int64(mbl.Height)  && int64(mbl.Height) <= (height+1){		
-		} else{
-			return fmt.Errorf("Stale Miniblock")
-		}}
+			if height-2 <= int64(mbl.Height) && int64(mbl.Height) <= (height+1) {
+			} else {
+				return fmt.Errorf("Stale Miniblock")
+			}
+		}
 		mbls = append(mbls, mbl)
 	}
 
